@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import * as auth from './auth.js';
 import { syncAll } from './sync.js';
-import { driveLoad, driveSave, AuthError } from './api.js';
+import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES } from './metrics.js';
 import { parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
 import { ring, bars, line, hrDay, hypnogram, stackBar, spark } from './charts.js';
@@ -72,7 +72,7 @@ async function saveStrength(mutator) {
 const pushStrengthSoon = debounce(() => { syncStrength().catch(() => {}); }, 1500);
 
 async function syncStrength() {
-  if (store.isDemo() || !auth.getToken()) return;
+  if (store.isDemo() || !auth.getToken('drive')) return;
   const remote = await driveLoad();
   const merged = mergeDocs(S.strength, remote);
   const sig = (d) => JSON.stringify([...(d?.sessions || []), ...(d?.templates || [])].map((s) => [s.id, s.updatedAt]).sort());
@@ -98,7 +98,7 @@ function applyTheme() {
 async function runSync({ full = false, interactive = true } = {}) {
   if (S.syncing) return;
   if (store.isDemo()) { toast('Demomodus: geen synchronisatie'); return; }
-  if (!auth.getToken()) {
+  if (!auth.getToken('health')) {
     if (!auth.getClientId()) { location.hash = '#/setup'; return; }
     if (interactive) auth.login({ silent: auth.hasEverLoggedIn() });
     return;
@@ -107,7 +107,7 @@ async function runSync({ full = false, interactive = true } = {}) {
   render();
   try {
     await syncAll({ full, onProgress: (text, frac) => { S.progress = { text, frac }; updateProgress(); } });
-    try { await syncStrength(); } catch (e) { console.warn('Drive', e); if (e instanceof AuthError) throw e; }
+    try { await syncStrength(); } catch (e) { console.warn('Drive', e); }
     S.days = await store.days.all();
     S.profile = (await store.kv.get('profile')) || null;
     recompute();
@@ -117,11 +117,11 @@ async function runSync({ full = false, interactive = true } = {}) {
   } catch (e) {
     if (e instanceof AuthError) {
       S.syncError = 'Je sessie is verlopen.';
-      if (auth.canTrySilent()) { auth.login({ silent: true }); return; }
+      if (auth.canTrySilent('health')) { auth.login({ silent: true }); return; }
     } else S.syncError = e.message;
     toast('Synchroniseren mislukt');
   } finally {
-    S.syncing = false; S.progress = null;
+    S.syncing = false; S.progress = null; S.diag = null;
     S.lastSyncAt = await store.kv.get('lastSyncAt');
     S.syncLog = await store.kv.get('syncLog');
     render();
@@ -315,7 +315,7 @@ function syncProblemCard() {
   if (!failed.length) return '';
   const tok = auth.getToken();
   const granted = (tok?.scope || '').split(/\s+/);
-  const missing = tok ? auth.SCOPES.filter((x) => x.startsWith('https://') && !granted.includes(x)).map((x) => x.split('/').pop()) : [];
+  const missing = tok ? auth.HEALTH_SCOPES.filter((x) => !granted.includes(x)).map((x) => x.split('/').pop()) : [];
   const uniq = [];
   for (const f of failed) {
     const k = `${f.status || ''} ${f.error}`;
@@ -325,9 +325,11 @@ function syncProblemCard() {
   return `<div class="card" style="border:1.5px solid var(--red);overflow-wrap:anywhere">
     <div style="font-weight:700;color:var(--red)">Ophalen van ${failed.length} onderdelen mislukt</div>
     ${missing.length ? `<div class="small mt"><b>Niet toegestaan bij inloggen:</b> ${esc(missing.join(', '))}. Log opnieuw in en vink alles aan.</div>` : ''}
-    ${uniq.slice(0, 3).map((u) => `<div class="small mt"><b>${esc(u.labels.join(', '))}</b><br>${esc(u.f.status ? u.f.status + ': ' : '')}${esc(u.f.error)}${u.f.detail && !/^[{]/.test(u.f.error) ? `<div class="tiny muted mono" style="display:block;margin-top:4px;white-space:pre-wrap">${esc(u.f.detail.slice(0, 260))}</div>` : ''}</div>`).join('')}
-    <div class="btn-row mt"><button class="btn small" data-act="sync">Opnieuw proberen</button><button class="btn small secondary" data-act="relogin">Opnieuw inloggen</button></div>
-    <div class="tiny muted mt">Maak hier een screenshot van en stuur hem naar Claude.</div>
+    ${uniq.slice(0, 3).map((u) => `<div class="small mt"><b>${esc(u.labels.join(', '))}</b><br>${esc(u.f.status ? u.f.status + ': ' : '')}${esc(u.f.error)}${u.f.detail ? `<div class="tiny muted mono" style="display:block;margin-top:4px;white-space:pre-wrap">${esc(u.f.detail.slice(0, 260))}</div>` : ''}</div>`).join('')}
+    ${S.diag ? `<div class="small mt" style="background:var(--card2);border-radius:10px;padding:10px"><b>Diagnose</b><br>${S.diag}</div>` : ''}
+    <div class="btn-row mt"><button class="btn small" data-act="sync">Opnieuw proberen</button><button class="btn small secondary" data-act="diagnose">Diagnose</button></div>
+    <button class="btn small secondary mt" data-act="relogin" style="width:100%">Opnieuw inloggen (alle vinkjes aan)</button>
+    <div class="tiny muted mt">Tik op Diagnose en maak een screenshot van dit kaartje voor Claude.</div>
   </div>`;
 }
 
@@ -834,7 +836,8 @@ function viewSettings() {
       : u ? `<div class="row"><img class="avatar" src="${esc(u.picture || '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"><div class="grow"><div class="title">${esc(u.name || 'Google-account')}</div><div class="sub">${esc(u.email || '')}</div></div></div>`
         : `<button class="row tap" data-act="login"><div class="badge" style="background:#fff">${I.google}</div><div class="grow"><div class="title">Inloggen met Google</div></div><span class="chev">${I.chev}</span></button>`}
     ${!demo ? `<button class="row tap" data-act="sync"><div class="badge" style="background:var(--accent)">${I.sync}</div><div class="grow"><div class="title">Nu synchroniseren</div><div class="sub">${S.lastSyncAt ? fmtRel(S.lastSyncAt) : 'nog nooit'}</div></div></button>
-    <button class="row tap" data-act="full-sync"><div class="badge" style="background:var(--card2);color:var(--text)">${I.download}</div><div class="grow"><div class="title">Alles opnieuw ophalen</div><div class="sub">laatste 45 dagen</div></div></button>` : ''}
+    <button class="row tap" data-act="full-sync"><div class="badge" style="background:var(--card2);color:var(--text)">${I.download}</div><div class="grow"><div class="title">Alles opnieuw ophalen</div><div class="sub">laatste 45 dagen</div></div></button>
+    <button class="row tap" data-act="drive-login"><div class="badge" style="background:var(--green)">${I.upload}</div><div class="grow"><div class="title">Back-up krachtlog (Google Drive)</div><div class="sub">${auth.getToken('drive') ? 'verbonden' : 'tik om te verbinden'}</div></div></button>` : ''}
   </div>
   ${log ? `<div class="list-header">Laatste synchronisatie</div><div class="list">${log.log.map((l) => `<div class="row"><div class="grow"><div class="title" style="font-size:15px">${esc(l.label)}</div>${l.error ? `<div class="sub" style="color:var(--red);white-space:normal">${esc(l.status ? `${l.status}: ` : '')}${esc(l.error)}</div>` : ''}</div><div class="val">${l.ok ? `<span class="up">${I.check.replace('<svg', '<svg width="16" height="16"')}</span> ${l.count ?? ''}` : '<span class="down">mislukt</span>'}</div></div>`).join('')}</div><div class="list-footer">${new Date(log.at).toLocaleString('nl-NL')} · ${log.from} t/m ${log.to} · ${Math.round(log.ms / 1000)} s</div>` : ''}
 
@@ -980,6 +983,25 @@ const actions = {
   async 'full-sync'() { await runSync({ full: true }); },
   login() { if (!auth.getClientId()) { location.hash = '#/setup'; return; } auth.login({ silent: false }); },
   relogin() { auth.login({ silent: false, consent: true }); },
+  'drive-login'() { auth.setDriveDisabled(false); auth.login({ kind: 'drive', silent: false }); },
+  async diagnose() {
+    S.diag = 'Bezig…'; render();
+    const out = [];
+    try {
+      const ti = await tokenInfo();
+      if (!ti) out.push('Geen geldig token — log opnieuw in.');
+      else if (ti.error || ti.error_description) out.push(`Token: ${esc(ti.error_description || ti.error)}`);
+      else {
+        const sc = (ti.scope || '').split(' ').map((x) => x.split('/').pop());
+        out.push(`Token van client …${esc(String(ti.aud || ti.azp || '').slice(0, 12))}, geldig nog ${Math.round((ti.expires_in || 0) / 60)} min.`);
+        out.push(`Scopes: ${esc(sc.join(', '))}`);
+      }
+    } catch (e) { out.push(`Tokeninfo mislukt: ${esc(e.message)}`); }
+    const p = await probe();
+    out.push(p.ok ? `Health API: OK (gebruiker ${esc(p.r?.healthUserId || p.r?.name || '')})` : `Health API: ${esc(String(p.status))} ${esc(p.raw || p.msg)}`);
+    S.diag = out.join('<br>');
+    render();
+  },
   async copy(el) {
     try { await navigator.clipboard.writeText(el.dataset.v); toast('Gekopieerd'); } catch { prompt('Kopieer:', el.dataset.v); }
   },
@@ -1268,7 +1290,7 @@ async function boot() {
   await loadAll();
   S.lastSyncAt = await store.kv.get('lastSyncAt');
   S.syncLog = await store.kv.get('syncLog');
-  if (redirect && !redirect.ok) {
+  if (redirect && !redirect.ok && redirect.kind !== 'drive') {
     if (redirect.silent && (redirect.error === 'interaction_required' || redirect.error === 'login_required' || redirect.error === 'consent_required')) {
       S.syncError = 'Opnieuw inloggen nodig.';
     } else if (redirect.error !== 'state_mismatch') {
@@ -1276,14 +1298,19 @@ async function boot() {
     }
   }
   render();
-  if (redirect?.ok) {
+  if (redirect?.ok && redirect.kind === 'health') {
     if (redirect.missingScopes?.length) toast('Niet alle toestemmingen gegeven — sommige data ontbreekt mogelijk');
     if (store.isDemo()) { store.setDemo(false); await loadAll(); }
+    // Tweede (stille) sleutel voor Drive-back-up en je naam/foto.
+    if (!auth.getToken('drive') && !auth.driveDisabled() && auth.canTrySilent('drive')) { auth.login({ kind: 'drive', silent: true, returnTo: redirect.returnTo }); return; }
     await runSync({ interactive: false });
+  } else if (redirect && redirect.kind === 'drive') {
+    if (redirect.ok) auth.setDriveDisabled(false);
+    if (auth.getToken('health')) await runSync({ interactive: false });
   } else if (!store.isDemo() && auth.hasEverLoggedIn()) {
     const stale = !S.lastSyncAt || Date.now() - S.lastSyncAt > 15 * 60000;
-    if (stale && auth.getToken()) runSync({ interactive: false });
-    else if (stale && Date.now() - (S.lastSyncAt || 0) > 3 * 3600000 && auth.canTrySilent()) auth.login({ silent: true });
+    if (stale && auth.getToken('health')) runSync({ interactive: false });
+    else if (stale && auth.getClientId() && auth.canTrySilent('health')) auth.login({ silent: true });
   }
   S.lastSyncAt = await store.kv.get('lastSyncAt');
   S.syncLog = await store.kv.get('syncLog');
@@ -1300,5 +1327,5 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 
 // Bij terugkeren naar de app (bijv. vanuit achtergrond): ververs als data oud is.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !store.isDemo() && auth.getToken() && S.lastSyncAt && Date.now() - S.lastSyncAt > 30 * 60000) runSync({ interactive: false });
+  if (document.visibilityState === 'visible' && !store.isDemo() && auth.getToken('health') && S.lastSyncAt && Date.now() - S.lastSyncAt > 30 * 60000) runSync({ interactive: false });
 });

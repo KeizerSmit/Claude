@@ -2,7 +2,7 @@
 import { listDataPoints, dailyRollUp, rollUp, getProfile, getUserInfo, AuthError } from './api.js';
 import { days as daysStore, kv } from './store.js';
 import { ymd, addDays, today, parseYmd, toNum, durSec, pad } from './util.js';
-import { setUser } from './auth.js';
+import { setUser, getToken } from './auth.js';
 
 const INITIAL_DAYS = 45;
 
@@ -148,18 +148,19 @@ export async function syncAll({ onProgress = () => {}, full = false } = {}) {
       const r = await fn();
       log.push({ label, ok: true, count: r });
     } catch (e) {
-      if (e instanceof AuthError) throw e;
-      log.push({ label, ok: false, error: e.message, status: e.status, detail: String(e.body || '').slice(0, 400) });
+      if (e instanceof AuthError && e.kind === 'health') throw e;
+      log.push({ label, ok: false, error: e.message, status: e.status, detail: e.raw || String(e.body || '').slice(0, 400) });
       console.warn(label, e);
     }
   };
 
   onProgress('Profiel ophalen…', 0.02);
-  await step('Account', async () => {
-    const u = await getUserInfo();
-    setUser({ name: u.name, email: u.email, picture: u.picture });
-    return 1;
-  });
+  if (getToken('drive')) {
+    try {
+      const u = await getUserInfo();
+      setUser({ name: u.name, email: u.email, picture: u.picture });
+    } catch (e) { console.warn('userinfo', e); }
+  }
   await step('Profiel', async () => {
     const p = await getProfile();
     await kv.set('profile', { age: p.age ?? null });
@@ -261,13 +262,13 @@ export async function syncAll({ onProgress = () => {}, full = false } = {}) {
       out[d].hr = r.hr; out[d].hrMax = r.hrMax; out[d].hrComplete = d < end && r.hrCount > 0;
       hrOk++;
     } catch (e) {
-      if (e instanceof AuthError) throw e;
+      if (e instanceof AuthError && e.kind === 'health') throw e;
       hrErr = e;
     }
     done++;
     onProgress(`Hartslag ${done}/${hrDates.length}…`, 0.35 + 0.6 * (done / hrDates.length));
   });
-  log.push(hrErr ? { label: 'Hartslag', ok: hrOk > 0, count: hrOk, error: hrErr.message, status: hrErr.status, detail: String(hrErr.body || '').slice(0, 400) } : { label: 'Hartslag', ok: true, count: hrOk });
+  log.push(hrErr ? { label: 'Hartslag', ok: hrOk > 0, count: hrOk, error: hrErr.message, status: hrErr.status, detail: hrErr.raw || String(hrErr.body || '').slice(0, 400) } : { label: 'Hartslag', ok: true, count: hrOk });
 
   for (const d of Object.values(out)) d.synced = Date.now();
   await daysStore.putMany(Object.values(out));

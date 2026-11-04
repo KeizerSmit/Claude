@@ -4,7 +4,7 @@ import { getToken } from './auth.js';
 const HEALTH = 'https://health.googleapis.com/v4/users/me';
 
 export class AuthError extends Error {
-  constructor(msg) { super(msg); this.name = 'AuthError'; }
+  constructor(msg, kind = 'health') { super(msg); this.name = 'AuthError'; this.kind = kind; }
 }
 
 export class ApiError extends Error {
@@ -12,8 +12,9 @@ export class ApiError extends Error {
 }
 
 async function request(url, { method = 'GET', body, headers = {}, raw = false } = {}) {
-  const t = getToken();
-  if (!t) throw new AuthError('Niet ingelogd of sessie verlopen.');
+  const kind = /health\.googleapis\.com/.test(url) ? 'health' : 'drive';
+  const t = getToken(kind);
+  if (!t) throw new AuthError('Niet ingelogd of sessie verlopen.', kind);
   let res;
   try {
     res = await fetch(url, {
@@ -24,16 +25,25 @@ async function request(url, { method = 'GET', body, headers = {}, raw = false } 
   } catch (e) {
     throw new ApiError(`Netwerkfout (${e.message}) bij ${url.replace(/\?.*/, '').replace('https://', '')}`, 0, '');
   }
-  if (res.status === 401) throw new AuthError('Sessie verlopen.');
+  if (res.status === 401) throw new AuthError('Sessie verlopen.', kind);
   if (!res.ok) {
     let text = '';
     try { text = await res.text(); } catch { /* */ }
     let msg = `${res.status}`;
-    try { msg = JSON.parse(text).error?.message || msg; } catch { /* */ }
+    let raw = '';
+    try {
+      const er = JSON.parse(text).error || {};
+      msg = er.message || msg;
+      const reasons = (er.details || []).map((d) => d.reason).filter(Boolean);
+      raw = [er.status, ...reasons].filter(Boolean).join(' / ') + (er.message ? ` — ${er.message}` : '');
+    } catch { raw = text.slice(0, 300); }
     if (/ACCOUNT_NOT_LINKED|FAILED_PRECONDITION/.test(text)) msg = 'Je Google-account heeft nog geen Google Health-profiel. Open de Google Health-app één keer met dit account en probeer opnieuw.';
     else if (res.status === 403 && /SERVICE_DISABLED|has not been used|disabled/i.test(text)) msg = 'Deze Google-koppeling staat nog uit in je Cloud-project (stap 2 van Instellen).';
+    else if (res.status === 403 && /DISALLOWED_OAUTH_SCOPES/.test(text)) msg = 'Google weigert de combinatie van toestemmingen. Log opnieuw in.';
     else if (res.status === 403 && /scope|insufficient/i.test(text)) msg = 'Toestemming ontbreekt. Log opnieuw in en vink alles aan (of controleer stap 5 van Instellen).';
-    throw new ApiError(msg, res.status, text);
+    const err = new ApiError(msg, res.status, text);
+    err.raw = raw;
+    throw err;
   }
   if (raw) return res;
   if (res.status === 204) return null;
@@ -127,4 +137,17 @@ export async function driveSave(doc) {
   const meta = { name: FILE_NAME, parents: ['appDataFolder'], mimeType: 'application/json' };
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${content}\r\n--${boundary}--`;
   return request(`${UPLOAD}?uploadType=multipart`, { method: 'POST', body: new Blob([body]), headers: { 'Content-Type': `multipart/related; boundary=${boundary}` } });
+}
+
+/** Vraag Google welke scopes het token echt heeft (diagnose). */
+export async function tokenInfo() {
+  const t = getToken('health');
+  if (!t) return null;
+  const r = await fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(t.access_token));
+  return r.json();
+}
+
+/** Minimale test-aanroep met volledige foutinfo. */
+export async function probe() {
+  try { const r = await request(`${HEALTH}/identity`); return { ok: true, r }; } catch (e) { return { ok: false, status: e.status, msg: e.message, raw: e.raw || '', body: e.body || '' }; }
 }
