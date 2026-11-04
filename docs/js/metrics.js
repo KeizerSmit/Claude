@@ -7,7 +7,7 @@
 // Sleep: slaapbehoefte = basis + extra door strain van gisteren + slaapschuld − dutjes.
 
 import { mean, sd, clamp, normCdf, addDays, median } from './util.js';
-import { computeLoads, MUSCULAR_TO_TRIMP } from './strength.js';
+import { computeLoads, MUSCULAR_TO_TRIMP, templateBaselines } from './strength.js';
 
 export const STRAIN_K = 110;
 
@@ -211,7 +211,7 @@ export function computeAll(days, strengthDoc, settings, profile) {
   const female = settings.sex === 'v';
   const max = maxHr(settings, profile, sorted);
   const sessions = (strengthDoc?.sessions || []).filter((s) => !s.deleted);
-  const loads = computeLoads(sessions, { ...settings, exerciseMap: strengthDoc?.exerciseMap || {} });
+  const loads = computeLoads(sessions, { ...settings, exerciseMap: strengthDoc?.exerciseMap || {}, baselines: templateBaselines(strengthDoc, settings.bodyweight) });
   const sessionsByDate = {};
   for (const s of sessions) if (s.date) (sessionsByDate[s.date] ||= []).push(s);
 

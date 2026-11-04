@@ -83,3 +83,25 @@ test('metrics op demodata binnen realistische grenzen', () => {
   assert.ok(gymDays.length > 5);
   assert.ok(Math.abs(strainFromTrimp(110) - 13.27) < 0.05);
 });
+
+test('jouw notitie: Upper 6 / Upper 7 / Lower', async () => {
+  const fs = await import('node:fs');
+  const txt = fs.readFileSync(new URL('./fixture-notes.txt', import.meta.url), 'utf8');
+  const r = parseNotes(txt, REF);
+  assert.deepEqual(r.sessions.map((s) => [s.name, s.exercises.length]), [['Upper 6', 10], ['Upper 7', 8], ['Lower', 9]]);
+  assert.equal(r.skipped.length, 0);
+  const get = (n) => r.sessions.flatMap((s) => s.exercises).find((e) => e.name.toLowerCase() === n.toLowerCase());
+  assert.deepEqual([get('flat press machine').weight, get('flat press machine').reps, get('flat press machine').sets], [45, 8, 2]);
+  assert.deepEqual([get('Smith machine incline').weight, get('Smith machine incline').reps, get('Smith machine incline').sets], [60, 5, 3]);
+  assert.deepEqual([get('Dips').weight, get('Dips').bw], [20, true]);
+  assert.deepEqual([get('Pull-ups').reps, get('Pull-ups').sets, get('Pull-ups').bw], [null, 2, true]);
+  assert.deepEqual([get('Militairy press').weight, get('Militairy press').reps], [45, 6]);
+  assert.equal(get('Hamstring curl').weight, 62.5);
+  const ids = Object.fromEntries(r.sessions.flatMap((s) => s.exercises).map((e) => [e.name, matchExercise(e.name).id]));
+  assert.equal(ids['Hammer strength row'], 'row');
+  assert.equal(ids['Militairy press'], 'shoulder-press');
+  assert.equal(ids['Lifefitness flat press'], 'chest-press');
+  assert.equal(ids['Smith machine incline'], 'incline-press');
+  assert.equal(ids['Kuiten'], 'calf-raise');
+  assert.equal(Object.values(ids).filter((v) => v === 'other').length, 0);
+});

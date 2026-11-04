@@ -5,7 +5,7 @@ Persoonlijke WHOOP-achtige app voor de **Fitbit Air**: herstel, strain en slaap,
 - **Herstel (0–100%)**: HRV, rusthartslag tijdens slaap, slaapprestatie, ademhaling en huidtemperatuur, vergeleken met je eigen 30-daagse baseline (groen / geel / rood).
 - **Strain (0–21)**: hartslagreserve per minuut (TRIMP), logaritmisch, plus de **spierbelasting** uit je krachtlog. Inclusief optimale strain op basis van je herstel.
 - **Slaap**: slaapbehoefte (basis + strain + slaapschuld − dutjes), prestatie, fasen, efficiëntie, consistentie en bedtijd-advies.
-- **Kracht**: log alleen je topset per oefening, of plak je notities (bijv. `Upper 6 – 3/11` met daaronder `Chest press 80 x 8`). Herkent ~35 machines/oefeningen, toont PR's, geschatte 1RM-progressie en zware sets per spiergroep per week. Wordt bewaard in een verborgen map in je eigen Google Drive.
+- **Kracht**: werkt zoals je Apple-notitie. Plak je notitie (`Upper 6`, `Upper 7`, `Lower` met regels als `Lat pulldown 87kg 8 reps` of `Hack squat 75kg 2 sets 6 reps`) en de app maakt er **schema's** van. In de gym tik je *Start*, zie je per oefening je huidige topset, vink je af wat je deed en pas je aan wat je verbeterd hebt. Het schema toont daarna automatisch je nieuwste topsets ("levende notitie"), en *Kopieer als notitie* zet het terug in je eigen notatie. Herkent ~35 machines/oefeningen, toont PR's, geschatte 1RM-progressie en zware sets per spiergroep per week. Spierbelasting telt mee in je dag-strain. Alles wordt bewaard in een verborgen map in je eigen Google Drive.
 - **Alle data**: per dag de ruwe meetwaarden, hartslag per minuut, slaapfasen en de tussenstappen van de berekeningen.
 
 De app staat in `docs/` (pure HTML/CSS/JS, geen build-stap). Data blijft op je telefoon en in je eigen Google-account.
@@ -45,7 +45,7 @@ Zie in de app *Profiel → Hoe worden scores berekend?*. Kort:
 |---|---|
 | Herstel | gewogen z-scores t.o.v. 30-daagse baseline: HRV 50%, rusthartslag 20%, slaapprestatie 20%, ademhaling 5%, huidtemp 5% → normaalverdeling → 1–99% |
 | Strain | `21 × (1 − e^(−belasting/110))`; belasting = Banister-TRIMP over wakkere minuten + 3,2 × spierbelasting |
-| Spierbelasting | per oefening: sets (standaard 3) × lichaamsbelasting van de oefening × intensiteit (e1RM ÷ beste e1RM) × rep-factor |
+| Spierbelasting | per oefening: sets (uit je notitie, anders 2) × lichaamsbelasting van de oefening × intensiteit (e1RM ÷ beste e1RM) × rep-factor |
 | Slaapbehoefte | basis (7,5 u) + tot 40 min door strain van gisteren + slaapschuld − dutjes |
 
 De exacte WHOOP-formules zijn niet openbaar; dit is een eigen benadering die dezelfde signalen op dezelfde manier interpreteert.

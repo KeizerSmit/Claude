@@ -255,3 +255,16 @@ pre.raw { background: var(--card); border-radius: 14px; padding: 12px; font-size
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Afvinken (schema-training) ---------- */
+.ex-edit.chk, .ex-head.chk { grid-template-columns: 30px 1fr 68px 52px 26px; }
+.ex-edit.tpl, .ex-head.tpl { grid-template-columns: 1fr 62px 48px 44px 26px; }
+.ex-edit.off input { color: var(--text3); }
+.ex-edit .ck { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--text3); background: none; display: grid; place-items: center; padding: 0; cursor: pointer; color: #000; }
+.ex-edit .ck.on { background: var(--muscle); border-color: var(--muscle); }
+.ex-edit .ck svg { width: 15px; height: 15px; stroke-width: 3; }
+.chip.on { background: var(--muscle); color: #000; font-weight: 600; }
+.ex-edit .nm { font-size: 16px; line-height: 1.25; cursor: pointer; min-width: 0; overflow-wrap: anywhere; }
+.ex-edit .nm small { display: block; font-size: 12px; color: var(--text2); margin-top: 2px; }
+.ex-edit.off .nm { color: var(--text2); }
+.row.wrap .title, .row.wrap .sub { white-space: normal; }

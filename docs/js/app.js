@@ -3,13 +3,13 @@ import * as auth from './auth.js';
 import { syncAll } from './sync.js';
 import { driveLoad, driveSave, AuthError } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES } from './metrics.js';
-import { parseNotes, computeLoads, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, libById } from './strength.js';
+import { parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
 import { ring, bars, line, hrDay, hypnogram, stackBar, spark } from './charts.js';
 import { generateDemo } from './demo.js';
 import { I, INSIGHT_ICON } from './icons.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort } from './util.js';
 
-const DEFAULTS = { sleepNeed: 450, defaultSets: 3, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00' };
+const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00' };
 
 const S = {
   settings: { ...DEFAULTS },
@@ -32,6 +32,7 @@ async function loadAll() {
   await store.init();
   S.settings = { ...DEFAULTS, ...((await store.kv.get('settings')) || {}) };
   S.strength = (await store.kv.get('strength')) || { sessions: [], exerciseMap: {}, updatedAt: 0 };
+  S.strength.templates ||= [];
   S.profile = (await store.kv.get('profile')) || null;
   S.days = await store.days.all();
   if (store.isDemo() && !S.days.length) {
@@ -74,11 +75,12 @@ async function syncStrength() {
   if (store.isDemo() || !auth.getToken()) return;
   const remote = await driveLoad();
   const merged = mergeDocs(S.strength, remote);
-  const changedLocal = JSON.stringify(merged.sessions.map((s) => [s.id, s.updatedAt]).sort()) !== JSON.stringify(S.strength.sessions.map((s) => [s.id, s.updatedAt]).sort());
+  const sig = (d) => JSON.stringify([...(d?.sessions || []), ...(d?.templates || [])].map((s) => [s.id, s.updatedAt]).sort());
+  const changedLocal = sig(merged) !== sig(S.strength);
   S.strength = merged;
   await store.kv.set('strength', merged);
   const dirty = await store.kv.get('strengthDirty');
-  if (dirty || !remote || JSON.stringify(remote.sessions?.length) !== JSON.stringify(merged.sessions.length)) {
+  if (dirty || !remote || sig(remote) !== sig(merged)) {
     await driveSave(merged);
     await store.kv.set('strengthDirty', false);
   }
@@ -515,6 +517,14 @@ function weekGroups(endDate) {
 }
 
 let showAllSessions = false;
+const SS = () => ({ ...S.settings, exerciseMap: S.strength.exerciseMap, baselines: templateBaselines(S.strength, S.settings.bodyweight) });
+
+function templateLastDate(t) {
+  let last = null;
+  for (const s of S.strength.sessions) if (!s.deleted && s.date && (s.name || '').trim().toLowerCase() === t.name.trim().toLowerCase() && (!last || s.date > last)) last = s.date;
+  return last;
+}
+
 function viewStrength() {
   const sessions = S.strength.sessions.filter((s) => !s.deleted).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
   const loads = S.computed.loads;
@@ -522,8 +532,9 @@ function viewStrength() {
   const order = [...UPPER, ...LOWER, 'core'];
   const maxSets = Math.max(10, ...Object.values(wk.sets));
   const exs = allExercises(S.strength.sessions, { exerciseMap: S.strength.exerciseMap }).slice(0, 12);
+  const tpls = activeTemplates(S.strength);
   const byMonth = {};
-  for (const s of sessions.slice(0, showAllSessions ? 1000 : 10)) {
+  for (const s of sessions.slice(0, showAllSessions ? 1000 : 8)) {
     const k = s.date ? s.date.slice(0, 7) : 'zonder datum';
     (byMonth[k] ||= []).push(s);
   }
@@ -535,16 +546,78 @@ function viewStrength() {
     ${stat('Spierbelasting', num(wk.load, 0))}
     ${stat('Zware sets', num(Object.values(wk.sets).reduce((a, b) => a + b, 0), 0), '', 'geschat')}
   </div>
+  <div class="section-title">Schema's <button data-go="#/template-edit/new">+ Nieuw</button></div>
+  ${tpls.length ? `<div class="list">${tpls.map((t) => {
+    const last = templateLastDate(t);
+    return `<div class="row tap" data-go="#/template/${t.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(t.name)}</div><div class="sub">${t.exercises.length} oefeningen · ${last ? `laatst ${weekdayShort(last)} ${fmtDateShort(last)}` : 'nog niet gelogd'}</div></div><button class="btn small" data-act="start-template" data-id="${t.id}">Start</button></div>`;
+  }).join('')}</div>`
+    : `<div class="card"><div class="small muted">Plak je notitie met <b>Upper 6</b>, <b>Upper 7</b>, <b>Lower</b> en je topsets. Daar maakt de app schema's van: per training zie je je huidige topsets, vink je af wat je deed en pas je aan wat je verbeterd hebt.</div><button class="btn mt" data-go="#/import">${I.doc} Notitie plakken</button></div>`}
+  <div class="btn-row mt"><button class="btn secondary" data-go="#/log/new">${I.plus} Losse training</button><button class="btn secondary" data-go="#/import">${I.doc} Notities</button></div>
   <div class="section-title">Spiergroepen · 7 dagen</div>
   <div class="card">${order.map((g) => `<div class="mg"><span>${GROUPS[g]}</span><div class="meter"><span style="width:${((wk.sets[g] || 0) / maxSets) * 100}%;background:${(wk.sets[g] || 0) >= 10 ? 'var(--green)' : (wk.sets[g] || 0) >= 5 ? 'var(--muscle)' : 'var(--text3)'}"></span></div><span class="n">${num(wk.sets[g] || 0, 0)}</span></div>`).join('')}
-    <p class="tiny muted" style="margin:8px 0 0">Geschatte zware sets per spiergroep (${S.settings.defaultSets} sets per oefening, verdeeld over de betrokken spieren). 10+ per week is een goede richtlijn voor groei.</p></div>
-  <div class="btn-row mt"><button class="btn" data-go="#/log/new">${I.plus} Training loggen</button><button class="btn secondary" data-go="#/import">${I.doc} Notities</button></div>
-  ${sessions.length ? Object.entries(byMonth).map(([k, list]) => `<div class="list-header">${esc(monthName(k))}</div><div class="list">${list.map((s) => `<button class="row tap" data-go="#/session/${s.id}"><div class="grow"><div class="title">${esc(s.name || 'Training')}</div><div class="sub">${s.date ? `${weekdayShort(s.date)} ${fmtDateShort(s.date)}` : 'geen datum'} · ${s.exercises.length} oefeningen${(loads[s.id]?.exercises || []).some((e) => e.isPR) ? ' · 🏆 PR' : ''}</div></div><div class="val">${num(loads[s.id]?.load, 1)}</div><span class="chev">${I.chev}</span></button>`).join('')}</div>`).join('') : `<div class="card center muted mt">Nog geen trainingen. Log je topsets of plak je notities.</div>`}
+    <p class="tiny muted" style="margin:8px 0 0">Zware sets per spiergroep, verdeeld over de betrokken spieren (sets uit je notitie, anders ${S.settings.defaultSets} per oefening). Rond de 10 per week is een goede richtlijn voor groei.</p></div>
+  ${sessions.length ? `<div class="section-title">Trainingen</div>` + Object.entries(byMonth).map(([k, list]) => `<div class="list-header">${esc(monthName(k))}</div><div class="list">${list.map((s) => `<button class="row tap" data-go="#/session/${s.id}"><div class="grow"><div class="title">${esc(s.name || 'Training')}</div><div class="sub">${s.date ? `${weekdayShort(s.date)} ${fmtDateShort(s.date)}` : 'geen datum'} · ${s.exercises.length} oefeningen${(loads[s.id]?.exercises || []).some((e) => e.isPR) ? ' · 🏆 PR' : ''}</div></div><div class="val">${num(loads[s.id]?.load, 1)}</div><span class="chev">${I.chev}</span></button>`).join('')}</div>`).join('') + (sessions.length > 8 && !showAllSessions ? `<button class="btn secondary" data-act="all-sessions">Alle ${sessions.length} trainingen</button>` : '') : ''}
   ${exs.length ? `<div class="section-title">Oefeningen</div><div class="list">${exs.map((e) => {
-    const h = exerciseHistory(S.strength.sessions, e.key, { ...S.settings, exerciseMap: S.strength.exerciseMap });
+    const h = exerciseHistory(S.strength.sessions, e.key, SS());
     const last = h[h.length - 1];
-    return `<button class="row tap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${esc(e.lib.name)} · ${e.count}× · laatst ${last ? `${num(last.weight, 1)} kg × ${last.reps}` : '–'}</div></div>${spark(h.slice(-12).map((x) => x.e1rm), { color: 'var(--muscle)', w: 64, h: 24 })}<span class="chev">${I.chev}</span></button>`;
+    return `<button class="row tap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${esc(e.lib.name)} · ${e.count}× · laatst ${esc(setText(last))}</div></div>${spark(h.slice(-12).map((x) => x.e1rm), { color: 'var(--muscle)', w: 64, h: 24 })}<span class="chev">${I.chev}</span></button>`;
   }).join('')}</div>${allExercises(S.strength.sessions, {}).length > 12 ? `<button class="btn secondary" data-go="#/exercises">Alle oefeningen</button>` : ''}` : ''}
+  </div>`;
+}
+
+function viewTemplate(id) {
+  const t = activeTemplates(S.strength).find((x) => x.id === id);
+  if (!t) return `${navbar('Schema', '#/strength')}<div class="content card muted">Niet gevonden.</div>`;
+  const last = templateLastDate(t);
+  const rows = t.exercises.map((e) => {
+    const cur = currentSet(S.strength, e.name, S.settings);
+    const lib = matchExercise(e.name, S.strength.exerciseMap);
+    const h = exerciseHistory(S.strength.sessions, exKey(e.name), SS());
+    const improved = cur && !cur.fromTemplate && e.reps && cur.reps && (e1rmOf(cur) > e1rmOf(e) + 0.01);
+    return `<button class="row tap wrap" data-go="#/exercise/${encodeURIComponent(exKey(e.name))}"><div class="grow"><div class="title">${esc(e.name)} ${improved ? '<span class="pill pr">↑</span>' : ''}</div><div class="sub">${esc(lib.name)} · ${cur?.date ? fmtDateShort(cur.date) : 'uit notitie'}${h.length > 1 ? ` · ${h.length}× gelogd` : ''}</div></div><div class="val"><b style="color:var(--text)">${esc(setText(cur || e))}</b></div></button>`;
+  }).join('');
+  return `${navbar(t.name, '#/strength', `<button class="back" data-go="#/template-edit/${t.id}">Wijzig</button>`)}
+  <div class="content fade-in">
+  ${largeTitle(t.name, last ? `Laatst ${fmtDateLong(last)}` : 'Schema')}
+  <button class="btn" data-act="start-template" data-id="${t.id}">${I.dumbbell} Start training</button>
+  <div class="list-header">Huidige topsets</div>
+  <div class="list">${rows}</div>
+  <div class="list-footer">Dit is je “levende notitie”: na elke training staan hier automatisch je nieuwste topsets. ↑ = beter dan toen je de notitie importeerde.</div>
+  <button class="btn secondary" data-act="copy-template" data-id="${t.id}">${I.doc} Kopieer als notitie</button>
+  </div>`;
+}
+
+function e1rmOf(e) {
+  const w = e.bw ? (S.settings.bodyweight || 80) + (e.weight || 0) : e.weight;
+  return e.reps ? (w || 0) * (1 + Math.min(e.reps, 30) / 30) : 0;
+}
+
+function viewTemplateEdit(id) {
+  let d = S.tplDraft;
+  if (!d || d._for !== id) {
+    const src = id !== 'new' ? activeTemplates(S.strength).find((x) => x.id === id) : null;
+    d = src ? JSON.parse(JSON.stringify(src)) : { id: uid(), name: '', exercises: [{ name: '', weight: null, reps: null, sets: null }], order: activeTemplates(S.strength).length };
+    d._for = id;
+    S.tplDraft = d;
+  }
+  const exNames = allExercises(S.strength.sessions, {}).map((e) => e.name);
+  return `${navbar(id === 'new' ? 'Nieuw schema' : 'Schema wijzigen', id === 'new' ? '#/strength' : `#/template/${id}`, `<button class="back" data-act="save-template" style="font-weight:600">Bewaar</button>`)}
+  <div class="content fade-in">
+  <div class="list"><div class="row"><div class="grow">Naam</div><input type="text" id="tpl-name" value="${esc(d.name)}" placeholder="bijv. Upper 6"></div></div>
+  <div class="list">
+    <div class="ex-head tpl"><span>Oefening</span><span>kg</span><span>reps</span><span>sets</span><span></span></div>
+    ${d.exercises.map((e, i) => `<div class="ex-edit tpl" data-i="${i}">
+      <input type="text" list="ex-names" data-f="name" value="${esc(e.name || '')}" placeholder="Oefening" autocomplete="off">
+      <input class="num" type="number" inputmode="decimal" step="0.5" data-f="weight" value="${e.weight ?? ''}" placeholder="kg">
+      <input class="num" type="number" inputmode="numeric" data-f="reps" value="${e.reps ?? ''}" placeholder="–">
+      <input class="num" type="number" inputmode="numeric" data-f="sets" value="${e.sets ?? ''}" placeholder="${S.settings.defaultSets}">
+      <button class="x" data-act="tpl-del-ex" data-i="${i}" aria-label="Verwijder">${I.minus}</button>
+    </div>`).join('')}
+  </div>
+  <datalist id="ex-names">${exNames.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+  <button class="btn secondary" data-act="tpl-add-ex">${I.plus} Oefening</button>
+  <p class="small muted mt">Gewicht en reps zijn startwaarden; na je eerste training gebruikt de app automatisch je nieuwste topsets. Bij bodyweight-oefeningen: zet “BW” in de naam of laat kg leeg.</p>
+  ${id !== 'new' ? `<div style="height:20px"></div><button class="btn danger" data-act="delete-template">${I.trash} Verwijder schema</button>` : ''}
   </div>`;
 }
 
@@ -569,7 +642,7 @@ function viewSession(id) {
     ${stat('Dag-strain', m ? fmtStrain(m.strain.score) : '–', '', sess?.activity ? `cardio tijdens training ${fmtStrain(sess.activity.strain)}` : '')}
   </div>
   <div class="section-title">Topsets</div>
-  <div class="list">${r.exercises.map((e) => `<button class="row tap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)} ${e.isPR ? '<span class="pill pr">PR</span>' : ''}</div><div class="sub">${esc(e.libName)} · e1RM ${num(e.e1rm, 1)} kg · belasting ${num(e.load, 1)}${e.note ? ` · ${esc(e.note)}` : ''}</div></div><div class="val"><b style="color:var(--text)">${e.bw ? (e.weight ? `BW+${num(e.weight, 1)}` : 'BW') : num(e.weight, 1)}</b>${e.bw && !e.weight ? '' : ' kg'} × ${e.reps}</div></button>`).join('')}</div>
+  <div class="list">${r.exercises.map((e) => `<button class="row tap wrap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)} ${e.isPR ? '<span class="pill pr">PR</span>' : ''}</div><div class="sub">${esc(e.libName)}${e.e1rm ? ` · e1RM ${num(e.e1rm, 1)} kg` : ''} · belasting ${num(e.load, 1)}${e.note ? ` · ${esc(e.note)}` : ''}</div></div><div class="val"><b style="color:var(--text)">${esc(setText(e))}</b></div></button>`).join('')}</div>
   <div class="section-title">Spiergroepen</div>
   <div class="card">${groups.map(([g, v]) => `<div class="mg"><span>${GROUPS[g] || g}</span><div class="meter"><span style="width:${(v / maxG) * 100}%;background:var(--muscle)"></span></div><span class="n">${num(v, 1)}</span></div>`).join('')}</div>
   <button class="btn secondary" data-go="#/log/${id}">Bewerken</button>
@@ -577,25 +650,40 @@ function viewSession(id) {
 }
 
 function viewExercise(key) {
-  const h = exerciseHistory(S.strength.sessions, key, { ...S.settings, exerciseMap: S.strength.exerciseMap });
-  const name = h[h.length - 1]?.name || key;
+  const h = exerciseHistory(S.strength.sessions, key, SS());
+  const cur = currentSet(S.strength, key, S.settings);
+  const name = h[h.length - 1]?.name || cur?.name || key;
   const lib = matchExercise(name, S.strength.exerciseMap);
   const best = h.reduce((a, e) => (e.e1rm > (a?.e1rm || 0) ? e : a), null);
+  const lastE = h[h.length - 1] || cur;
   return `${navbar(name, '#/strength')}
   <div class="content fade-in">
   ${largeTitle(name, lib.name)}
   <div class="stats">
-    ${stat('Beste e1RM', num(best?.e1rm, 1), 'kg', best ? `${num(best.weight, 1)} kg × ${best.reps} · ${fmtDateShort(best.date)}` : '')}
-    ${stat('Laatste', h.length ? `${num(h[h.length - 1].weight, 1)}` : '–', 'kg', h.length ? `× ${h[h.length - 1].reps} · ${fmtDateShort(h[h.length - 1].date)}` : '')}
+    ${stat('Beste e1RM', num(best?.e1rm, 1), 'kg', best ? `${esc(setText(best))} · ${fmtDateShort(best.date)}` : '')}
+    ${stat('Huidige topset', lastE ? esc(setText({ ...lastE, sets: null })) : '–', '', lastE?.date ? fmtDateShort(lastE.date) : lastE ? 'uit notitie' : '')}
   </div>
   <div class="section-title">Geschatte 1RM</div>
   <div class="card">${line(h.map((e) => ({ date: e.date, value: e.e1rm ? Math.round(e.e1rm * 10) / 10 : null })), { color: 'var(--muscle)', fmt: (v) => `${num(v, 1)} kg` })}</div>
   <div class="list-header">Spiergroep-indeling</div>
   <div class="list"><div class="row"><div class="grow">Type oefening</div><select data-act="map-ex" data-key="${esc(key)}">${[...LIBRARY.filter((l) => l.id !== 'press'), { id: 'other', name: 'Overig' }].map((l) => `<option value="${l.id}" ${l.id === lib.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div></div>
   <div class="list-footer">Bepaalt welke spieren meetellen: ${Object.entries(lib.g).map(([g, w]) => `${GROUPS[g]} ${Math.round(w * 100)}%`).join(', ')}.</div>
-  <div class="list-header">Geschiedenis</div>
-  <div class="list">${[...h].reverse().map((e) => `<button class="row tap" data-go="#/session/${e.sessionId}"><div class="grow"><div class="title">${num(e.weight, 1)} kg × ${e.reps} ${e.isPR ? '<span class="pill pr">PR</span>' : ''}</div><div class="sub">${fmtDateShort(e.date)} · ${esc(e.session || '')}</div></div><div class="val">${num(e.e1rm, 1)}</div></button>`).join('')}</div>
+  ${h.length ? `<div class="list-header">Geschiedenis</div>
+  <div class="list">${[...h].reverse().map((e) => `<button class="row tap" data-go="#/session/${e.sessionId}"><div class="grow"><div class="title">${esc(setText(e))} ${e.isPR ? '<span class="pill pr">PR</span>' : ''}</div><div class="sub">${fmtDateShort(e.date)} · ${esc(e.session || '')}</div></div><div class="val">${num(e.e1rm, 1)}</div></button>`).join('')}</div>` : ''}
   </div>`;
+}
+
+function draftFromTemplate(t, date) {
+  const d = newSession(date || today());
+  d.name = t.name;
+  d.templateId = t.id;
+  d.exercises = t.exercises.map((e) => {
+    const cur = currentSet(S.strength, e.name, S.settings) || e;
+    const bw = cur.bw ?? e.bw ?? false;
+    const w = cur.weight ?? e.weight ?? null;
+    return { name: e.name, weight: bw && !w ? null : w, reps: cur.reps ?? e.reps ?? null, sets: cur.sets ?? e.sets ?? null, bw, done: false, fixed: true };
+  });
+  return d;
 }
 
 function viewLog(id, presetDate) {
@@ -607,44 +695,47 @@ function viewLog(id, presetDate) {
     d._for = id || 'new';
     S.editDraft = d;
   }
-  const recentNames = [...new Set(S.strength.sessions.filter((s) => !s.deleted).sort((a, b) => (a.date < b.date ? 1 : -1)).map((s) => s.name).filter(Boolean))].slice(0, 6);
-  const chips = [...new Set([...recentNames, 'Upper 6', 'Upper 7', 'Lower', 'Push', 'Pull', 'Legs'])].slice(0, 8);
-  const exNames = allExercises(S.strength.sessions, {}).map((e) => e.name);
+  const tpls = activeTemplates(S.strength);
+  const tplNames = new Set(tpls.map((t) => t.name.toLowerCase()));
+  const recentNames = [...new Set(S.strength.sessions.filter((s) => !s.deleted).sort((a, b) => (a.date < b.date ? 1 : -1)).map((s) => s.name).filter((n) => n && !tplNames.has(n.toLowerCase())))].slice(0, 4);
+  const exNames = [...new Set([...allExercises(S.strength.sessions, {}).map((e) => e.name), ...tpls.flatMap((t) => t.exercises.map((e) => e.name))])];
   const isNew = d._for === 'new';
-  return `${navbar(isNew ? 'Nieuwe training' : 'Bewerken', isNew ? (presetDate ? `#/today/${presetDate}` : '#/strength') : `#/session/${id}`, `<button class="back" data-act="save-log" style="font-weight:600">Bewaar</button>`)}
+  const fromTpl = d.exercises.some((e) => e.done === false || e.done === true);
+  const doneCount = d.exercises.filter((e) => e.done !== false && e.name).length;
+  return `${navbar(isNew ? 'Training' : 'Bewerken', isNew ? (presetDate ? `#/today/${presetDate}` : '#/strength') : `#/session/${id}`, `<button class="back" data-act="save-log" style="font-weight:600">Bewaar</button>`)}
   <div class="content fade-in">
   <div class="list">
     <div class="row"><div class="grow">Datum</div><input type="date" id="log-date" value="${esc(d.date || '')}" max="${today()}"></div>
     <div class="row"><div class="grow">Naam</div><input type="text" id="log-name" value="${esc(d.name || '')}" placeholder="bijv. Upper 6"></div>
   </div>
-  <div class="chips">${chips.map((c) => `<button class="chip" data-act="chip-name" data-v="${esc(c)}">${esc(c)}</button>`).join('')}${recentNames.length ? `<button class="chip" data-act="copy-last">↺ Kopieer vorige “${esc(d.name || recentNames[0])}”</button>` : ''}</div>
+  ${isNew ? `<div class="chips">${tpls.map((t) => `<button class="chip${d.templateId === t.id ? ' on' : ''}" data-act="use-template" data-id="${t.id}">${esc(t.name)}</button>`).join('')}${recentNames.map((c) => `<button class="chip" data-act="chip-name" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
+  ${fromTpl ? `<p class="small muted" style="margin:0 2px 8px">Vink af wat je gedaan hebt en pas gewicht/reps aan als je verbeterd bent. <span data-done-count>${doneCount} afgevinkt.</span></p>` : ''}
   <div class="list" id="ex-list">
-    <div class="ex-head"><span>Oefening</span><span>kg</span><span>reps</span><span></span></div>
+    <div class="ex-head chk"><span></span><span>Oefening</span><span>kg</span><span>reps</span><span></span></div>
     ${d.exercises.map((e, i) => exRow(e, i)).join('')}
   </div>
   <datalist id="ex-names">${exNames.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
   <button class="btn secondary" data-act="add-ex">${I.plus} Oefening</button>
-  <p class="small muted mt">Noteer alleen je topset. Gebruik 0 kg + “BW” in de naam voor bodyweight-oefeningen. Belasting wordt geschat met ${S.settings.defaultSets} zware sets per oefening (aan te passen in Profiel).</p>
+  <p class="small muted mt">Noteer alleen je topset. Leeg = je vorige topset (grijs). Bodyweight: zet “BW” in de naam; extra gewicht (bijv. dips +20) vul je in als kg.</p>
   <div class="list-header">Snel plakken</div>
-  <textarea class="notes" id="quick" style="min-height:90px" placeholder="Chest press 80 x 8&#10;Lat pulldown 70 x 10"></textarea>
+  <textarea class="notes" id="quick" style="min-height:90px" placeholder="Chest press 80kg 8 reps&#10;Lat pulldown 87kg 2 sets 8 reps"></textarea>
   <button class="btn secondary mt" data-act="quick-add">Regels toevoegen</button>
   ${!isNew ? `<div style="height:24px"></div><button class="btn danger" data-act="delete-log">${I.trash} Verwijder training</button>` : ''}
   </div>`;
 }
 
 function lastSet(name) {
-  const k = exKey(name);
-  if (!k) return null;
-  const h = exerciseHistory(S.strength.sessions, k, { ...S.settings, exerciseMap: S.strength.exerciseMap });
-  return h[h.length - 1] || null;
+  return currentSet(S.strength, name, S.settings);
 }
 
 function exRow(e, i) {
   const last = e.name ? lastSet(e.name) : null;
-  return `<div class="ex-edit" data-i="${i}">
-    <input type="text" list="ex-names" data-f="name" value="${esc(e.name || '')}" placeholder="Oefening" autocomplete="off">
-    <input class="num" type="number" inputmode="decimal" step="0.5" data-f="weight" value="${e.weight ?? ''}" placeholder="${last ? num(last.weight, 1) : 'kg'}">
-    <input class="num" type="number" inputmode="numeric" data-f="reps" value="${e.reps ?? ''}" placeholder="${last ? last.reps : 'reps'}">
+  const done = e.done !== false;
+  return `<div class="ex-edit chk${done ? '' : ' off'}" data-i="${i}" data-done="${done ? 1 : 0}">
+    <button class="ck${done ? ' on' : ''}" data-act="toggle-done" data-i="${i}" aria-label="Gedaan">${done ? I.check : ''}</button>
+    ${e.fixed ? `<div class="nm" data-act="toggle-done" data-i="${i}">${esc(e.name)}${last?.date ? `<small>${fmtDateShort(last.date)}: ${esc(setText({ ...last, sets: null }))}</small>` : ''}</div>` : `<input type="text" list="ex-names" data-f="name" value="${esc(e.name || '')}" placeholder="Oefening" autocomplete="off">`}
+    <input class="num" type="number" inputmode="decimal" step="0.5" data-f="weight" value="${e.weight ?? ''}" placeholder="${e.bw || last?.bw ? 'BW' : last ? num(last.weight, 1) : 'kg'}">
+    <input class="num" type="number" inputmode="numeric" data-f="reps" value="${e.reps ?? ''}" placeholder="${last?.reps ?? 'reps'}">
     <button class="x" data-act="del-ex" data-i="${i}" aria-label="Verwijder">${I.minus}</button>
   </div>`;
 }
@@ -652,28 +743,32 @@ function exRow(e, i) {
 function viewImport() {
   const draft = S.importDraft;
   const existing = new Set(S.strength.sessions.filter((s) => !s.deleted).map((s) => `${s.date}|${(s.name || '').toLowerCase()}`));
-  return `${navbar('Notities importeren', '#/strength')}
+  const mode = draft?.mode || 'templates';
+  const tplMode = mode === 'templates';
+  return `${navbar('Notitie plakken', '#/strength')}
   <div class="content fade-in">
-  <p class="small muted" style="margin-top:0">Plak je trainingsnotities (bijv. uit Apple Notities). Koppen met een naam en/of datum starten een nieuwe training, zoals <code>Upper 6 – 3/11</code> of <code>ma 3 nov</code>. Regels als <code>Chest press 80 x 8</code>, <code>Leg press 200kg 10</code> of <code>Curl 14/12</code> worden oefeningen.</p>
-  <textarea class="notes" id="notes" placeholder="Upper 6 - 3/11&#10;Chest press 80 x 8&#10;Lat pulldown 70 x 10&#10;Shoulder press 30 x 9&#10;&#10;Upper 7 - 5/11&#10;Incline press 70 x 9&#10;...">${esc(draft?.text || '')}</textarea>
+  <p class="small muted" style="margin-top:0">Kopieer je notitie in Apple Notities (selecteer alles → Kopieer) en plak hem hieronder. Koppen als <code>Upper 6</code>, <code>Upper 7</code> en <code>Lower</code> worden schema's; regels als <code>Lat pulldown 87kg 8 reps</code> of <code>Hack squat 75kg 2 sets 6 reps</code> worden je topsets.</p>
+  <textarea class="notes" id="notes" placeholder="Upper 6&#10;Lat pulldown 87kg 8 reps&#10;flat press machine 45kg 2 sets 8 reps&#10;&#10;Lower&#10;Hack squat 75kg 2 sets 6 reps&#10;...">${esc(draft?.text || '')}</textarea>
   <button class="btn mt" data-act="parse">Voorbeeld</button>
   ${draft?.result ? `
-    <div class="section-title">${draft.result.sessions.length} trainingen gevonden</div>
+    <div class="section-title">${draft.result.sessions.length} ${draft.result.sessions.length === 1 ? 'blok' : 'blokken'} gevonden</div>
+    <div class="segmented"><button class="${tplMode ? 'on' : ''}" data-act="imp-mode" data-v="templates">Als schema's</button><button class="${!tplMode ? 'on' : ''}" data-act="imp-mode" data-v="sessions">Als trainingen</button></div>
+    <p class="small muted" style="margin:-4px 2px 12px">${tplMode ? 'Je huidige topsets worden de startwaarden van je schema\'s. Daarna start je een training vanuit het schema en vink je af wat je deed — je dag-strain krijgt dan je spierbelasting.' : 'Elk blok wordt een gelogde training op de gekozen datum en telt mee in de strain van die dag.'}</p>
     ${draft.result.sessions.map((s, i) => {
-      const dup = existing.has(`${s.date}|${(s.name || '').toLowerCase()}`);
+      const dup = tplMode ? !!findTemplate(S.strength, s.name) : existing.has(`${s.date}|${(s.name || '').toLowerCase()}`);
       return `<div class="card" style="padding:12px 14px">
         <div style="display:flex;gap:10px;align-items:center">
-          <input type="checkbox" data-imp="${i}" ${s._skip ? '' : 'checked'} style="width:20px;height:20px">
-          <input class="field" style="padding:8px 10px;font-size:15px;flex:1" data-imp-name="${i}" value="${esc(s.name)}">
-          <input type="date" class="field" style="padding:8px 6px;font-size:14px;width:150px" data-imp-date="${i}" value="${esc(s.date || '')}" max="${today()}">
+          <input type="checkbox" data-imp="${i}" checked style="width:20px;height:20px;flex-shrink:0">
+          <input class="field" style="padding:8px 10px;font-size:15px;flex:1;min-width:0" data-imp-name="${i}" value="${esc(s.name)}">
+          ${tplMode ? '' : `<input type="date" class="field" style="padding:8px 6px;font-size:14px;width:150px" data-imp-date="${i}" value="${esc(s.date || '')}" max="${today()}">`}
         </div>
-        ${!s.date ? '<div class="small" style="color:var(--yellow);margin-top:6px">Geen datum gevonden — vul hem in.</div>' : ''}
-        ${dup ? '<div class="small" style="color:var(--yellow);margin-top:6px">Lijkt al te bestaan (zelfde datum en naam).</div>' : ''}
-        <div class="small muted" style="margin-top:8px;line-height:1.6">${s.exercises.map((e) => `${esc(e.name)} <b style="color:var(--text)">${e.bw ? (e.weight ? 'BW+' + num(e.weight, 1) : 'BW') : num(e.weight, 1) + ' kg'} × ${e.reps}</b> <span class="tiny">(${esc(matchExercise(e.name, S.strength.exerciseMap).name)})</span>`).join('<br>')}</div>
+        ${!tplMode && !s.date ? '<div class="small" style="color:var(--yellow);margin-top:6px">Geen datum gevonden — vul hem in.</div>' : ''}
+        ${dup ? `<div class="small" style="color:var(--yellow);margin-top:6px">${tplMode ? 'Vervangt je bestaande schema met deze naam.' : 'Lijkt al te bestaan (zelfde datum en naam).'}</div>` : ''}
+        <div class="small muted" style="margin-top:8px;line-height:1.7">${s.exercises.map((e) => `${esc(e.name)} <b style="color:var(--text)">${esc(setText(e))}</b> <span class="tiny">(${esc(matchExercise(e.name, S.strength.exerciseMap).name)})</span>`).join('<br>')}</div>
       </div>`;
     }).join('')}
-    ${draft.result.skipped.length ? `<details class="card small"><summary class="muted">${draft.result.skipped.length} regels overgeslagen</summary><pre class="raw">${esc(draft.result.skipped.join('\n'))}</pre></details>` : ''}
-    ${draft.result.sessions.length ? `<button class="btn" data-act="do-import">Importeer</button>` : ''}
+    ${draft.result.skipped.length ? `<details class="card small"><summary class="muted">${draft.result.skipped.length} regels niet herkend</summary><pre class="raw">${esc(draft.result.skipped.join('\n'))}</pre></details>` : ''}
+    ${draft.result.sessions.length ? `<button class="btn" data-act="do-import">${tplMode ? 'Schema\'s opslaan' : 'Trainingen importeren'}</button>` : ''}
   ` : ''}
   </div>`;
 }
@@ -741,7 +836,7 @@ function viewAbout() {
   <p class="small">Voor elke minuut dat je wakker bent berekenen we je inspanning als percentage van je <b>hartslagreserve</b> (tussen rust- en maximale hartslag) en tellen die op met de Banister-TRIMP-formule; hogere intensiteit telt exponentieel zwaarder. Daar komt je <b>spierbelasting</b> uit je krachtlog bij. Het totaal gaat op een logaritmische schaal: van 0 naar 10 is makkelijk, van 18 naar 21 bijna onmogelijk. Licht &lt;10, gemiddeld 10–14, zwaar 14–18, maximaal 18+.</p>
   <p class="small">Je <b>optimale strain</b> hangt af van je herstel: hoe beter hersteld, hoe meer belasting je lichaam aankan.</p></div>
   <div class="card"><h2 style="color:var(--muscle)">Spierbelasting</h2>
-  <p class="small">Per oefening: <i>sets × lichaamsbelasting van de oefening × intensiteit × rep-factor</i>. De intensiteit is je geschatte 1RM (Epley: gewicht × (1 + reps/30)) gedeeld door je beste 1RM op die oefening. Grote oefeningen (leg press, hack squat, rows) wegen zwaarder dan isolatie (curls, lateral raises). Omdat je alleen je topset noteert, rekenen we standaard met ${S.settings.defaultSets} zware sets per oefening. Elke punt spierbelasting telt als 3,2 belastingspunten in je dag-strain.</p></div>
+  <p class="small">Per oefening: <i>sets × lichaamsbelasting van de oefening × intensiteit × rep-factor</i>. De intensiteit is je geschatte 1RM (Epley: gewicht × (1 + reps/30)) gedeeld door je beste 1RM op die oefening. Grote oefeningen (leg press, hack squat, rows) wegen zwaarder dan isolatie (curls, lateral raises). Omdat je alleen je topset noteert, gebruiken we het aantal sets uit je notitie (bijv. “2 sets”), anders ${S.settings.defaultSets} zware sets per oefening. Elke punt spierbelasting telt als 3,2 belastingspunten in je dag-strain.</p></div>
   <div class="card"><h2 style="color:var(--sleep)">Slaap</h2>
   <p class="small"><b>Slaapbehoefte</b> = basisbehoefte (${fmtHM(S.settings.sleepNeed)}) + extra door de strain van gisteren (tot 40 min) + slaapschuld van de afgelopen nachten − dutjes. <b>Slaapprestatie</b> = geslapen ÷ behoefte. Daarnaast: efficiëntie (geslapen ÷ in bed), consistentie (hoe constant je bed- en wektijden zijn) en herstellende slaap (diep + REM).</p></div>
   <p class="tiny muted center">Geïnspireerd op hoe WHOOP data interpreteert; de exacte formules van WHOOP zijn niet openbaar, dit is een eigen benadering.</p>
@@ -764,10 +859,10 @@ function tabbar(active) {
 let lastRoute = '';
 function render() {
   const r = parseRoute();
-  const loggedIn = store.isDemo() || auth.hasEverLoggedIn() || S.days.length > 0 || S.strength.sessions.length > 0;
+  const loggedIn = store.isDemo() || auth.hasEverLoggedIn() || S.days.length > 0 || S.strength.sessions.length > 0 || activeTemplates(S.strength).length > 0;
   let html;
   let tab = null;
-  if (!loggedIn && !['setup', 'welcome', 'about'].includes(r.name)) r.name = 'welcome';
+  if (!loggedIn && !['setup', 'welcome', 'about', 'import'].includes(r.name)) r.name = 'welcome';
   switch (r.name) {
     case 'welcome': html = viewWelcome(); break;
     case 'setup': html = viewSetup(); break;
@@ -782,13 +877,16 @@ function render() {
     case 'exercise': html = viewExercise(r.a); tab = 'strength'; break;
     case 'log': html = viewLog(r.a, r.b); tab = 'strength'; break;
     case 'import': html = viewImport(); tab = 'strength'; break;
+    case 'template': html = viewTemplate(r.a); tab = 'strength'; break;
+    case 'template-edit': html = viewTemplateEdit(r.a || 'new'); tab = 'strength'; break;
     case 'settings': html = viewSettings(); tab = 'settings'; break;
     case 'about': html = viewAbout(); tab = 'settings'; break;
     default: html = viewToday(r.a && /^\d{4}-\d{2}-\d{2}$/.test(r.a) ? (r.a > today() ? today() : r.a) : today()); tab = 'today';
   }
-  const showTabs = loggedIn && !['welcome', 'setup', 'log'].includes(r.name);
-  app.innerHTML = html + (showTabs ? tabbar(tab || 'today') : '');
+  const showTabs = loggedIn && !['welcome', 'setup', 'log', 'template-edit'].includes(r.name);
   const key = location.hash;
+  if (key === lastRoute) html = html.replace(/ fade-in"/g, '"').replace(/class="fade-in"/g, 'class=""');
+  app.innerHTML = html + (showTabs ? tabbar(tab || 'today') : '');
   if (key !== lastRoute) { window.scrollTo(0, 0); lastRoute = key; }
 }
 
@@ -804,6 +902,23 @@ function readDraftFromDom() {
   document.querySelectorAll('.ex-edit').forEach((row) => {
     const i = +row.dataset.i;
     const e = d.exercises[i];
+    if (!e) return;
+    if (row.dataset.done != null) e.done = row.dataset.done === '1';
+    for (const inp of row.querySelectorAll('input')) {
+      const f = inp.dataset.f;
+      if (f === 'name') e.name = inp.value;
+      else e[f] = inp.value === '' ? null : Number(inp.value);
+    }
+  });
+}
+
+function readTplFromDom() {
+  const d = S.tplDraft;
+  if (!d) return;
+  const name = document.getElementById('tpl-name');
+  if (name) d.name = name.value;
+  document.querySelectorAll('.ex-edit.tpl').forEach((row) => {
+    const e = d.exercises[+row.dataset.i];
     if (!e) return;
     for (const inp of row.querySelectorAll('input')) {
       const f = inp.dataset.f;
@@ -835,24 +950,39 @@ const actions = {
   range(el) { trendRange = +el.dataset.v; render(); },
   'all-sessions'() { showAllSessions = true; render(); },
   'chip-name'(el) { readDraftFromDom(); S.editDraft.name = el.dataset.v; render(); },
-  'copy-last'() {
+  'use-template'(el) {
     readDraftFromDom();
-    const name = S.editDraft.name;
-    const list = S.strength.sessions.filter((s) => !s.deleted && s.id !== S.editDraft.id).sort((a, b) => (a.date < b.date ? 1 : -1));
-    const src = (name && list.find((s) => s.name.toLowerCase() === name.toLowerCase())) || list[0];
-    if (!src) return;
-    S.editDraft.name = S.editDraft.name || src.name;
-    S.editDraft.exercises = src.exercises.map((e) => ({ name: e.name, weight: null, reps: null, bw: e.bw }));
+    const t = activeTemplates(S.strength).find((x) => x.id === el.dataset.id);
+    if (!t) return;
+    const date = S.editDraft?.date;
+    S.editDraft = { ...draftFromTemplate(t, date), _for: 'new' };
     render();
-    toast(`Oefeningen van ${src.name} (${fmtDateShort(src.date)}) overgenomen`);
   },
-  'add-ex'() { readDraftFromDom(); S.editDraft.exercises.push({ name: '', weight: null, reps: null }); render(); const rows = document.querySelectorAll('.ex-edit input[data-f="name"]'); rows[rows.length - 1]?.focus(); },
+  'start-template'(el) {
+    const t = activeTemplates(S.strength).find((x) => x.id === el.dataset.id);
+    if (!t) return;
+    S.editDraft = { ...draftFromTemplate(t, today()), _for: 'new' };
+    location.hash = '#/log/new';
+  },
+  'toggle-done'(el) {
+    const row = el.closest('.ex-edit');
+    const on = row.dataset.done !== '1';
+    row.dataset.done = on ? '1' : '0';
+    row.classList.toggle('off', !on);
+    const ck = row.querySelector('.ck');
+    ck.classList.toggle('on', on);
+    ck.innerHTML = on ? I.check : '';
+    const n = document.querySelectorAll('.ex-edit.chk[data-done="1"]').length;
+    const c = document.querySelector('[data-done-count]');
+    if (c) c.textContent = `${n} afgevinkt.`;
+  },
+  'add-ex'() { readDraftFromDom(); S.editDraft.exercises.push({ name: '', weight: null, reps: null, done: true }); render(); const rows = document.querySelectorAll('.ex-edit input[data-f="name"]'); rows[rows.length - 1]?.focus(); },
   'del-ex'(el) { readDraftFromDom(); S.editDraft.exercises.splice(+el.dataset.i, 1); render(); },
   'quick-add'() {
     readDraftFromDom();
     const txt = document.getElementById('quick').value;
     const r = parseNotes(txt);
-    const exs = r.sessions.flatMap((s) => s.exercises);
+    const exs = r.sessions.flatMap((s) => s.exercises).map((e) => ({ ...e, done: true }));
     if (!exs.length) { toast('Geen oefeningen herkend'); return; }
     S.editDraft.exercises = S.editDraft.exercises.filter((e) => e.name || e.weight || e.reps).concat(exs);
     render();
@@ -861,20 +991,29 @@ const actions = {
   async 'save-log'() {
     readDraftFromDom();
     const d = S.editDraft;
-    // Lege regels negeren; gewicht leeg = vorige waarde (placeholder) overnemen.
-    d.exercises = d.exercises.filter((e) => e.name && e.name.trim()).map((e) => {
+    // Alleen afgevinkte regels; leeg gewicht/reps = vorige topset overnemen.
+    const exercises = d.exercises.filter((e) => e.name && e.name.trim() && e.done !== false).map((e) => {
       const last = (e.weight == null || e.reps == null) ? lastSet(e.name) : null;
-      const bw = e.bw || /\bbw\b|bodyweight/i.test(e.name);
-      return { name: e.name.trim(), weight: e.weight ?? last?.weight ?? 0, reps: e.reps ?? last?.reps ?? null, bw, sets: e.sets || null, note: e.note || '' };
-    }).filter((e) => e.reps);
-    if (!d.exercises.length) { toast('Voeg minstens één oefening met reps toe'); return; }
+      const bw = !!(e.bw || last?.bw || /\bbw\b|bodyweight|pull.?ups?|chin.?ups?|\bdips\b/i.test(e.name) && (e.weight == null || e.weight === 0));
+      return { name: e.name.trim(), weight: e.weight ?? last?.weight ?? 0, reps: e.reps ?? last?.reps ?? null, bw, sets: e.sets ?? last?.sets ?? null, note: e.note || '' };
+    }).filter((e) => e.reps || e.sets);
+    if (!exercises.length) { toast('Vink minstens één oefening af'); return; }
     if (!d.date) { toast('Kies een datum'); return; }
     const { _for, ...clean } = d;
+    clean.exercises = exercises;
     clean.name = clean.name || 'Training';
     clean.updatedAt = Date.now();
+    clean.createdAt = clean.createdAt || Date.now();
     await saveStrength((doc) => {
       const i = doc.sessions.findIndex((s) => s.id === clean.id);
       if (i >= 0) doc.sessions[i] = clean; else doc.sessions.push(clean);
+      // Nieuwe oefeningen ook aan het schema toevoegen.
+      const t = (doc.templates || []).find((x) => !x.deleted && x.name.trim().toLowerCase() === clean.name.trim().toLowerCase());
+      if (t) {
+        const keys = new Set(t.exercises.map((e) => exKey(e.name)));
+        const extra = exercises.filter((e) => !keys.has(exKey(e.name)));
+        if (extra.length) { t.exercises.push(...extra.map(({ note, ...e }) => e)); t.updatedAt = Date.now(); }
+      }
     });
     S.editDraft = null;
     toast('Training bewaard');
@@ -890,15 +1029,63 @@ const actions = {
     S.editDraft = null;
     location.hash = '#/strength';
   },
+  'tpl-add-ex'() { readTplFromDom(); S.tplDraft.exercises.push({ name: '', weight: null, reps: null, sets: null }); render(); const rows = document.querySelectorAll('.ex-edit input[data-f="name"]'); rows[rows.length - 1]?.focus(); },
+  'tpl-del-ex'(el) { readTplFromDom(); S.tplDraft.exercises.splice(+el.dataset.i, 1); render(); },
+  async 'save-template'() {
+    readTplFromDom();
+    const { _for, ...t } = S.tplDraft;
+    t.name = (t.name || '').trim();
+    if (!t.name) { toast('Geef het schema een naam'); return; }
+    t.exercises = t.exercises.filter((e) => e.name && e.name.trim()).map((e) => ({ name: e.name.trim(), weight: e.weight ?? 0, reps: e.reps ?? null, sets: e.sets ?? null, bw: !!(e.bw || /\bbw\b|bodyweight/i.test(e.name) || (e.weight == null && /pull.?ups?|chin.?ups?|\bdips\b|push.?ups?/i.test(e.name))) }));
+    t.updatedAt = Date.now();
+    await saveStrength((doc) => {
+      doc.templates ||= [];
+      const i = doc.templates.findIndex((x) => x.id === t.id);
+      if (i >= 0) doc.templates[i] = t; else doc.templates.push(t);
+    });
+    S.tplDraft = null;
+    toast('Schema bewaard');
+    location.hash = `#/template/${t.id}`;
+  },
+  async 'delete-template'() {
+    if (!confirm('Dit schema verwijderen? Je gelogde trainingen blijven bewaard.')) return;
+    const id = S.tplDraft.id;
+    await saveStrength((doc) => { const t = (doc.templates || []).find((x) => x.id === id); if (t) { t.deleted = true; t.updatedAt = Date.now(); } });
+    S.tplDraft = null;
+    location.hash = '#/strength';
+  },
+  async 'copy-template'(el) {
+    const t = activeTemplates(S.strength).find((x) => x.id === el.dataset.id);
+    if (!t) return;
+    const lines = [t.name, ...t.exercises.map((e) => {
+      const c = currentSet(S.strength, e.name, S.settings) || e;
+      const w = Number(c.weight || 0).toLocaleString('nl-NL', { maximumFractionDigits: 2 });
+      return `${e.name} ${c.bw ? (c.weight ? `+${w}kg` : '') : `${w}kg`}${c.sets ? ` ${c.sets} sets` : ''}${c.reps ? ` ${c.reps} reps` : ''}`.replace(/\s+/g, ' ').trim();
+    })];
+    try { await navigator.clipboard.writeText(lines.join('\n')); toast('Gekopieerd — plak in Notities'); } catch { prompt('Kopieer deze tekst:', lines.join('\n')); }
+  },
   parse() {
     const text = document.getElementById('notes').value;
     const result = parseNotes(text);
-    S.importDraft = { text, result };
+    const mode = result.sessions.some((s) => s.date) ? 'sessions' : 'templates';
+    S.importDraft = { text, result, mode };
     render();
     setTimeout(() => document.querySelector('.section-title')?.scrollIntoView({ behavior: 'smooth' }), 50);
   },
+  'imp-mode'(el) {
+    const d = S.importDraft;
+    d.result.sessions.forEach((s, i) => {
+      const n = document.querySelector(`[data-imp-name="${i}"]`)?.value.trim();
+      const dt = document.querySelector(`[data-imp-date="${i}"]`)?.value;
+      if (n) s.name = n;
+      if (dt) s.date = dt;
+    });
+    d.mode = el.dataset.v;
+    render();
+  },
   async 'do-import'() {
     const draft = S.importDraft;
+    const tplMode = draft.mode === 'templates';
     const chosen = [];
     draft.result.sessions.forEach((s, i) => {
       const cb = document.querySelector(`[data-imp="${i}"]`);
@@ -906,11 +1093,27 @@ const actions = {
       const date = document.querySelector(`[data-imp-date="${i}"]`)?.value;
       if (cb?.checked) chosen.push({ ...s, name: name || s.name, date: date || s.date });
     });
+    if (!chosen.length) { toast('Niets geselecteerd'); return; }
+    const now = Date.now();
+    const strip = (e) => ({ name: e.name, weight: e.weight ?? 0, reps: e.reps ?? null, sets: e.sets ?? null, bw: !!e.bw, note: e.note || '' });
+    if (tplMode) {
+      await saveStrength((doc) => {
+        doc.templates ||= [];
+        chosen.forEach((s, k) => {
+          const ex = doc.templates.find((t) => !t.deleted && t.name.trim().toLowerCase() === s.name.trim().toLowerCase());
+          const exercises = s.exercises.map(({ note, ...e }) => strip(e));
+          if (ex) { ex.exercises = exercises; ex.updatedAt = now + k; } else doc.templates.push({ id: uid(), name: s.name, exercises, order: doc.templates.length + k, updatedAt: now + k });
+        });
+      });
+      S.importDraft = null;
+      toast(`${chosen.length} schema's opgeslagen`);
+      location.hash = '#/strength';
+      return;
+    }
     const missing = chosen.filter((s) => !s.date);
     if (missing.length) { toast(`${missing.length} training(en) zonder datum`); return; }
-    const now = Date.now();
     await saveStrength((doc) => {
-      chosen.forEach((s, k) => doc.sessions.push({ id: uid(), date: s.date, name: s.name, exercises: s.exercises, createdAt: now + k, updatedAt: now + k }));
+      chosen.forEach((s, k) => doc.sessions.push({ id: uid(), date: s.date, name: s.name, exercises: s.exercises.map(strip), createdAt: now + k, updatedAt: now + k }));
     });
     S.importDraft = null;
     toast(`${chosen.length} trainingen geïmporteerd`);
@@ -974,7 +1177,14 @@ document.addEventListener('change', async (ev) => {
 // Naam in krachtlog → toon vorige topset als placeholder.
 document.addEventListener('input', (ev) => {
   const el = ev.target;
-  if (el.dataset?.f === 'name') {
+  if ((el.dataset?.f === 'weight' || el.dataset?.f === 'reps') && el.closest('.ex-edit.chk')) {
+    const row = el.closest('.ex-edit.chk');
+    if (row.dataset.done !== '1') {
+      row.dataset.done = '1'; row.classList.remove('off');
+      const ck = row.querySelector('.ck'); ck.classList.add('on'); ck.innerHTML = I.check;
+    }
+  }
+  if (el.dataset?.f === 'name' && !el.closest('.tpl')) {
     const row = el.closest('.ex-edit');
     const last = lastSet(el.value);
     if (row) {
@@ -987,6 +1197,7 @@ document.addEventListener('input', (ev) => {
 window.addEventListener('hashchange', () => {
   const r = parseRoute();
   if (r.name !== 'log') S.editDraft = null;
+  if (r.name !== 'template-edit') S.tplDraft = null;
   render();
 });
 

@@ -13,19 +13,19 @@ export const LOWER = ['quads', 'hamstrings', 'billen', 'heupen', 'kuiten'];
 // Volgorde is belangrijk: specifiek vóór algemeen.
 // mass = hoe zwaar de oefening het lichaam belast (grote compound > kleine isolatie).
 export const LIBRARY = [
-  { id: 'incline-press', name: 'Incline press', re: /(incline|schuin).*(press|druk|bench)|(press|druk|bench).*(incline|schuin)/, g: { borst: .55, schouders: .25, triceps: .2 }, mass: 1.0 },
+  { id: 'incline-press', name: 'Incline press', re: /(incline|schuin)(?!.*curl)/, g: { borst: .55, schouders: .25, triceps: .2 }, mass: 1.0 },
   { id: 'decline-press', name: 'Decline press', re: /decline/, g: { borst: .7, triceps: .3 }, mass: 1.0 },
   { id: 'reverse-fly', name: 'Reverse fly', re: /(reverse|rear|achter).*(fly|pec|delt|butterfly|schouder)|rear ?delt/, g: { schouders: .8, rug: .2 }, mass: 0.4 },
   { id: 'pec-deck', name: 'Pec deck / fly', re: /pec ?deck|butterfly|\bfly(es|s)?\b|flies|cable ?cross|crossover|chest ?fly/, g: { borst: 1 }, mass: 0.6 },
   { id: 'dips', name: 'Dips', re: /\bdips?\b/, g: { triceps: .5, borst: .4, schouders: .1 }, mass: 0.8 },
   { id: 'push-up', name: 'Push-up', re: /push.?ups?|opdruk/, g: { borst: .6, triceps: .25, schouders: .15 }, mass: 0.7 },
-  { id: 'shoulder-press', name: 'Shoulder press', re: /shoulder ?press|schouder ?(press|druk)|overhead ?press|military|\bohp\b|arnold/, g: { schouders: .7, triceps: .3 }, mass: 0.9 },
+  { id: 'shoulder-press', name: 'Shoulder press', re: /shoulder ?press|schouder ?(press|druk)|overhead ?press|milit|\bohp\b|arnold/, g: { schouders: .7, triceps: .3 }, mass: 0.9 },
   { id: 'lateral-raise', name: 'Lateral raise', re: /lateral|lat\.? ?raise|side ?raise|zijwaarts|zij ?raise|y.?raise/, g: { schouders: 1 }, mass: 0.4 },
   { id: 'front-raise', name: 'Front raise', re: /front ?raise/, g: { schouders: 1 }, mass: 0.35 },
   { id: 'upright-row', name: 'Upright row', re: /upright/, g: { schouders: .7, rug: .3 }, mass: 0.5 },
   { id: 'face-pull', name: 'Face pull', re: /face ?pull/, g: { schouders: .6, rug: .4 }, mass: 0.4 },
   { id: 'shrug', name: 'Shrugs', re: /shrug/, g: { rug: 1 }, mass: 0.5 },
-  { id: 'chest-press', name: 'Chest press', re: /chest ?press|borst ?(press|druk)|bench|bankdruk|\bchest\b|\bborst\b/, g: { borst: .6, triceps: .25, schouders: .15 }, mass: 1.0 },
+  { id: 'chest-press', name: 'Chest press', re: /chest ?press|borst ?(press|druk)|bench|bankdruk|flat ?press|\bchest\b|\bborst\b/, g: { borst: .6, triceps: .25, schouders: .15 }, mass: 1.0 },
   { id: 'lat-pulldown', name: 'Lat pulldown', re: /pull ?down|lat ?pull|lat ?machine|\blats?\b/, g: { rug: .65, biceps: .25, schouders: .1 }, mass: 1.0 },
   { id: 'pull-up', name: 'Pull-up', re: /pull.?ups?|chin.?ups?|optrek/, g: { rug: .65, biceps: .3, core: .05 }, mass: 1.1 },
   { id: 'pullover', name: 'Pullover', re: /pull ?over/, g: { rug: .8, borst: .2 }, mass: 0.6 },
@@ -34,7 +34,7 @@ export const LIBRARY = [
   { id: 'leg-curl', name: 'Leg curl', re: /leg ?curl|hamstring ?curl|(lying|seated|liggend|zittend|nordic).*curl|beenbuig|ham ?curl/, g: { hamstrings: 1 }, mass: 0.6 },
   { id: 'leg-extension', name: 'Leg extension', re: /leg ?ext|beenstrek|quad ?ext/, g: { quads: 1 }, mass: 0.7 },
   { id: 'wrist-curl', name: 'Wrist curl', re: /wrist|pols|forearm|onderarm/, g: { onderarmen: 1 }, mass: 0.25 },
-  { id: 'hammer-curl', name: 'Hammer curl', re: /hammer/, g: { biceps: .7, onderarmen: .3 }, mass: 0.4 },
+  { id: 'hammer-curl', name: 'Hammer curl', re: /hammer ?curls?/, g: { biceps: .7, onderarmen: .3 }, mass: 0.4 },
   { id: 'biceps-curl', name: 'Biceps curl', re: /curl|biceps?/, g: { biceps: 1 }, mass: 0.4 },
   { id: 'triceps', name: 'Triceps', re: /tri(ceps?)?\b|pushdown|push ?down|pressdown|skull|french|overhead ?ext|tricep/, g: { triceps: 1 }, mass: 0.45 },
   { id: 'calf-raise', name: 'Calf raise', re: /calf|calves|kuit/, g: { kuiten: 1 }, mass: 0.4 },
@@ -136,13 +136,16 @@ const UNIT = '(kg|kilo\'?s?|lbs?|lb|pond)';
 
 /** Haal gewicht/reps uit de rest van een regel. */
 export function parseSet(rest) {
-  const s = ' ' + rest.toLowerCase().replace(/(\d),(\d)/g, '$1.$2') + ' ';
+  let s = ' ' + rest.toLowerCase().replace(/(\d),(\d)/g, '$1.$2') + ' ';
   const toKg = (w, u) => (u && /^lb|pond/.test(u) ? Math.round(w * 0.4536 * 10) / 10 : w);
   const out = [];
-  let bw = /\b(bw|body ?weight|lichaamsgewicht|eigen gewicht)\b/.test(s);
+  let bw = /\b(bw|body ?weight|lichaamsgewicht|eigen gewicht)\b/.test(s) || /^\s*\+\s*\d/.test(s);
   let sets = null;
   let m;
-  if ((m = /(\d+)\s*(sets?|series|x\s*sets)\b/.exec(s))) sets = +m[1];
+  // Sets tellen ("2 sets", "1 set/ 2 sets" = 3) en daarna uit de tekst halen.
+  const setRe = /(\d+)\s*(?:sets?|series|setjes)\b/g;
+  while ((m = setRe.exec(s))) sets = (sets || 0) + Number(m[1]);
+  s = s.replace(setRe, ' ');
 
   const push = (w, r, u) => {
     w = Number(w); r = Number(r);
@@ -151,20 +154,32 @@ export function parseSet(rest) {
     out.push({ weight: toKg(w, u), reps: Math.round(r) });
   };
 
+  // 1) Expliciet: gewicht met eenheid + reps met woord, ook als lijst ("60kg/45kg 5 reps/7 reps").
+  const weights = [];
+  const wl = new RegExp(`((?:\\d+(?:\\.\\d+)?\\s*(?:kg|lbs?)?\\s*/\\s*)*\\d+(?:\\.\\d+)?)\\s*${UNIT}`, 'g');
+  while ((m = wl.exec(s))) for (const part of m[1].split('/')) weights.push([parseFloat(part), m[2]]);
+  const reps = [];
+  const rl = /(\d+)\s*(?:reps?|herh\w*\.?|rep\b|keer)/g;
+  while ((m = rl.exec(s))) reps.push(Number(m[1]));
+  if (weights.length && reps.length) {
+    if (weights.length === reps.length) weights.forEach(([w, u], i) => push(w, reps[i], u));
+    else push(weights[0][0], reps[0], weights[0][1]);
+  }
+
   let mm;
-  // a x b x c (sets x reps x gewicht of gewicht x sets x reps)
-  const triple = new RegExp(`${NUM}\\s*[x×*]\\s*${NUM}\\s*[x×*]\\s*${NUM}\\s*${UNIT}?`, 'g');
-  while ((mm = triple.exec(s))) {
-    const a = +mm[1].replace(',', '.'), b = +mm[2], c = +mm[3];
-    if (c >= a && c >= b) { sets = sets ?? a; push(c, b, mm[4]); } else if (a >= b && a >= c) { sets = sets ?? b; push(a, c, mm[4]); }
+  if (!out.length) {
+    // a x b x c (sets x reps x gewicht of gewicht x sets x reps)
+    const triple = new RegExp(`${NUM}\\s*[x×*]\\s*${NUM}\\s*[x×*]\\s*${NUM}\\s*${UNIT}?`, 'g');
+    while ((mm = triple.exec(s))) {
+      const a = +mm[1], b = +mm[2], c = +mm[3];
+      if (c >= a && c >= b) { sets = sets ?? a; push(c, b, mm[4]); } else if (a >= b && a >= c) { sets = sets ?? b; push(a, c, mm[4]); }
+    }
   }
   if (!out.length) {
-    // reps x gewicht met eenheid erachter: "8 x 80kg"
     const rw = new RegExp(`(\\d+)\\s*[x×*]\\s*${NUM}\\s*${UNIT}`, 'g');
     while ((mm = rw.exec(s))) push(mm[2], mm[1], mm[3]);
   }
   if (!out.length) {
-    // gewicht (eenheid) x reps: "80 x 8", "80kg x 8"
     const wr = new RegExp(`${NUM}\\s*${UNIT}?\\s*[x×*]\\s*(\\d+)`, 'g');
     while ((mm = wr.exec(s))) {
       let w = +mm[1], r = +mm[3];
@@ -173,22 +188,18 @@ export function parseSet(rest) {
     }
   }
   if (!out.length) {
-    // reps eerst: "10 reps 80kg", "10 herh. @ 80"
     const rr = new RegExp(`(\\d+)\\s*(?:reps?|herh\\w*\\.?)\\s*(?:@|op|met|-|,)?\\s*${NUM}\\s*${UNIT}?`, 'g');
     while ((mm = rr.exec(s))) push(mm[2], mm[1], mm[3]);
   }
   if (!out.length) {
-    // gewicht met eenheid, daarna reps: "80kg 8", "80 kg - 8 reps", "80kg voor 8"
     const wu = new RegExp(`${NUM}\\s*${UNIT}\\s*(?:[-–:,/@]|voor|for|keer)?\\s*(\\d+)`, 'g');
     while ((mm = wu.exec(s))) push(mm[1], mm[3], mm[2]);
   }
   if (!out.length) {
-    // bodyweight: "bw x 10", "bw+10 x 8"
     const b = /\b(?:bw|body ?weight)\s*(?:\+\s*(\d+(?:\.\d+)?)\s*(?:kg)?)?\s*[x×*:-]?\s*(\d+)/.exec(s);
     if (b) { bw = true; push(b[1] ? +b[1] : 0, b[2]); }
   }
   if (!out.length) {
-    // kaal: "80-8", "80/8", "80 8", "80: 8"
     const plain = new RegExp(`(?<![\\d.])${NUM}\\s*(?:[-–/:,]|\\s)\\s*(\\d+)(?![\\d.])`, 'g');
     while ((mm = plain.exec(s))) {
       let w = +mm[1], r = +mm[2];
@@ -197,20 +208,30 @@ export function parseSet(rest) {
     }
   }
   if (!out.length) {
-    // alleen reps bij bodyweight: "pull ups 10 reps"
     const onlyReps = /(\d+)\s*(reps?|herh\w*)/.exec(s);
     if (onlyReps) { bw = true; push(0, onlyReps[1]); }
   }
-  if (!out.length) return null;
-  // Topset = hoogste geschatte 1RM.
+  if (!out.length) {
+    // Alleen sets ("Pull-ups 2 sets"): bodyweight zonder bekende reps.
+    if (sets) return { weight: 0, reps: null, bw: true, sets, all: [] };
+    return null;
+  }
   let best = out[0];
   for (const o of out) if ((e1rm(o.weight || 1, o.reps) || 0) > (e1rm(best.weight || 1, best.reps) || 0)) best = o;
   return { ...best, bw, sets, all: out };
 }
 
+/** Haalt opsommings- en afvinktekens weg; done = afgevinkt. */
+export function stripMarker(line) {
+  const m = /^\s*(?:[-*•·>]\s*)?(\[( |x|X|✓)?\]|☐|☑|☒|✓|✔|✅|○|◦|●|⚪|🔘)?\s*[-–•*·]?\s*/u.exec(line);
+  const mark = m[1] || '';
+  const done = /x|X|✓|✔|✅|☑|☒|●/.test(mark);
+  return { text: line.slice(m[0].length), done, marked: !!mark };
+}
+
 /** Splits een regel in naam + set. Naam = tekst vóór het eerste getal / BW. */
 export function parseExerciseLine(line) {
-  const clean = line.replace(/^[\s\-–•*·>]+/, '').replace(/^\d+[.)]\s+/, '').trim();
+  const clean = stripMarker(line).text.replace(/^\d+[.)]\s+/, '').trim();
   const m = /^(.*?[\p{L}][\p{L}\s'’&+/()-]*?)\s*[:\-–=]?\s*(?=(\d|bw\b|body ?weight|\+\s*\d))/iu.exec(clean);
   if (!m) return null;
   const name = m[1].replace(/[\s:\-–=(]+$/, '').trim();
@@ -274,7 +295,8 @@ export function parseNotes(text, ref = new Date()) {
     }
     if (ex) {
       if (!cur) newSession('Training', date ? date.date : pendingDate);
-      cur.exercises.push({ name: ex.name, weight: ex.weight, reps: ex.reps, sets: ex.sets || null, bw: ex.bw || false, note: ex.note });
+      const mk = stripMarker(raw);
+      cur.exercises.push({ name: ex.name, weight: ex.weight, reps: ex.reps, sets: ex.sets || null, bw: ex.bw || false, note: ex.note, done: mk.marked ? mk.done : null });
       continue;
     }
     skipped.push(line);
@@ -295,8 +317,10 @@ export function computeLoads(sessions, settings) {
   const defaultSets = settings.defaultSets || 3;
   const bodyweight = settings.bodyweight || 80;
   const overrides = settings.exerciseMap || {};
+  const base = settings.baselines || {};
   const sorted = [...sessions].filter((s) => !s.deleted && s.date).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt || 0) - (b.createdAt || 0)));
   const best = {};
+  for (const [k, b] of Object.entries(base)) if (b.e1rm) best[k] = b.e1rm;
   const result = {};
   for (const s of sorted) {
     let load = 0;
@@ -312,7 +336,7 @@ export function computeLoads(sessions, settings) {
       const isPR = est != null && (prevBest == null || est > prevBest + 0.01);
       if (est != null) best[key] = Math.max(prevBest || 0, est);
       const ri = est != null && best[key] ? clamp(est / best[key], 0.3, 1) : 0.9;
-      const sets = e.sets || defaultSets;
+      const sets = e.sets || base[key]?.sets || defaultSets;
       const repF = clamp(0.75 + (e.reps || 8) * 0.025, 0.8, 1.25);
       const intensity = 0.55 + 0.45 * ri * ri;
       const l = sets * lib.mass * intensity * repF;
@@ -371,8 +395,14 @@ export function mergeDocs(a, b) {
   }
   const ea = a?.exerciseMap || {}, eb = b?.exerciseMap || {};
   const newer = (a?.mapUpdatedAt || 0) >= (b?.mapUpdatedAt || 0);
+  const tById = {};
+  for (const t of [...(a?.templates || []), ...(b?.templates || [])]) {
+    const ex = tById[t.id];
+    if (!ex || (t.updatedAt || 0) > (ex.updatedAt || 0)) tById[t.id] = t;
+  }
   return {
     sessions: Object.values(byId),
+    templates: Object.values(tById),
     exerciseMap: newer ? { ...eb, ...ea } : { ...ea, ...eb },
     mapUpdatedAt: Math.max(a?.mapUpdatedAt || 0, b?.mapUpdatedAt || 0),
     updatedAt: Math.max(a?.updatedAt || 0, b?.updatedAt || 0),
@@ -380,3 +410,52 @@ export function mergeDocs(a, b) {
 }
 
 export { parseYmd };
+
+// ---------- Schema's (jouw "levende notitie" per trainingsdag) ----------
+
+/** Basiswaarden uit schema's: per oefening de laatst bekende topset uit je notitie. */
+export function templateBaselines(doc, bodyweight = 80) {
+  const out = {};
+  for (const t of doc?.templates || []) {
+    if (t.deleted) continue;
+    for (const e of t.exercises || []) {
+      const k = exKey(e.name);
+      const w = e.bw ? bodyweight + (e.weight || 0) : e.weight;
+      const est = e.reps ? e1rm(w, e.reps) : null;
+      if (!out[k] || (est || 0) > (out[k].e1rm || 0)) out[k] = { ...e, e1rm: est };
+    }
+  }
+  return out;
+}
+
+export function activeTemplates(doc) {
+  return (doc?.templates || []).filter((t) => !t.deleted).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name, 'nl', { numeric: true }));
+}
+
+export function findTemplate(doc, name) {
+  const n = String(name || '').trim().toLowerCase();
+  return activeTemplates(doc).find((t) => t.name.trim().toLowerCase() === n) || null;
+}
+
+/** Laatste bekende topset van een oefening: eerst uit je trainingen, anders uit je schema. */
+export function currentSet(doc, name, settings = {}) {
+  const k = exKey(name);
+  if (!k) return null;
+  let last = null;
+  for (const s of doc?.sessions || []) {
+    if (s.deleted || !s.date) continue;
+    for (const e of s.exercises || []) {
+      if (exKey(e.name) === k && (!last || s.date > last.date || (s.date === last.date && (s.updatedAt || 0) > (last.updatedAt || 0)))) last = { ...e, date: s.date, updatedAt: s.updatedAt, sessionId: s.id };
+    }
+  }
+  if (last) return last;
+  const b = templateBaselines(doc, settings.bodyweight)[k];
+  return b ? { ...b, date: null, fromTemplate: true } : null;
+}
+
+export function setText(e) {
+  if (!e) return '–';
+  const w = Number(e.weight || 0).toLocaleString('nl-NL', { maximumFractionDigits: 2 });
+  const wt = e.bw ? (e.weight ? `+${w} kg` : 'BW') : `${w} kg`;
+  return `${wt}${e.reps ? ` × ${e.reps}` : ''}${e.sets ? ` · ${e.sets} sets` : ''}`;
+}

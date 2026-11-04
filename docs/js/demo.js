@@ -10,9 +10,10 @@ function gauss(r) {
   return Math.sqrt(-2 * Math.log(r() + 1e-9)) * Math.cos(2 * Math.PI * r());
 }
 
-const UPPER_A = [['Chest press', 80, 8], ['Lat pulldown', 70, 10], ['Shoulder press', 32.5, 8], ['Seated row', 75, 10], ['Pec deck', 65, 12], ['Lateral raise machine', 25, 12], ['Biceps curl machine', 35, 10], ['Triceps pushdown', 32.5, 12]];
-const UPPER_B = [['Incline chest press', 70, 9], ['Chest supported row', 80, 9], ['Assisted pull ups', 0, 10, true], ['Cable crossover', 15, 12], ['Rear delt fly', 45, 12], ['Hammer curl', 16, 10], ['Overhead triceps extension', 25, 12]];
-const LOWER = [['Leg press', 200, 10], ['Hack squat', 110, 8], ['Leg extension', 75, 12], ['Seated leg curl', 60, 10], ['Hip thrust machine', 120, 10], ['Adductor', 70, 12], ['Calf raise', 90, 15]];
+// Gebaseerd op je eigen notitie (Upper 6 / Upper 7 / Lower). [naam, kg, reps, bodyweight, sets]
+const UPPER_A = [['Lat pulldown', 87, 8], ['Flat press machine', 45, 8, false, 2], ['Single arm row', 20, 8, false, 2], ['Cable pushdown', 38, 8, false, 2], ['Rope curl', 35, 6, false, 2], ['Rear delt', 63.5, 6, false, 2], ['Militairy press', 45, 6], ['Lifefitness flat press', 65, 5], ['Tricep pushdown single', 15, 10]];
+const UPPER_B = [['Cable fly', 15, 8, false, 2], ['Smith machine incline', 60, 5, false, 3], ['Pulldown mag grip', 97, 8], ['Preacher curl machine', 76.5, 6, false, 2], ['Dip machine', 97.5, 7, false, 2], ['Lateral machine', 53, 5, false, 2], ['Dips', 20, 6, true, 2], ['Hammer strength row', 55, 6]];
+const LOWER = [['Leg extension', 77, 4, false, 2], ['Hack squat', 75, 6, false, 2], ['Hip thrust', 80, 6, false, 2], ['Hamstring curl', 62.5, 6, false, 2], ['Kuiten', 90, 8, false, 2], ['Abductor', 129, 10], ['Cable crunch', 35, 10], ['Leg press', 90, 9], ['Back extension', 25, 7]];
 
 export function generateDemo(n = 60) {
   const r = rng(42);
@@ -104,11 +105,11 @@ export function generateDemo(n = 60) {
       const pick = tpl.filter(() => r() > 0.15);
       session = {
         id: uid(), date, name, createdAt: mid + st * 60000, updatedAt: mid + st * 60000,
-        exercises: pick.map(([ex, w, reps, bw]) => ({
+        exercises: pick.map(([ex, w, reps, bw, sets]) => ({
           name: ex,
-          weight: bw ? 0 : Math.round((w * (0.94 + 0.08 * progress) + (r() - 0.5) * w * 0.03) * 2) / 2,
-          reps: Math.max(5, Math.round(reps + (r() - 0.5) * 3)),
-          bw: !!bw, sets: null, note: '',
+          weight: Math.round((w * (0.9 + 0.1 * progress) + (r() - 0.5) * w * 0.03) * 2) / 2,
+          reps: Math.max(3, Math.round(reps + (r() - 0.5) * 2)),
+          bw: !!bw, sets: sets || null, note: '',
         })),
       };
       if (!isToday || minutes > st + 62) sessions.push(session);
@@ -131,5 +132,7 @@ export function generateDemo(n = 60) {
     };
     days.push(day);
   }
-  return { days, strength: { sessions, exerciseMap: {}, updatedAt: Date.now() } };
+  const tpl = (name, list, order) => ({ id: 'demo-' + order, name, order, updatedAt: Date.now(), exercises: list.map(([n, w, reps, bw, sets]) => ({ name: n, weight: w, reps, bw: !!bw, sets: sets || null })) });
+  const templates = [tpl('Upper 6', UPPER_A, 0), tpl('Upper 7', UPPER_B, 1), tpl('Lower', LOWER, 2)];
+  return { days, strength: { sessions, templates, exerciseMap: {}, updatedAt: Date.now() } };
 }
