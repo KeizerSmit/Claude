@@ -2,13 +2,15 @@
 
 Persoonlijke WHOOP-achtige app voor de **Fitbit Air**: herstel, strain en slaap, met je krachttraining (topsets) meegerekend in je dagbelasting. Draait als web-app op je telefoon (zet hem op je beginscherm) en je logt in met je Google-account.
 
-- **Herstel (0–100%)**: HRV, rusthartslag tijdens slaap, slaapprestatie, ademhaling en huidtemperatuur, vergeleken met je eigen 30-daagse baseline (groen / geel / rood).
-- **Strain (0–21)**: hartslagreserve per minuut (TRIMP), logaritmisch, plus de **spierbelasting** uit je krachtlog. Inclusief optimale strain op basis van je herstel.
-- **Slaap**: slaapbehoefte (basis + strain + slaapschuld − dutjes), prestatie, fasen, efficiëntie, consistentie en bedtijd-advies.
-- **Kracht**: werkt zoals je Apple-notitie. Plak je notitie (`Upper 6`, `Upper 7`, `Lower` met regels als `Lat pulldown 87kg 8 reps` of `Hack squat 75kg 2 sets 6 reps`) en de app maakt er **schema's** van. In de gym tik je *Start*, zie je per oefening je huidige topset, vink je af wat je deed en pas je aan wat je verbeterd hebt. Het schema toont daarna automatisch je nieuwste topsets ("levende notitie"), en *Kopieer als notitie* zet het terug in je eigen notatie. Herkent ~35 machines/oefeningen, toont PR's, geschatte 1RM-progressie en zware sets per spiergroep per week. Spierbelasting telt mee in je dag-strain. Alles wordt bewaard in een verborgen map in je eigen Google Drive.
-- **Live hartslag**: elke minuut ververst uit Google Health; echte realtime (elke hartslag + live HRV + sessie-strain) via Bluetooth *Hartslag delen* van de Fitbit Air — werkt in Chrome (Android/Mac) en op iPhone in de Bluefy-browser.
-- **Interactief**: schuif over elke grafiek om waarden te zien, tik om naar die dag te gaan; tik op elke tegel voor een detailsheet met historie en uitleg; veeg tussen dagen; trek omlaag om te verversen.
-- **Alle data**: per dag de ruwe meetwaarden, hartslag per minuut, slaapfasen en de tussenstappen van de berekeningen.
+- **Vandaag**: eigen hoofdscherm met een herstelmeter (0–100%, groen/geel/rood), je belasting ten opzichte van je doel en je slaap ten opzichte van je behoefte; daaronder inzichten, activiteiten en gezondheidstegels.
+- **Activiteiten achteraf invullen**: sport, klussen en werk (timmeren, verbouwen, sjouwen, verhuizen…) en huis & tuin, met MET-waarden uit het 2024 Compendium. Belasting komt uit gemeten hartslag, anders uit hoe zwaar het voelde (RPE) en de activiteit; fysiek werk krijgt daarnaast spierbelasting. Werk telt wél voor belasting en herstel, níet als fitheid.
+- **Training**: belastingsband (laatste 7 vs 28 dagen: onder normaal / in balans / hoog / te veel), lichaamskaart met spierherstel per spiergroep, schema's (Upper 6 / Upper 7 / Lower) uit je notities, recente activiteiten.
+- **Gezondheid**: leefstijl-leeftijd met marge, tempo, grootste hefbomen en per onderdeel hoeveel jaar het scheelt (VO₂max, stappen, matig/zwaar bewegen, krachttraining, slaapregelmaat, slaapduur, rusthartslag), plus gewicht en VO₂max.
+- **Herstel, strain en slaap** zoals WHOOP het interpreteert, met je eigen 30-daagse baseline.
+- **Live hartslag**: elke minuut ververst; realtime via Bluetooth *Hartslag delen* (Chrome, of Bluefy op iPhone).
+- **Interactief**: schuif over elke grafiek, tik op alles voor details, veeg tussen dagen, trek omlaag om te verversen; ＋-knop om iets toe te voegen.
+
+Onderbouwing en concurrentieonderzoek: zie [`reports/Onderzoek gezondheidsapps en design.md`](reports/Onderzoek%20gezondheidsapps%20en%20design.md).
 
 De app staat in `docs/` (pure HTML/CSS/JS, geen build-stap). Data blijft op je telefoon en in je eigen Google-account.
 
