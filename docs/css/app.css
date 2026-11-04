@@ -433,3 +433,17 @@ html, body { overflow-x: hidden; overflow-x: clip; }
 .row.insight + .row.insight { border-top: 0; }
 .row.insight .ic { width: 30px; height: 30px; border-radius: 9px; background: var(--card2); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
 .row.insight .ic svg { width: 17px; height: 17px; }
+.ring-val { animation: none; }
+.page.push .ring-val, .page.pop .ring-val, .page.fade .ring-val, .page.swap .ring-val { animation: ring-in 1s var(--ease) both; }
+.page:not(.push):not(.pop):not(.fade):not(.swap) .bar { animation: none; }
+.card.trend { padding-top: 14px; }
+.trend-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -2px -6px 0; padding: 2px 6px; border-radius: 12px; }
+.trend-head.tap { cursor: pointer; }
+.trend-head.tap:active { background: var(--card2); }
+.trend-t { font-size: 13px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .03em; }
+.trend-v { font-size: 30px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.trend-v small { font-size: 14px; font-weight: 600; color: var(--text2); margin-left: 4px; letter-spacing: 0; }
+.trend-s { font-size: 13px; color: var(--text2); margin-top: 1px; }
+.card.trend .chartwrap { margin-top: 40px; }
+.contrib.tap { margin: 0; padding-left: 0; padding-right: 0; border-radius: 0; }
+.contrib.tap:active { background: none; opacity: .6; }

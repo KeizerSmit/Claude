@@ -806,43 +806,63 @@ function viewDay(date) {
 }
 
 let trendRange = 30;
+function trendCard(title, valueHtml, sub, chart, go = '', sheet = '') {
+  const attr = sheet ? `data-sheet="${sheet}"` : go ? `data-go="${go}"` : '';
+  return `<div class="card trend">
+    <div class="trend-head${attr ? ' tap' : ''}" ${attr}><div><div class="trend-t">${title}</div><div class="trend-v">${valueHtml}</div><div class="trend-s">${sub}</div></div>${attr ? `<span class="chev">${I.chev}</span>` : ''}</div>
+    ${chart}
+  </div>`;
+}
+
 function viewTrends() {
   const end = today();
   const n = trendRange;
   const ds = lastDays(S.computed.byDate, end, n);
+  const prev = lastDays(S.computed.byDate, addDays(end, -n), n);
   const le = n <= 7 ? 1 : n <= 30 ? 5 : 15;
-  const avg = (f) => mean(ds.map(f));
-  // Weekelijkse spierbelasting
+  const avgOf = (arr, f) => mean(arr.map(f));
+  const cmp = (f, digits = 0, higher = true, fmt = (v) => num(v, digits)) => {
+    const a = avgOf(ds, f), b = avgOf(prev, f);
+    if (a == null || b == null) return 'vorige periode: –';
+    const d = a - b;
+    const good = higher ? d >= 0 : d <= 0;
+    if (Math.round(Math.abs(d) * Math.pow(10, digits)) === 0) return `gelijk aan vorige ${n === 7 ? 'week' : n === 30 ? 'maand' : 'periode'}`;
+    return `<span class="${Math.abs(d) < Math.pow(10, -digits) ? '' : good ? 'up' : 'down'}">${d > 0 ? '▲' : d < 0 ? '▼' : '='} ${fmt(Math.abs(d))}</span> t.o.v. vorige ${n === 7 ? 'week' : n === 30 ? 'maand' : 'periode'}`;
+  };
   const weeks = [];
   for (let w = Math.ceil(n / 7) - 1; w >= 0; w--) {
     const wEnd = addDays(end, -w * 7);
     const wd = lastDays(S.computed.byDate, wEnd, 7);
-    weeks.push({ date: addDays(wEnd, -6), label: fmtDateShort(addDays(wEnd, -6)), value: wd.reduce((a, d) => a + (d.strain?.sessions || []).reduce((x, s) => x + s.load, 0), 0) });
+    weeks.push({ date: addDays(wEnd, -6), label: fmtDateShort(addDays(wEnd, -6)), go: '#/strength', value: wd.reduce((a, d) => a + (d.strain?.sessions || []).reduce((x, s) => x + s.load, 0), 0) });
   }
+  const g = (d) => `#/today/${d.date}`;
+  const rec = (d) => d.recovery?.score ?? null;
+  const str = (d) => d.strain?.score || null;
+  const slp = (d) => (d.sleep ? d.sleep.asleep : null);
+  const hrv = (d) => d.recovery?.hrv ?? null;
+  const rhr = (d) => d.recovery?.rhr ?? null;
+  const resp = (d) => d.raw?.resp ?? null;
+  const steps = (d) => d.raw?.steps ?? null;
+  const zoneCount = ['green', 'yellow', 'red'].map((z) => ds.filter((d) => recoveryZone(rec(d)) === z).length);
   return `${largeTitle('Trends', '', avatar())}
   <div class="segmented">${[7, 30, 90].map((r) => `<button class="${r === n ? 'on' : ''}" data-act="range" data-v="${r}">${r === 7 ? 'Week' : r === 30 ? 'Maand' : '3 maanden'}</button>`).join('')}</div>
-  <div class="fade-in">
-  <div class="stats three">
-    ${stat('Herstel', num(avg((d) => d.recovery?.score)), '%')}
-    ${stat('Strain', fmtStrain(avg((d) => d.strain?.score || null)))}
-    ${stat('Slaap', fmtHM(avg((d) => d.sleep?.asleep)))}
-  </div>
-  <div class="section-title">Herstel</div>
-  <div class="card">${bars(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.recovery?.score ?? null, color: recoveryColor(d.recovery?.score) })), { max: 100, labelEvery: le })}</div>
-  <div class="section-title">Strain</div>
-  <div class="card">${bars(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.strain?.score || null, color: 'var(--strain)' })), { max: 21, labelEvery: le, fmt: fmtStrain })}</div>
-  <div class="section-title">Slaap (uren)</div>
-  <div class="card">${bars(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.sleep ? d.sleep.asleep / 60 : null, color: 'var(--sleep)' })), { labelEvery: le, fmt: (v) => num(v, 1) })}</div>
-  <div class="section-title">HRV</div>
-  <div class="card">${line(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.recovery?.hrv ?? null })), { color: 'var(--green)', fmt: (v) => `${Math.round(v)} ms`, dots: n <= 30 })}</div>
-  <div class="section-title">Rusthartslag</div>
-  <div class="card">${line(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.recovery?.rhr ?? null })), { color: 'var(--hr)', fmt: (v) => `${Math.round(v)}`, dots: n <= 30 })}</div>
-  <div class="section-title">Ademhaling</div>
-  <div class="card">${line(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.raw?.resp ?? null })), { color: 'var(--z1)', fmt: (v) => num(v, 1), dots: n <= 30 })}</div>
-  <div class="section-title">Spierbelasting per week</div>
-  <div class="card">${bars(weeks, { fmt: (v) => num(v, 0) })}</div>
-  <div class="section-title">Stappen</div>
-  <div class="card">${bars(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.raw?.steps ?? null, color: 'var(--muscle)' })), { labelEvery: le, fmt: (v) => `${Math.round(v / 1000)}k` })}</div>
+  <div>
+  ${trendCard('Herstel', `${num(avgOf(ds, rec))}<small>% gem.</small>`, `${cmp(rec)} · <span style="color:var(--green)">●</span> ${zoneCount[0]} <span style="color:var(--yellow)">●</span> ${zoneCount[1]} <span style="color:var(--red)">●</span> ${zoneCount[2]}`,
+    bars(ds.map((d) => ({ date: d.date, go: g(d), value: rec(d), color: recoveryColor(rec(d)) })), { max: 100, labelEvery: le, unit: '%', avgLine: true }), '#/recovery')}
+  ${trendCard('Strain', `${fmtStrain(avgOf(ds, str))}<small>gem.</small>`, cmp(str, 1, true, (v) => fmtStrain(v)),
+    bars(ds.map((d) => ({ date: d.date, go: g(d), value: str(d), color: 'var(--strain)' })), { max: 21, labelEvery: le, fmt: fmtStrain, avgLine: true }), '#/strain')}
+  ${trendCard('Slaap', `${fmtHM(avgOf(ds, slp))}<small>gem.</small>`, cmp(slp, 0, true, (v) => `${Math.round(v)} min`),
+    bars(ds.map((d) => ({ date: d.date, go: g(d), value: slp(d) != null ? slp(d) / 60 : null, color: 'var(--sleep)' })), { labelEvery: le, fmt: (v) => num(v, 1), unit: ' u', avgLine: true }), '#/sleep')}
+  ${trendCard('HRV', `${num(avgOf(ds, hrv))}<small>ms gem.</small>`, cmp(hrv),
+    line(ds.map((d) => ({ date: d.date, go: g(d), value: hrv(d) })), { color: 'var(--green)', fmt: (v) => Math.round(v), unit: ' ms', dots: n <= 30 }), '', `metric:hrv:${end}:${n}`)}
+  ${trendCard('Rusthartslag', `${num(avgOf(ds, rhr))}<small>bpm gem.</small>`, cmp(rhr, 0, false),
+    line(ds.map((d) => ({ date: d.date, go: g(d), value: rhr(d) })), { color: 'var(--hr)', fmt: (v) => Math.round(v), unit: ' bpm', dots: n <= 30 }), '', `metric:rhr:${end}:${n}`)}
+  ${trendCard('Ademhaling', `${num(avgOf(ds, resp), 1)}<small>/min gem.</small>`, cmp(resp, 1, false, (v) => num(v, 1)),
+    line(ds.map((d) => ({ date: d.date, go: g(d), value: resp(d) })), { color: 'var(--z1)', fmt: (v) => num(v, 1), unit: ' /min', dots: n <= 30 }), '', `metric:resp:${end}:${n}`)}
+  ${trendCard('Spierbelasting', `${num(weeks.reduce((a, w) => a + w.value, 0) / Math.max(1, weeks.length), 0)}<small>per week</small>`, 'uit je krachtlog',
+    bars(weeks, { fmt: (v) => num(v, 0), unit: '' }), '#/strength')}
+  ${trendCard('Stappen', `${num(avgOf(ds, steps))}<small>gem.</small>`, cmp(steps, 0, true),
+    bars(ds.map((d) => ({ date: d.date, go: g(d), value: steps(d), color: 'var(--muscle)' })), { labelEvery: le, fmt: (v) => `${Math.round(v / 1000)}k`, avgLine: true }), '', `metric:steps:${end}:${n}`)}
   </div>`;
 }
 
