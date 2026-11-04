@@ -213,6 +213,7 @@ const SETUP_STEPS = [
   { id: 'apis', title: 'Zet de koppelingen aan', text: 'Kijk of bovenaan project <b>Pulse</b> staat → <b>Next</b> → <b>Enable</b>.', links: [['Aanzetten', 'https://console.cloud.google.com/flows/enableapi?apiid=health.googleapis.com,drive.googleapis.com']] },
   { id: 'brand', title: 'Inlogscherm', text: '<b>Get started</b> → naam <b>Pulse</b> + je e-mail → <b>External</b> → je e-mail → akkoord → <b>Create</b>.', links: [['Openen', 'https://console.cloud.google.com/auth/overview']] },
   { id: 'tester', title: 'Jezelf toelaten', text: 'Bij <b>Test users</b> → <b>Add users</b> → je eigen Gmail-adres → <b>Save</b>.', links: [['Openen', 'https://console.cloud.google.com/auth/audience']] },
+  { id: 'scopes', title: 'Toestemmingen', text: 'Tik hieronder op <b>Kopieer</b> → op de pagina <b>Add or remove scopes</b> → onderaan bij <b>Manually add scopes</b> plakken → <b>Add to table</b> → <b>Update</b> → <b>Save</b>.', links: [['Openen', 'https://console.cloud.google.com/auth/scopes']], scopes: true },
   { id: 'client', title: 'Sleutel maken', text: 'Type <b>Web application</b>. Plak bij <i>JavaScript origins</i> en bij <i>Redirect URIs</i> de twee regels hieronder (kopieerknop) → <b>Create</b> → kopieer de <b>Client ID</b>.', links: [['Openen', 'https://console.cloud.google.com/auth/clients/create']], copy: true },
 ];
 
@@ -230,6 +231,7 @@ function viewSetup() {
     return `<div class="card setup-step${ok ? ' ok' : ''}">
       <div class="ss-head"><span class="ss-num">${ok ? I.check : i + 1}</span><b>${s.title}</b></div>
       <div class="small muted" style="margin:6px 0 10px">${s.text}</div>
+      ${s.scopes ? `<div class="copyrow"><code>googlehealth.* (4) + drive.appdata</code><button class="btn small secondary" data-act="copy" data-v="${esc(auth.SCOPES.filter((x) => x.startsWith('https://')).join(','))}">Kopieer</button></div>` : ''}
       ${s.copy ? `<div class="copyrow"><code>${esc(location.origin)}</code><button class="btn small secondary" data-act="copy" data-v="${esc(location.origin)}">Kopieer</button></div>
       <div class="copyrow"><code>${esc(uri)}</code><button class="btn small secondary" data-act="copy" data-v="${esc(uri)}">Kopieer</button></div>` : ''}
       ${s.links.map(([l, href]) => `<a class="btn${ok ? ' secondary' : ''}" href="${href}" target="_blank" rel="noopener" data-step="${s.id}">${l} ↗</a>`).join('')}
@@ -239,7 +241,7 @@ function viewSetup() {
   <div class="content fade-in">
     ${needHome ? `<div class="card" style="border:1.5px solid var(--accent)"><b>Eerst: zet Pulse op je beginscherm</b>
       <div class="small muted" style="margin-top:6px">Tik onderin Safari op het deelknopje <b>⬆︎</b> → <b>Zet op beginscherm</b> → <b>Voeg toe</b>. Open daarna Pulse vanaf je beginscherm en doe daar de stappen hieronder.</div></div>` : ''}
-    <p class="small muted" style="margin:0 2px 12px">Eenmalig, ±5 minuten. Elke knop opent de juiste Google-pagina; log in met het Google-account van je Fitbit. Kom daarna terug naar deze app.</p>
+    <p class="small muted" style="margin:0 2px 12px">Eenmalig, ±5 minuten. Elke knop opent de juiste Google-pagina; gebruik het Google-account van je Fitbit Air. Kom na elke stap terug naar deze app. Heb je de <b>Google Health</b>-app met dat account al eens geopend? Zo niet, doe dat eerst.</p>
     ${SETUP_STEPS.map(step).join('')}
     <div class="card setup-step">
       <div class="ss-head"><span class="ss-num">${SETUP_STEPS.length + 1}</span><b>Plak de Client ID en log in</b></div>

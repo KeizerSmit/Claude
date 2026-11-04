@@ -25,6 +25,9 @@ async function request(url, { method = 'GET', body, headers = {}, raw = false } 
     try { text = await res.text(); } catch { /* */ }
     let msg = `${res.status}`;
     try { msg = JSON.parse(text).error?.message || msg; } catch { /* */ }
+    if (/ACCOUNT_NOT_LINKED|FAILED_PRECONDITION/.test(text)) msg = 'Je Google-account heeft nog geen Google Health-profiel. Open de Google Health-app één keer met dit account en probeer opnieuw.';
+    else if (res.status === 403 && /SERVICE_DISABLED|has not been used|disabled/i.test(text)) msg = 'Deze Google-koppeling staat nog uit in je Cloud-project (stap 2 van Instellen).';
+    else if (res.status === 403 && /scope|insufficient/i.test(text)) msg = 'Toestemming ontbreekt. Log opnieuw in en vink alles aan (of controleer stap 5 van Instellen).';
     throw new ApiError(msg, res.status, text);
   }
   if (raw) return res;
