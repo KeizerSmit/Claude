@@ -1,10 +1,12 @@
 import * as store from './store.js';
 import * as auth from './auth.js';
-import { syncAll } from './sync.js';
+import { syncAll, syncHeartNow } from './sync.js';
 import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
-import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES } from './metrics.js';
+import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp } from './metrics.js';
 import { parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
-import { ring, bars, line, hrDay, hypnogram, stackBar, spark } from './charts.js';
+import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts } from './charts.js';
+import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle } from './interact.js';
+import { live as liveState, onLive, connect as liveConnect, disconnect as liveDisconnect, current as liveCurrent, liveRmssd, sessionStats as liveSession, bluetoothSupported } from './live.js';
 import { generateDemo } from './demo.js';
 import { I, INSIGHT_ICON } from './icons.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort } from './util.js';
@@ -95,38 +97,109 @@ function applyTheme() {
 
 // ---------------------------------------------------------------- sync
 
-async function runSync({ full = false, interactive = true } = {}) {
+async function runSync({ full = false, interactive = true, quiet = false, todayOnly = false } = {}) {
   if (S.syncing) return;
-  if (store.isDemo()) { toast('Demomodus: geen synchronisatie'); return; }
+  if (store.isDemo()) { if (!quiet) toast('Demomodus: geen synchronisatie'); return; }
   if (!auth.getToken('health')) {
     if (!auth.getClientId()) { location.hash = '#/setup'; return; }
     if (interactive) auth.login({ silent: auth.hasEverLoggedIn() });
     return;
   }
-  S.syncing = true; S.syncError = null; S.progress = { text: 'Verbinden…', frac: 0.01 };
-  render();
+  S.syncing = true; S.syncError = null;
+  if (!quiet) { S.progress = { text: 'Verbinden…', frac: 0.01 }; render(); }
   try {
-    await syncAll({ full, onProgress: (text, frac) => { S.progress = { text, frac }; updateProgress(); } });
+    await syncAll({ full, todayOnly, onProgress: quiet ? () => {} : (text, frac) => { S.progress = { text, frac }; updateProgress(); } });
     try { await syncStrength(); } catch (e) { console.warn('Drive', e); }
     S.days = await store.days.all();
     S.profile = (await store.kv.get('profile')) || null;
     recompute();
     const log = (await store.kv.get('syncLog'))?.log || [];
     const failed = log.filter((l) => !l.ok);
-    toast(failed.length ? `Gesynchroniseerd, ${failed.length} onderdeel mislukt` : 'Gesynchroniseerd');
+    if (!quiet) toast(failed.length ? `Gesynchroniseerd, ${failed.length} onderdeel mislukt` : 'Gesynchroniseerd');
   } catch (e) {
     if (e instanceof AuthError) {
       S.syncError = 'Je sessie is verlopen.';
       if (auth.canTrySilent('health')) { auth.login({ silent: true }); return; }
     } else S.syncError = e.message;
-    toast('Synchroniseren mislukt');
+    if (!quiet) toast('Synchroniseren mislukt');
   } finally {
     S.syncing = false; S.progress = null; S.diag = null;
     S.lastSyncAt = await store.kv.get('lastSyncAt');
     S.syncLog = await store.kv.get('syncLog');
-    render();
+    softRender(!quiet);
   }
 }
+
+/** Opnieuw tekenen zonder de gebruiker te storen (niet tijdens scrubben, typen of een open sheet). */
+function softRender(force = false) {
+  if (force) { render(); return; }
+  if (isSheetOpen() || document.querySelector('.chartwrap.scrub')) return;
+  const ae = document.activeElement;
+  if (ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName)) return;
+  const y = window.scrollY;
+  render();
+  window.scrollTo(0, y);
+}
+
+// ---------------------------------------------------------------- elke minuut verversen
+
+let tick = 0;
+async function minuteTick() {
+  if (document.visibilityState !== 'visible' || store.isDemo() || S.syncing) return;
+  if (!auth.getToken('health')) {
+    // Sleutel verlopen (na ~1 uur): stil vernieuwen.
+    if (auth.hasEverLoggedIn() && auth.getClientId() && auth.canTrySilent('health') && !isSheetOpen()) auth.login({ silent: true });
+    return;
+  }
+  tick++;
+  try {
+    if (tick % 5 === 0) { await runSync({ quiet: true, todayOnly: true }); }
+    else {
+      const { day } = await syncHeartNow();
+      const i = S.days.findIndex((d) => d.date === day.date);
+      if (i >= 0) S.days[i] = { ...S.days[i], ...day }; else S.days.push(day);
+      recompute();
+    }
+    S.liveTickAt = Date.now();
+    const r = parseRoute();
+    if (['today', 'live', 'strain', ''].includes(r.name) || !r.name) softRender();
+  } catch (e) { console.warn('minuut-sync', e); }
+}
+setInterval(minuteTick, 60000);
+
+// Realtime (Bluetooth): elke seconde alleen de live-onderdelen bijwerken.
+let liveFrame = 0;
+let liveMode = 'idle';
+onLive(() => {
+  const now = Date.now();
+  if (liveState.state !== liveMode) {
+    // Modus gewijzigd (verbonden/verbroken): hele pagina opnieuw opbouwen.
+    liveMode = liveState.state;
+    softRender();
+    return;
+  }
+  if (now - liveFrame < 900) return;
+  liveFrame = now;
+  const bpm = liveCurrent();
+  document.querySelectorAll('[data-live-bpm]').forEach((el) => { el.innerHTML = `${bpm ?? '–'}<small>bpm</small>`; });
+  document.querySelectorAll('.heart.beat').forEach((el) => { if (bpm) el.style.setProperty('--beat', `${Math.max(0.3, 60 / bpm)}s`); });
+  const chart = document.querySelector('[data-live-chart]');
+  if (chart && liveState.state === 'live') chart.innerHTML = liveLine(liveState.samples, { maxHr: S.computed.maxHr });
+  const sess = document.querySelector('[data-live-session]');
+  if (sess) {
+    const raw = S.days.find((d) => d.date === today());
+    sess.innerHTML = liveSessionHtml(liveSession(S.computed.maxHr, raw?.rhr || 60, S.settings.sex === 'v'), liveRmssd());
+  }
+  const zone = document.querySelector('[data-live-zone]');
+  if (zone && bpm) {
+    const f = bpm / S.computed.maxHr;
+    const z = f >= 0.9 ? 5 : f >= 0.8 ? 4 : f >= 0.7 ? 3 : f >= 0.6 ? 2 : f >= 0.5 ? 1 : 0;
+    zone.style.background = z ? `var(--z${z})` : 'var(--card2)';
+    zone.textContent = `${z ? `Zone ${z}` : 'Rust'} · ${Math.round(f * 100)}% van max`;
+  }
+  const age = document.querySelector('.live-sub[data-live-age]');
+  if (age && liveState.state === 'live') age.innerHTML = `<span class="badge-live">LIVE</span> realtime via ${esc(liveState.deviceName || 'Bluetooth')}`;
+});
 
 function updateProgress() {
   const bar = document.querySelector('.syncbar span');
@@ -253,6 +326,121 @@ function viewSetup() {
   </div>`;
 }
 
+// ---------------------------------------------------------------- Vandaag
+
+function weekStrip(date, base = '#/today') {
+  const d = parseYmd(date);
+  const mon = addDays(date, -((d.getDay() + 6) % 7));
+  const days = Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+  const t = today();
+  const next = addDays(date, 7) > t ? t : addDays(date, 7);
+  return `<div class="weekstrip">
+    <button class="ws-nav" data-go="${base}/${addDays(date, -7)}" aria-label="Vorige week">${I.left}</button>
+    ${days.map((x) => {
+      const rec = M(x)?.recovery?.score;
+      const fut = x > t;
+      return `<button class="ws-day${x === date ? ' on' : ''}${x === t ? ' is-today' : ''}" ${fut ? 'disabled' : ''} data-go="${base}/${x}"><span class="ws-w">${weekdayShort(x)}</span><span class="ws-n">${parseYmd(x).getDate()}</span><span class="ws-dot" style="background:${rec != null ? recoveryColor(rec) : 'transparent'}"></span></button>`;
+    }).join('')}
+    <button class="ws-nav" data-go="${base}/${next}" ${date >= t ? 'disabled' : ''} aria-label="Volgende week">${I.right}</button>
+  </div>`;
+}
+
+const INSIGHT_GO = { info: 'recovery', bolt: 'recovery', gauge: 'recovery', bed: 'recovery', up: 'recovery', down: 'recovery', heart: 'recovery', temp: 'recovery', moon: 'sleep', target: 'strain' };
+
+/** Laatste hartslag: Bluetooth (realtime) of laatste gesynchroniseerde minuut. */
+function latestHr() {
+  const bpm = liveCurrent();
+  if (bpm) return { bpm, at: Date.now(), source: 'ble' };
+  const day = S.days.find((d) => d.date === today());
+  if (!day?.hr?.length) return null;
+  let i = day.hr.length - 1;
+  while (i >= 0 && !day.hr[i]) i--;
+  if (i < 0) return null;
+  return { bpm: day.hr[i], at: day.hrStart + i * 60000, source: 'sync', day, idx: i };
+}
+
+function ageText(ms) {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 90) return 'zojuist';
+  if (s < 3600) return `${Math.round(s / 60)} min geleden`;
+  return `${Math.floor(s / 3600)} u ${Math.round((s % 3600) / 60)} min geleden`;
+}
+
+function heartIcon(bpm, size = 22) {
+  const dur = bpm ? Math.max(0.3, 60 / bpm) : 1;
+  return `<span class="heart${bpm ? ' beat' : ''}" style="--beat:${dur}s;width:${size}px;height:${size}px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.4l-1.4-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.6L12 21.4z"/></svg></span>`;
+}
+
+function liveTile() {
+  const h = latestHr();
+  const isLive = h?.source === 'ble';
+  const fresh = h && Date.now() - h.at < 6 * 60000;
+  let sp = '';
+  if (isLive) sp = spark(liveState.samples.slice(-120).map((s) => s.bpm), { color: 'var(--hr)', w: 120, h: 34, fill: true });
+  else if (h?.day) sp = spark(h.day.hr.slice(Math.max(0, h.idx - 120), h.idx + 1).map((v) => v || null), { color: 'var(--hr)', w: 120, h: 34, fill: true });
+  return `<button class="tile wide hrtile" data-go="#/live">
+    <div class="tile-l">${heartIcon(isLive || fresh ? h?.bpm : null, 18)} Hartslag ${isLive ? '<span class="badge-live">LIVE</span>' : ''}</div>
+    <div class="hr-row"><div class="tile-v" data-live-bpm>${h ? h.bpm : '–'}<small>bpm</small></div><div class="hr-spark">${sp}</div></div>
+    <div class="tile-d" data-live-age>${h ? (isLive ? `realtime via ${esc(liveState.deviceName || 'Bluetooth')}` : ageText(h.at)) : 'Nog geen meting vandaag'}</div>
+  </button>`;
+}
+
+// Gezondheidsstatistieken: definities + uitleg.
+const METRICS = {
+  hrv: { label: 'HRV', unit: 'ms', digits: 0, color: 'var(--green)', higher: true, get: (m) => m?.recovery?.hrv ?? m?.raw?.hrv ?? null, base: (m) => m?.recovery?.baseline?.hrv,
+    about: 'Hartslagvariabiliteit (RMSSD) gemeten tijdens je slaap: de variatie in tijd tussen hartslagen. Een hogere HRV dan normaal betekent dat je zenuwstelsel ontspannen en hersteld is.',
+    why: 'De belangrijkste factor in je herstelscore (50%). Vergelijk vooral met je eigen baseline, niet met anderen.' },
+  rhr: { label: 'Rusthartslag', unit: 'bpm', digits: 0, color: 'var(--hr)', higher: false, get: (m) => m?.recovery?.rhr ?? m?.raw?.rhr ?? null, base: (m) => m?.recovery?.baseline?.rhr,
+    about: 'Je hartslag in rust tijdens de non-REM-slaap. Lager is meestal beter: je hart hoeft minder hard te werken.',
+    why: 'Een paar slagen hoger dan normaal kan wijzen op vermoeidheid, alcohol, stress of een beginnende verkoudheid.' },
+  resp: { label: 'Ademhaling', unit: '/min', digits: 1, color: 'var(--z1)', higher: false, get: (m) => m?.raw?.resp ?? null, base: (m) => m?.recovery?.baseline?.resp,
+    about: 'Gemiddeld aantal ademhalingen per minuut tijdens je slaap. Dit is bij de meeste mensen erg stabiel.',
+    why: 'Een plotselinge stijging (≥1 per minuut) is vaak een vroeg teken van ziekte.' },
+  spo2: { label: 'Zuurstof', unit: '%', digits: 1, color: 'var(--accent)', higher: true, get: (m) => m?.raw?.spo2 ?? null,
+    about: 'Gemiddelde zuurstofverzadiging van je bloed tijdens de slaap (SpO₂). Normaal ligt dit tussen 95 en 100%.',
+    why: 'Langdurig lagere waarden kunnen wijzen op ademhalingsonderbrekingen of hoogte.' },
+  temp: { label: 'Huidtemp.', unit: '°C', digits: 1, signed: true, color: 'var(--muscle)', higher: null, get: (m) => m?.raw?.tempDev ?? null, base: () => 0,
+    about: 'Afwijking van je huidtemperatuur tijdens de slaap ten opzichte van je eigen baseline.',
+    why: 'Meer dan +0,5 °C kan wijzen op ziekte, een zware dag of (bij vrouwen) de cyclus.' },
+  steps: { label: 'Stappen', unit: '', digits: 0, color: 'var(--muscle)', higher: true, get: (m) => m?.raw?.steps ?? null,
+    about: 'Totaal aantal stappen op deze dag.', why: 'Dagelijkse beweging buiten je trainingen telt mee in je strain.' },
+};
+
+function metricBase(key, date) {
+  const def = METRICS[key];
+  const m = M(date);
+  const b = def.base ? def.base(m) : null;
+  if (b != null) return b;
+  const vals = lastDays(S.computed.byDate, addDays(date, -1), 30).map((d) => def.get(d)).filter((v) => v != null);
+  return vals.length >= 3 ? mean(vals) : null;
+}
+
+function fmtMetric(key, v) {
+  const def = METRICS[key];
+  if (v == null) return '–';
+  return `${def.signed && v >= 0 ? '+' : ''}${num(v, def.digits)}`;
+}
+
+function metricTile(key, date) {
+  const def = METRICS[key];
+  const m = M(date);
+  const v = def.get(m);
+  const base = metricBase(key, date);
+  const week = lastDays(S.computed.byDate, date, 7).map((d) => def.get(d));
+  let chip = '';
+  if (v != null && base != null && def.higher !== undefined) {
+    const d = v - base;
+    const small = Math.abs(d) < Math.pow(10, -def.digits) * (def.digits ? 3 : 1);
+    const good = def.higher == null ? Math.abs(d) < 0.5 : def.higher ? d > 0 : d < 0;
+    chip = small ? '<span class="chip-d">normaal</span>' : `<span class="chip-d ${good ? 'good' : 'bad'}">${d > 0 ? '▲' : '▼'} ${num(Math.abs(d), def.digits)}</span>`;
+  }
+  return `<button class="tile" data-sheet="metric:${key}:${date}">
+    <div class="tile-l">${def.label}</div>
+    <div class="tile-v">${fmtMetric(key, v)}${v != null && def.unit ? `<small>${def.unit}</small>` : ''}</div>
+    <div class="tile-f">${chip}${spark(week, { color: def.color, w: 54, h: 20 })}</div>
+  </button>`;
+}
+
 function viewToday(date) {
   const m = M(date);
   const t = date === today();
@@ -262,50 +450,157 @@ function viewToday(date) {
   const raw = m?.raw || S.days.find((d) => d.date === date);
   const ins = insights(m);
   const recColor = recoveryColor(rec?.score);
+  const zoneTxt = { green: 'Goed hersteld', yellow: 'Redelijk hersteld', red: 'Rust nodig' }[recoveryZone(rec?.score)] || '';
 
-  const rings = `<div class="rings">
-    <button class="r" data-go="#/recovery/${date}">${ring({ frac: (rec?.score || 0) / 100, color: recColor, label: rec ? `${rec.score}%` : '–', size: 104, stroke: 10 })}<span class="name">Herstel</span></button>
-    <button class="r" data-go="#/strain/${date}">${ring({ frac: (strain?.score || 0) / 21, color: 'var(--strain)', label: strain ? fmtStrain(strain.score) : '–', size: 104, stroke: 10, target: m?.target ? [m.target[0] / 21, m.target[1] / 21] : null })}<span class="name">Strain</span></button>
-    <button class="r" data-go="#/sleep/${date}">${ring({ frac: sleep?.perf || 0, color: 'var(--sleep)', label: sleep ? pct(sleep.perf) : '–', size: 104, stroke: 10 })}<span class="name">Slaap</span></button>
+  const rings = `<div class="rings card-lift">
+    <button class="r" data-go="#/recovery/${date}">${ring({ frac: (rec?.score || 0) / 100, color: recColor, label: rec ? `${rec.score}%` : '–', size: 104, stroke: 10, glow: true })}<span class="name">Herstel</span><span class="cap">${esc(zoneTxt || (rec?.calibrating ? 'kalibreren' : ''))}</span></button>
+    <button class="r" data-go="#/strain/${date}">${ring({ frac: (strain?.score || 0) / 21, color: 'var(--strain)', label: strain ? fmtStrain(strain.score) : '–', size: 104, stroke: 10, glow: true, target: m?.target ? [m.target[0] / 21, m.target[1] / 21] : null })}<span class="name">Strain</span><span class="cap">${m?.target ? `doel ${fmtStrain(m.target[0])}–${fmtStrain(m.target[1])}` : esc(strainLabel(strain?.score))}</span></button>
+    <button class="r" data-go="#/sleep/${date}">${ring({ frac: sleep?.perf || 0, color: 'var(--sleep)', label: sleep ? pct(sleep.perf) : '–', size: 104, stroke: 10, glow: true })}<span class="name">Slaap</span><span class="cap">${sleep ? `${fmtHM(sleep.asleep)} / ${fmtHM(sleep.need)}` : ''}</span></button>
   </div>`;
 
-  const insightsCard = ins.length ? `<div class="card">${ins.slice(0, 4).map((i) => `<div class="insight"><div class="ic">${INSIGHT_ICON[i.icon] || I.info}</div><p>${esc(i.text)}</p></div>`).join('')}</div>` : '';
+  const insightsCard = ins.length ? `<div class="list">${ins.slice(0, 4).map((i) => `<button class="row tap insight" data-go="#/${INSIGHT_GO[i.icon] || 'recovery'}/${date}"><div class="ic">${INSIGHT_ICON[i.icon] || I.info}</div><div class="grow"><p>${esc(i.text)}</p></div><span class="chev">${I.chev}</span></button>`).join('')}</div>` : '';
 
   const acts = [];
   for (const s of strain?.sessions || []) {
-    acts.push(`<button class="row tap" data-go="#/session/${s.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(s.name || 'Krachttraining')}</div><div class="sub">${s.exercises.length} oefeningen · spierbelasting ${num(s.load, 1)}${s.activity ? ` · ${fmtDur(s.activity.duration)}, gem. ${num(s.activity.avgHr)} bpm` : ''}</div></div><div class="val" style="color:var(--muscle)">+${num(s.muscularTrimp, 0)}</div><span class="chev">${I.chev}</span></button>`);
+    acts.push(`<button class="row tap" data-go="#/session/${s.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(s.name || 'Krachttraining')}</div><div class="sub">${s.exercises.length} oefeningen${s.activity ? ` · ${fmtDur(s.activity.duration)} · gem. ${num(s.activity.avgHr)} bpm` : ''}</div></div><div class="val"><b style="color:var(--muscle)">+${num(s.muscularTrimp, 0)}</b></div><span class="chev">${I.chev}</span></button>`);
   }
   for (const a of strain?.activities || []) {
     if (a.linked) continue;
-    acts.push(`<button class="row tap" data-go="#/strain/${date}"><div class="badge" style="background:var(--strain)">${/run|loop/i.test(a.type + a.name) ? I.run : I.flame}</div><div class="grow"><div class="title">${esc(a.name)}</div><div class="sub">${fmtTime(a.start)} · ${fmtDur(a.duration)}${a.avgHr ? ` · gem. ${num(a.avgHr)} bpm` : ''}</div></div><div class="val">${fmtStrain(a.strain)}</div><span class="chev">${I.chev}</span></button>`);
+    acts.push(`<button class="row tap" data-sheet="activity:${date}:${esc(a.id)}"><div class="badge" style="background:var(--strain)">${/run|loop/i.test(a.type + a.name) ? I.run : I.flame}</div><div class="grow"><div class="title">${esc(a.name)}</div><div class="sub">${fmtTime(a.start)} · ${fmtDur(a.duration)}${a.avgHr ? ` · gem. ${num(a.avgHr)} bpm` : ''}</div></div><div class="val"><b style="color:var(--strain)">${fmtStrain(a.strain)}</b></div><span class="chev">${I.chev}</span></button>`);
   }
 
-  const stats = raw ? `<div class="stats">
-    ${stat('HRV', num(rec?.hrv), 'ms', deltaText(rec?.hrv, rec?.baseline?.hrv, ' ms'), '', `#/recovery/${date}`)}
-    ${stat('Rusthartslag', num(rec?.rhr), 'bpm', deltaText(rec?.rhr, rec?.baseline?.rhr, '', 0, false), '', `#/recovery/${date}`)}
-    ${stat('Slaap', sleep ? fmtHM(sleep.asleep) : '–', '', sleep ? `behoefte ${fmtHM(sleep.need)}` : '', '', `#/sleep/${date}`)}
-    ${stat('Ademhaling', num(raw.resp, 1), '/min', deltaText(raw.resp, rec?.baseline?.resp, '', 1, false), '', `#/day/${date}`)}
-    ${stat('Stappen', num(raw.steps), '', '', '', `#/day/${date}`)}
-    ${stat('Huidtemp.', raw.tempDev != null ? (raw.tempDev >= 0 ? '+' : '') + num(raw.tempDev, 1) : '–', '°C', raw.spo2 ? `SpO₂ ${num(raw.spo2, 1)}%` : '', '', `#/day/${date}`)}
-  </div>` : '';
-
   const empty = !raw && !strain?.sessions?.length;
-  const lastSync = S.lastSyncAt ? `Laatst gesynchroniseerd ${fmtRel(S.lastSyncAt)}` : '';
-
-  return `${largeTitle(fmtDayTitle(date), '', `${syncBtn()}${avatar()}`)}
+  return `${largeTitle(fmtDayTitle(date), t ? fmtDateLong(date) : `${fmtDateLong(date)}`, `${syncBtn()}${avatar()}`)}
   ${syncHeader()}
   ${S.syncError ? `<div class="card small" style="color:var(--red)">${esc(S.syncError)} <a href="#" data-act="relogin">Opnieuw inloggen</a></div>` : ''}
   ${t ? syncProblemCard() : ''}
-  ${dayNav(date, '#/today')}
-  <div class="fade-in">
+  ${weekStrip(date)}
+  <div data-swipe data-base="#/today" data-date="${date}">
   ${rings}
-  ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Tik op ↻ om te synchroniseren.'}</div>` : ''}
+  ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Trek omlaag om te synchroniseren.'}</div>` : ''}
   ${insightsCard}
-  ${!empty ? `<div class="section-title">Activiteiten <button data-go="#/log/new/${date}">+ Kracht</button></div>
-  <div class="list">${acts.length ? acts.join('') : `<div class="row"><div class="grow muted small">Geen activiteiten. Log je krachttraining met “+ Kracht”.</div></div>`}</div>` : `<button class="btn secondary" data-go="#/log/new/${date}">${I.plus} Krachttraining loggen</button>`}
-  ${stats ? `<div class="section-title">Statistieken <a href="#/day/${date}">Alle data</a></div>${stats}` : ''}
-  <p class="center tiny muted mt">${esc(lastSync)}</p>
+  <div class="section-title">Activiteiten <button data-go="#/log/new/${date}">+ Kracht</button></div>
+  <div class="list">${acts.length ? acts.join('') : `<button class="row tap" data-go="#/log/new/${date}"><div class="badge" style="background:var(--card2);color:var(--muscle)">${I.plus}</div><div class="grow"><div class="title">Krachttraining loggen</div><div class="sub">Telt mee in je strain</div></div><span class="chev">${I.chev}</span></button>`}</div>
+  <div class="section-title">Gezondheid <a href="#/day/${date}">Alle data</a></div>
+  <div class="tiles">
+    ${t ? liveTile() : ''}
+    ${['hrv', 'rhr', 'resp', 'spo2', 'temp', 'steps'].map((k) => metricTile(k, date)).join('')}
+  </div>
+  <p class="center tiny muted mt">${S.lastSyncAt ? `Bijgewerkt ${esc(fmtRel(S.lastSyncAt))}` : ''}${S.liveTickAt && t ? ` · hartslag ${esc(fmtRel(S.liveTickAt))}` : ''}</p>
   </div>`;
+}
+
+// ---------------------------------------------------------------- sheets
+
+function metricSheet(key, date, range = 30) {
+  const def = METRICS[key];
+  const m = M(date);
+  const v = def.get(m);
+  const base = metricBase(key, date);
+  const pts = lastDays(S.computed.byDate, date, range).map((d) => ({ date: d.date, value: def.get(d), go: `#/today/${d.date}` }));
+  const vals = pts.map((p) => p.value).filter((x) => x != null);
+  const sdv = vals.length > 2 ? Math.sqrt(vals.reduce((a, x) => a + (x - mean(vals)) ** 2, 0) / (vals.length - 1)) : null;
+  const band = base != null && sdv ? [base - sdv, base + sdv] : null;
+  let deltaLine = '';
+  if (v != null && base != null) {
+    const d = v - base;
+    const good = def.higher == null ? Math.abs(d) < 0.5 : def.higher ? d >= 0 : d <= 0;
+    deltaLine = `<div class="sh-delta ${good ? 'good' : 'bad'}">${d > 0 ? '▲' : d < 0 ? '▼' : '='} ${num(Math.abs(d), def.digits)} ${def.unit} t.o.v. je normaal (${fmtMetric(key, base)} ${def.unit})</div>`;
+  }
+  return `<div class="sh-head"><div class="eyebrow">${esc(fmtDateLong(date))}</div><h2>${def.label}</h2></div>
+    <div class="sh-big" style="color:${def.color}">${fmtMetric(key, v)}<small>${def.unit}</small></div>
+    ${deltaLine}
+    <div class="segmented mt">${[7, 30, 90].map((r) => `<button class="${r === range ? 'on' : ''}" data-act="msheet" data-v="${key}:${date}:${r}">${r === 7 ? '7 dagen' : r === 30 ? '30 dagen' : '90 dagen'}</button>`).join('')}</div>
+    <div class="card flat">${line(pts, { color: def.color, band, fmt: (x) => fmtMetric(key, x), unit: def.unit ? ` ${def.unit}` : '', dots: range <= 30 })}
+      <div class="legend"><span><i style="background:var(--band)"></i>normale bandbreedte</span><span>tik op een dag om te openen</span></div></div>
+    <div class="stats three">
+      ${stat('Gemiddeld', fmtMetric(key, mean(vals)), def.unit)}
+      ${stat('Laagste', vals.length ? fmtMetric(key, Math.min(...vals)) : '–', def.unit)}
+      ${stat('Hoogste', vals.length ? fmtMetric(key, Math.max(...vals)) : '–', def.unit)}
+    </div>
+    <div class="card flat mt"><div class="small"><b>Wat is het?</b><br>${def.about}</div><div class="small mt"><b>Waarom het ertoe doet</b><br>${def.why}</div></div>`;
+}
+
+function activitySheet(date, id) {
+  const m = M(date);
+  const a = (m?.strain?.activities || []).find((x) => String(x.id) === String(id));
+  if (!a) return '<div class="muted">Niet gevonden.</div>';
+  const raw = m.raw;
+  const from = Math.max(0, Math.floor((a.start - raw.hrStart) / 60000) - 10);
+  const to = Math.min(1440, Math.ceil((a.end - raw.hrStart) / 60000) + 10);
+  return `<div class="sh-head"><div class="eyebrow">${esc(fmtDateLong(date))} · ${fmtTime(a.start)}–${fmtTime(a.end)}</div><h2>${esc(a.name)}</h2></div>
+    <div class="sh-big" style="color:var(--strain)">${fmtStrain(a.strain)}<small>strain</small></div>
+    <div class="stats mt">
+      ${stat('Duur', fmtDur(a.duration))}
+      ${stat('Gem. hartslag', a.avgHr ? num(a.avgHr) : '–', 'bpm')}
+      ${stat('Max. hartslag', a.maxHr ? num(a.maxHr) : '–', 'bpm')}
+      ${stat('Calorieën', a.calories ? num(a.calories) : '–', 'kcal')}
+    </div>
+    <div class="card flat mt">${hrDay(raw, { maxHr: S.computed.maxHr, activities: [a], fromMin: from, toMin: to })}</div>`;
+}
+
+function openSheetFor(spec) {
+  const [kind, ...rest] = spec.split(':');
+  if (kind === 'metric') openSheet(metricSheet(rest[0], rest[1], Number(rest[2]) || 30));
+  else if (kind === 'activity') openSheet(activitySheet(rest[0], rest.slice(1).join(':')));
+}
+
+// ---------------------------------------------------------------- Live
+
+function viewLive() {
+  const st = liveState;
+  const h = latestHr();
+  const ble = st.state === 'live' || st.state === 'lost';
+  const max = S.computed.maxHr;
+  const raw = S.days.find((d) => d.date === today());
+  const rest = raw?.rhr || M(today())?.recovery?.baseline?.rhr || 60;
+  const pctMax = h ? h.bpm / max : null;
+  const zone = pctMax == null ? null : pctMax >= 0.9 ? 5 : pctMax >= 0.8 ? 4 : pctMax >= 0.7 ? 3 : pctMax >= 0.6 ? 2 : pctMax >= 0.5 ? 1 : 0;
+  const vals = (raw?.hr || []).filter(Boolean);
+  const nowMin = Math.floor((Date.now() - (raw?.hrStart || 0)) / 60000);
+  const sess = ble ? liveSession(max, rest, S.settings.sex === 'v') : null;
+  const rm = ble ? liveRmssd() : null;
+  const supported = bluetoothSupported();
+  return `${navbar('Hartslag', '#/today')}
+  <div class="content">
+    <div class="live-hero card-lift">
+      ${heartIcon(h && (ble || Date.now() - h.at < 6 * 60000) ? h.bpm : null, 54)}
+      <div class="live-bpm" data-live-bpm>${h ? h.bpm : '–'}<small>bpm</small></div>
+      <div class="live-sub" data-live-age>${h ? (ble ? `<span class="badge-live">LIVE</span> realtime via ${esc(st.deviceName || 'Bluetooth')}` : `Laatste meting ${esc(ageText(h.at))}`) : 'Nog geen meting vandaag'}</div>
+      ${zone != null ? `<div class="zone-pill" data-live-zone style="background:${zone ? `var(--z${zone})` : 'var(--card2)'}">${zone ? `Zone ${zone}` : 'Rust'} · ${Math.round(pctMax * 100)}% van max</div>` : ''}
+    </div>
+    <div class="card"><div class="card-head"><span class="t">${ble ? 'Laatste 5 minuten' : 'Laatste 3 uur'}</span><span class="small muted">${ble ? 'per hartslag' : 'per minuut'}</span></div>
+      <div data-live-chart>${ble ? liveLine(st.samples, { maxHr: max }) : raw?.hr ? hrDay({ ...raw }, { maxHr: max, fromMin: Math.max(0, nowMin - 180), toMin: Math.max(60, nowMin + 2), live: true, height: 160 }) : '<div class="empty-chart">Nog geen hartslag vandaag</div>'}</div></div>
+    <div class="stats three">
+      ${stat('Rust', num(rest), 'bpm')}
+      ${stat('Gem. vandaag', vals.length ? num(mean(vals)) : '–', 'bpm')}
+      ${stat('Max. vandaag', vals.length ? num(Math.max(...vals)) : '–', 'bpm')}
+    </div>
+    ${ble ? `<div class="section-title">Deze sessie</div>
+      <div class="card" data-live-session>${liveSessionHtml(sess, rm)}</div>` : ''}
+    <div class="section-title">Realtime via Bluetooth</div>
+    ${supported ? `<div class="card">
+        <div class="small muted">Zet in de <b>Google Health-app</b> → <b>Verbindingen</b> → <b>Hartslag delen</b> aan, houd je Fitbit Air dichtbij en tik hieronder. Je ziet dan elke hartslag direct, plus je live HRV.</div>
+        ${st.state === 'live' || st.state === 'lost' ? `<button class="btn danger mt" data-act="ble-off">Verbinding verbreken</button>` : `<button class="btn mt" data-act="ble-on" ${st.state === 'connecting' ? 'disabled' : ''}>${st.state === 'connecting' ? 'Verbinden…' : `${heartIcon(null, 18)} Verbind Fitbit Air`}</button>`}
+        ${st.error ? `<div class="small mt" style="color:var(--red)">${esc(st.error)}</div>` : ''}
+      </div>`
+      : `<div class="card"><div class="small"><b>Safari ondersteunt geen Bluetooth.</b> Zonder Bluetooth ververst Pulse je hartslag elke minuut met wat de Google Health-app heeft gesynchroniseerd.</div>
+        <div class="small muted mt">Voor <b>echte realtime</b> (elke hartslag): open Pulse op je iPhone in de gratis browser <b>Bluefy</b>, of in Chrome op Android/Mac. Zet daarnaast in de Google Health-app → Verbindingen → <b>Hartslag delen</b> aan.</div>
+        <div class="btn-row mt"><a class="btn small" href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener">Bluefy ↗</a><button class="btn small secondary" data-act="copy" data-v="${esc(location.origin + location.pathname)}#/live">Kopieer link</button></div></div>`}
+  </div>`;
+}
+
+function liveSessionHtml(sess, rm) {
+  if (!sess) return '';
+  const tot = sess.zones.reduce((a, b) => a + b, 0) || 1;
+  return `<div class="stats three">
+      ${stat('Duur', `${Math.floor(sess.durSec / 60)}:${pad(Math.floor(sess.durSec % 60))}`)}
+      ${stat('Gemiddeld', sess.avg ? num(sess.avg) : '–', 'bpm')}
+      ${stat('Live HRV', rm ? num(rm) : '–', 'ms')}
+    </div>
+    <div class="mt">${stackBar(ZONES.map((z, i) => ({ value: sess.zones[i], color: z.color })), { height: 10 })}</div>
+    <div class="legend">${ZONES.map((z, i) => `<span><i style="background:${z.color}"></i>${z.id}: ${Math.floor(sess.zones[i] / 60)}:${pad(Math.floor(sess.zones[i] % 60))}</span>`).join('')}</div>
+    <div class="small muted mt">Strain-bijdrage van deze sessie: <b style="color:var(--strain)">${fmtStrain(strainFromTrimp(sess.trimp))}</b> (max ${num(sess.max)} bpm)</div>`;
 }
 
 function syncProblemCard() {
@@ -341,11 +636,12 @@ function fmtRel(ms) {
   return `${Math.round(d / 1440)} dagen geleden`;
 }
 
-function contribRow(label, value, z, weight, detail) {
+function contribRow(label, value, z, weight, detail, sheet = '') {
   const w = clamp(Math.abs(z) / 3, 0, 1) * 50;
   const color = z >= 0 ? 'var(--green)' : 'var(--red)';
   const style = z >= 0 ? `left:50%;width:${w}%` : `left:${50 - w}%;width:${w}%`;
-  return `<div class="contrib"><div><div>${esc(label)}</div><div class="small muted">${detail}</div></div><div style="text-align:right;font-weight:600">${value}</div><div class="bar"><span style="${style};background:${color}"></span></div></div>`;
+  const attr = !sheet ? '' : sheet.startsWith('#/') ? `data-go="${sheet}"` : `data-sheet="${sheet}"`;
+  return `<div class="contrib${sheet ? ' tap' : ''}" ${attr}><div><div>${esc(label)}</div><div class="small muted">${detail}</div></div><div style="text-align:right;font-weight:600">${value}</div><div class="bar"><span style="${style};background:${color}"></span></div></div>`;
 }
 
 function viewRecovery(date) {
@@ -355,23 +651,23 @@ function viewRecovery(date) {
   const color = recoveryColor(r?.score);
   const zone = recoveryZone(r?.score);
   const zoneText = { green: 'Je bent goed hersteld en klaar om te presteren.', yellow: 'Je lichaam is redelijk hersteld. Train, maar luister naar je lichaam.', red: 'Je lichaam heeft rust nodig. Neem het vandaag rustig.' }[zone] || 'Geen herstelgegevens voor deze dag.';
-  const hrvPts = days30.map((d) => ({ date: d.date, value: d.recovery?.hrv ?? null }));
-  const rhrPts = days30.map((d) => ({ date: d.date, value: d.recovery?.rhr ?? null }));
+  const hrvPts = days30.map((d) => ({ date: d.date, go: `#/recovery/${d.date}`, value: d.recovery?.hrv ?? null }));
+  const rhrPts = days30.map((d) => ({ date: d.date, go: `#/recovery/${d.date}`, value: d.recovery?.rhr ?? null }));
   const hrvBase = r?.baseline?.hrv;
   const contrib = r ? [
-    contribRow('Hartslagvariabiliteit', `${num(r.hrv)} ms`, r.z.hrv, r.weights.hrv, `baseline ${num(hrvBase)} ms`),
-    contribRow('Rusthartslag (slaap)', `${num(r.rhr)} bpm`, r.z.rhr, r.weights.rhr, `baseline ${num(r.baseline.rhr)} bpm`),
-    contribRow('Slaapprestatie', pct(m.sleep?.perf), r.z.sleep, r.weights.sleep, m.sleep ? `${fmtHM(m.sleep.asleep)} van ${fmtHM(m.sleep.need)} nodig` : 'geen slaap'),
-    r.resp != null ? contribRow('Ademhaling', `${num(r.resp, 1)} /min`, r.z.resp, r.weights.resp, `baseline ${num(r.baseline.resp, 1)}`) : '',
-    r.tempDev != null ? contribRow('Huidtemperatuur', `${r.tempDev >= 0 ? '+' : ''}${num(r.tempDev, 1)} °C`, r.z.temp, r.weights.temp, 't.o.v. je baseline') : '',
+    contribRow('Hartslagvariabiliteit', `${num(r.hrv)} ms`, r.z.hrv, r.weights.hrv, `baseline ${num(hrvBase)} ms`, `metric:hrv:${date}`),
+    contribRow('Rusthartslag (slaap)', `${num(r.rhr)} bpm`, r.z.rhr, r.weights.rhr, `baseline ${num(r.baseline.rhr)} bpm`, `metric:rhr:${date}`),
+    contribRow('Slaapprestatie', pct(m.sleep?.perf), r.z.sleep, r.weights.sleep, m.sleep ? `${fmtHM(m.sleep.asleep)} van ${fmtHM(m.sleep.need)} nodig` : 'geen slaap', `#/sleep/${date}`),
+    r.resp != null ? contribRow('Ademhaling', `${num(r.resp, 1)} /min`, r.z.resp, r.weights.resp, `baseline ${num(r.baseline.resp, 1)}`, `metric:resp:${date}`) : '',
+    r.tempDev != null ? contribRow('Huidtemperatuur', `${r.tempDev >= 0 ? '+' : ''}${num(r.tempDev, 1)} °C`, r.z.temp, r.weights.temp, 't.o.v. je baseline', `metric:temp:${date}`) : '',
   ].join('') : '';
   return `${navbar('Herstel', `#/today/${date}`)}
-  <div class="content fade-in">
-  ${dayNav(date, '#/recovery')}
+  <div class="content" data-swipe data-base="#/recovery" data-date="${date}">
+  ${weekStrip(date, '#/recovery')}
   <div class="card hero">${ring({ frac: (r?.score || 0) / 100, color, label: r ? `${r.score}%` : '–', sub: r?.calibrating ? 'kalibreren' : '', size: 190, stroke: 16 })}<div class="big">${esc(zoneText)}</div></div>
   ${r ? `<div class="card"><h2>Wat bepaalt je herstel</h2>${contrib}<p class="tiny muted" style="margin:8px 0 0">Balk naar rechts = beter dan je persoonlijke 30-daagse baseline. HRV weegt het zwaarst (50%), dan rusthartslag en slaap (20% elk).</p></div>` : ''}
   <div class="section-title">Herstel · 30 dagen</div>
-  <div class="card">${bars(days30.map((d) => ({ date: d.date, value: d.recovery?.score ?? null, color: recoveryColor(d.recovery?.score) })), { max: 100, labelEvery: 5, fmt: (v) => `${v}` })}
+  <div class="card">${bars(days30.map((d) => ({ date: d.date, go: `#/recovery/${d.date}`, value: d.recovery?.score ?? null, color: recoveryColor(d.recovery?.score) })), { max: 100, labelEvery: 5, fmt: (v) => `${v}` })}
   <div class="legend"><span><i style="background:var(--green)"></i>67–100</span><span><i style="background:var(--yellow)"></i>34–66</span><span><i style="background:var(--red)"></i>0–33</span><span>gem. ${num(mean(days30.map((d) => d.recovery?.score)))}%</span></div></div>
   <div class="section-title">HRV · 30 dagen</div>
   <div class="card">${line(hrvPts, { color: 'var(--green)', band: hrvBase ? [hrvBase * 0.9, hrvBase * 1.1] : null, fmt: (v) => `${Math.round(v)} ms` })}<div class="legend"><span><i style="background:var(--band)"></i>baseline ±10%</span></div></div>
@@ -389,8 +685,8 @@ function viewStrain(date) {
   const acts = (st?.activities || []);
   const target = m?.target;
   return `${navbar('Strain', `#/today/${date}`)}
-  <div class="content fade-in">
-  ${dayNav(date, '#/strain')}
+  <div class="content" data-swipe data-base="#/strain" data-date="${date}">
+  ${weekStrip(date, '#/strain')}
   <div class="card hero">${ring({ frac: (st?.score || 0) / 21, color: 'var(--strain)', label: st ? fmtStrain(st.score) : '–', sub: strainLabel(st?.score), size: 190, stroke: 16, target: target ? [target[0] / 21, target[1] / 21] : null })}
     <div class="big">${target ? `Optimale strain op basis van je herstel: <b>${fmtStrain(target[0])} – ${fmtStrain(target[1])}</b>` : 'Strain loopt van 0 tot 21 (logaritmisch).'}</div></div>
   <div class="stats">
@@ -405,10 +701,10 @@ function viewStrain(date) {
     <div class="kv mt">${ZONES.map((z, i) => `<div><span class="dot" style="background:${z.color}"></span>&nbsp; ${z.name} <span class="muted small">${Math.round(z.lo * 100)}–${z.hi > 1 ? 100 : Math.round(z.hi * 100)}%</span></div><div>${fmtDur(st?.zones?.[i] || 0)}${zoneTotal ? ` · ${Math.round(((st?.zones?.[i] || 0) / zoneTotal) * 100)}%` : ''}</div>`).join('')}</div></div>
   ${acts.length || st?.sessions?.length ? `<div class="section-title">Activiteiten</div><div class="list">
     ${(st?.sessions || []).map((s) => `<button class="row tap" data-go="#/session/${s.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(s.name || 'Krachttraining')}</div><div class="sub">spierbelasting ${num(s.load, 1)} → +${num(s.muscularTrimp)} punten${s.activity ? ` · cardio ${fmtStrain(s.activity.strain)}` : ''}</div></div><span class="chev">${I.chev}</span></button>`).join('')}
-    ${acts.map((a) => `<div class="row"><div class="badge" style="background:var(--strain)">${/run/i.test(a.type) ? I.run : I.flame}</div><div class="grow"><div class="title">${esc(a.name)}</div><div class="sub">${fmtTime(a.start)}–${fmtTime(a.end)} · ${fmtDur(a.duration)}${a.avgHr ? ` · gem. ${a.avgHr} bpm` : ''}${a.maxHr ? ` · max ${a.maxHr}` : ''}${a.calories ? ` · ${num(a.calories)} kcal` : ''}</div></div><div class="val"><b style="color:var(--strain)">${fmtStrain(a.strain)}</b></div></div>`).join('')}
+    ${acts.map((a) => `<button class="row tap" data-sheet="activity:${date}:${esc(a.id)}"><div class="badge" style="background:var(--strain)">${/run/i.test(a.type) ? I.run : I.flame}</div><div class="grow"><div class="title">${esc(a.name)}</div><div class="sub">${fmtTime(a.start)}–${fmtTime(a.end)} · ${fmtDur(a.duration)}${a.avgHr ? ` · gem. ${a.avgHr} bpm` : ''}${a.maxHr ? ` · max ${a.maxHr}` : ''}${a.calories ? ` · ${num(a.calories)} kcal` : ''}</div></div><div class="val"><b style="color:var(--strain)">${fmtStrain(a.strain)}</b></div><span class="chev">${I.chev}</span></button>`).join('')}
   </div>` : ''}
   <div class="section-title">Strain · 7 dagen</div>
-  <div class="card">${bars(days7.map((d) => ({ date: d.date, value: d.strain?.score ?? null, color: 'var(--strain)' })), { max: 21, fmt: fmtStrain })}</div>
+  <div class="card">${bars(days7.map((d) => ({ date: d.date, go: `#/strain/${d.date}`, value: d.strain?.score ?? null, color: 'var(--strain)' })), { max: 21, fmt: fmtStrain })}</div>
   </div>`;
 }
 
@@ -424,8 +720,8 @@ function viewSleep(date) {
     { label: 'REM', value: s.rem, color: 'var(--st-rem)' },
   ] : s ? [{ label: 'Wakker', value: s.awake, color: 'var(--st-awake)' }, { label: 'Slaap', value: s.asleep, color: 'var(--st-light)' }] : [];
   return `${navbar('Slaap', `#/today/${date}`)}
-  <div class="content fade-in">
-  ${dayNav(date, '#/sleep')}
+  <div class="content" data-swipe data-base="#/sleep" data-date="${date}">
+  ${weekStrip(date, '#/sleep')}
   <div class="card hero">${ring({ frac: s?.perf || 0, color: 'var(--sleep)', label: s ? pct(s.perf) : '–', sub: 'prestatie', size: 190, stroke: 16 })}
     <div class="big">${s ? `${fmtHM(s.asleep)} geslapen van ${fmtHM(s.need)} nodig · ${fmtTime(s.start)} – ${fmtTime(s.end)}` : 'Geen slaap geregistreerd.'}</div></div>
   ${s ? `<div class="stats">
@@ -451,7 +747,7 @@ function viewSleep(date) {
     <div style="font-size:28px;font-weight:700">${fmtHM(advice.bed)}</div>
     <div class="small muted">Ga rond deze tijd naar bed om om ${esc(S.settings.wake)} op te staan met ${fmtHM(advice.need)} slaap (strain van vandaag meegerekend).</div></div>` : ''}
   <div class="section-title">Slaap · 14 dagen</div>
-  <div class="card">${bars(days14.map((d) => ({ date: d.date, value: d.sleep ? d.sleep.asleep / 60 : null, color: d.sleep && d.sleep.perf >= 0.85 ? 'var(--sleep)' : 'rgba(125,122,255,.5)' })), { fmt: (v) => num(v, 1), labelEvery: 2 })}
+  <div class="card">${bars(days14.map((d) => ({ date: d.date, go: `#/sleep/${d.date}`, value: d.sleep ? d.sleep.asleep / 60 : null, color: d.sleep && d.sleep.perf >= 0.85 ? 'var(--sleep)' : 'rgba(125,122,255,.5)' })), { fmt: (v) => num(v, 1), labelEvery: 2 })}
   <div class="legend"><span><i style="background:var(--sleep)"></i>≥ 85% van behoefte</span><span>gem. ${fmtHM(mean(days14.map((d) => d.sleep?.asleep)))}</span></div></div>
   </div>`;
 }
@@ -495,8 +791,8 @@ function viewDay(date) {
   }
   const rawJson = raw ? JSON.stringify({ ...raw, hr: raw.hr ? `[${raw.hr.length} minuten]` : null, sleep: raw.sleep ? { ...raw.sleep, stages: `[${raw.sleep.stages?.length || 0} fasen]` } : null, sleepNext: undefined }, null, 2) : '';
   return `${navbar('Alle data', `#/today/${date}`)}
-  <div class="content fade-in">
-  ${dayNav(date, '#/day')}
+  <div class="content" data-swipe data-base="#/day" data-date="${date}">
+  ${weekStrip(date, '#/day')}
   <div class="section-title">Hartslag per minuut</div>
   <div class="card">${hrDay(raw, { maxHr: S.computed.maxHr, activities: m?.strain?.activities || [] })}</div>
   <div class="section-title">Gemeten (Fitbit)</div>
@@ -532,21 +828,21 @@ function viewTrends() {
     ${stat('Slaap', fmtHM(avg((d) => d.sleep?.asleep)))}
   </div>
   <div class="section-title">Herstel</div>
-  <div class="card">${bars(ds.map((d) => ({ date: d.date, value: d.recovery?.score ?? null, color: recoveryColor(d.recovery?.score) })), { max: 100, labelEvery: le })}</div>
+  <div class="card">${bars(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.recovery?.score ?? null, color: recoveryColor(d.recovery?.score) })), { max: 100, labelEvery: le })}</div>
   <div class="section-title">Strain</div>
-  <div class="card">${bars(ds.map((d) => ({ date: d.date, value: d.strain?.score || null, color: 'var(--strain)' })), { max: 21, labelEvery: le, fmt: fmtStrain })}</div>
+  <div class="card">${bars(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.strain?.score || null, color: 'var(--strain)' })), { max: 21, labelEvery: le, fmt: fmtStrain })}</div>
   <div class="section-title">Slaap (uren)</div>
-  <div class="card">${bars(ds.map((d) => ({ date: d.date, value: d.sleep ? d.sleep.asleep / 60 : null, color: 'var(--sleep)' })), { labelEvery: le, fmt: (v) => num(v, 1) })}</div>
+  <div class="card">${bars(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.sleep ? d.sleep.asleep / 60 : null, color: 'var(--sleep)' })), { labelEvery: le, fmt: (v) => num(v, 1) })}</div>
   <div class="section-title">HRV</div>
-  <div class="card">${line(ds.map((d) => ({ date: d.date, value: d.recovery?.hrv ?? null })), { color: 'var(--green)', fmt: (v) => `${Math.round(v)} ms`, dots: n <= 30 })}</div>
+  <div class="card">${line(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.recovery?.hrv ?? null })), { color: 'var(--green)', fmt: (v) => `${Math.round(v)} ms`, dots: n <= 30 })}</div>
   <div class="section-title">Rusthartslag</div>
-  <div class="card">${line(ds.map((d) => ({ date: d.date, value: d.recovery?.rhr ?? null })), { color: 'var(--hr)', fmt: (v) => `${Math.round(v)}`, dots: n <= 30 })}</div>
+  <div class="card">${line(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.recovery?.rhr ?? null })), { color: 'var(--hr)', fmt: (v) => `${Math.round(v)}`, dots: n <= 30 })}</div>
   <div class="section-title">Ademhaling</div>
-  <div class="card">${line(ds.map((d) => ({ date: d.date, value: d.raw?.resp ?? null })), { color: 'var(--z1)', fmt: (v) => num(v, 1), dots: n <= 30 })}</div>
+  <div class="card">${line(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.raw?.resp ?? null })), { color: 'var(--z1)', fmt: (v) => num(v, 1), dots: n <= 30 })}</div>
   <div class="section-title">Spierbelasting per week</div>
   <div class="card">${bars(weeks, { fmt: (v) => num(v, 0) })}</div>
   <div class="section-title">Stappen</div>
-  <div class="card">${bars(ds.map((d) => ({ date: d.date, value: d.raw?.steps ?? null, color: 'var(--muscle)' })), { labelEvery: le, fmt: (v) => `${Math.round(v / 1000)}k` })}</div>
+  <div class="card">${bars(ds.map((d) => ({ date: d.date, go: `#/today/${d.date}`, value: d.raw?.steps ?? null, color: 'var(--muscle)' })), { labelEvery: le, fmt: (v) => `${Math.round(v / 1000)}k` })}</div>
   </div>`;
 }
 
@@ -907,12 +1203,18 @@ function tabbar(active) {
 }
 
 let lastRoute = '';
+const DEPTH = { today: 0, trends: 0, strength: 0, settings: 0, welcome: 0, recovery: 1, strain: 1, sleep: 1, day: 2, live: 1, exercises: 1, session: 1, template: 1, import: 1, about: 1, setup: 1, exercise: 2, log: 2, 'template-edit': 2 };
+let lastDepth = 0;
+let lastName = '';
+let titleUpdate = () => {};
+
 function render() {
+  resetCharts();
   const r = parseRoute();
   const loggedIn = store.isDemo() || auth.hasEverLoggedIn() || S.days.length > 0 || S.strength.sessions.length > 0 || activeTemplates(S.strength).length > 0;
   let html;
   let tab = null;
-  if (!loggedIn && !['setup', 'welcome', 'about', 'import'].includes(r.name)) r.name = 'welcome';
+  if (!loggedIn && !['setup', 'welcome', 'about', 'import', 'live'].includes(r.name)) r.name = 'welcome';
   switch (r.name) {
     case 'welcome': html = viewWelcome(); break;
     case 'setup': html = viewSetup(); break;
@@ -931,13 +1233,20 @@ function render() {
     case 'template-edit': html = viewTemplateEdit(r.a || 'new'); tab = 'strength'; break;
     case 'settings': html = viewSettings(); tab = 'settings'; break;
     case 'about': html = viewAbout(); tab = 'settings'; break;
+    case 'live': html = viewLive(); tab = 'today'; break;
     default: html = viewToday(r.a && /^\d{4}-\d{2}-\d{2}$/.test(r.a) ? (r.a > today() ? today() : r.a) : today()); tab = 'today';
   }
   const showTabs = loggedIn && !['welcome', 'setup', 'log', 'template-edit'].includes(r.name);
   const key = location.hash;
-  if (key === lastRoute) html = html.replace(/ fade-in"/g, '"').replace(/class="fade-in"/g, 'class=""');
-  app.innerHTML = html + (showTabs ? tabbar(tab || 'today') : '');
-  if (key !== lastRoute) { window.scrollTo(0, 0); lastRoute = key; }
+  const same = key === lastRoute;
+  html = html.replace(/ fade-in"/g, '"').replace(/class="fade-in"/g, 'class=""');
+  const depth = DEPTH[r.name] ?? 1;
+  let anim = '';
+  if (!same) anim = r.name === lastName ? 'swap' : depth > lastDepth ? 'push' : depth < lastDepth ? 'pop' : 'fade';
+  const ptr = ['today', 'trends', 'strength'].includes(r.name) || (r.name !== 'welcome' && !r.name) ? ' data-ptr' : '';
+  app.innerHTML = `<div class="page ${anim}"${ptr}>${html}</div>` + (showTabs ? tabbar(tab || 'today') : '');
+  if (!same) { window.scrollTo(0, 0); lastRoute = key; lastDepth = depth; lastName = r.name; }
+  titleUpdate();
 }
 
 // ---------------------------------------------------------------- events
@@ -984,6 +1293,16 @@ const actions = {
   login() { if (!auth.getClientId()) { location.hash = '#/setup'; return; } auth.login({ silent: false }); },
   relogin() { auth.login({ silent: false, consent: true }); },
   'drive-login'() { auth.setDriveDisabled(false); auth.login({ kind: 'drive', silent: false }); },
+  msheet(el) {
+    const [k, d, r] = el.dataset.v.split(':');
+    const body = document.querySelector('.sheet-body');
+    if (body) body.innerHTML = metricSheet(k, d, Number(r));
+  },
+  async 'ble-on'() {
+    try { await liveConnect(); toast('Verbonden — realtime hartslag'); } catch (e) { if (e.name !== 'NotFoundError') toast('Verbinden mislukt'); }
+    render();
+  },
+  'ble-off'() { liveDisconnect(); render(); },
   async diagnose() {
     S.diag = 'Bezig…'; render();
     const out = [];
@@ -1213,6 +1532,8 @@ document.addEventListener('click', (ev) => {
     setTimeout(render, 300);
     return;
   }
+  const sheetBtn = ev.target.closest('[data-sheet]');
+  if (sheetBtn) { ev.preventDefault(); openSheetFor(sheetBtn.dataset.sheet); return; }
   const go = ev.target.closest('[data-go]');
   const back = ev.target.closest('[data-back]');
   const act = ev.target.closest('[data-act]');
@@ -1286,6 +1607,13 @@ window.addEventListener('hashchange', () => {
 // ---------------------------------------------------------------- boot
 
 async function boot() {
+  enablePullToRefresh(() => runSync());
+  enableSwipe((dir, area) => {
+    const d = addDays(area.dataset.date, dir);
+    if (d > today()) return;
+    location.hash = `${area.dataset.base || '#/today'}/${d}`;
+  });
+  titleUpdate = enableCollapsingTitle();
   const redirect = auth.handleRedirect();
   await loadAll();
   S.lastSyncAt = await store.kv.get('lastSyncAt');
@@ -1327,5 +1655,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 
 // Bij terugkeren naar de app (bijv. vanuit achtergrond): ververs als data oud is.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !store.isDemo() && auth.getToken('health') && S.lastSyncAt && Date.now() - S.lastSyncAt > 30 * 60000) runSync({ interactive: false });
+  if (document.visibilityState !== 'visible' || store.isDemo()) return;
+  if (auth.getToken('health') && S.lastSyncAt && Date.now() - S.lastSyncAt > 15 * 60000) runSync({ interactive: false, quiet: true });
+  else minuteTick();
 });

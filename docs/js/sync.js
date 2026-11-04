@@ -125,12 +125,12 @@ async function pool(items, n, fn) {
 /**
  * Synchroniseer. onProgress(tekst, fractie).
  */
-export async function syncAll({ onProgress = () => {}, full = false } = {}) {
+export async function syncAll({ onProgress = () => {}, full = false, todayOnly = false } = {}) {
   const log = [];
   const t0 = Date.now();
   const lastSync = await kv.get('lastSyncDate');
   const end = today();
-  const from = !full && lastSync ? addDays(lastSync, -2) : addDays(end, -(INITIAL_DAYS - 1));
+  const from = todayOnly ? end : !full && lastSync ? addDays(lastSync, -2) : addDays(end, -(INITIAL_DAYS - 1));
   const toExcl = addDays(end, 1);
   const existing = {};
   for (const d of await daysStore.all()) existing[d.date] = d;
@@ -251,6 +251,7 @@ export async function syncAll({ onProgress = () => {}, full = false } = {}) {
 
   // Hartslag per minuut: alleen dagen die nog geen (complete) data hebben, plus vandaag en gisteren.
   const hrDates = dates.filter((d) => full || !existing[d]?.hr || d >= addDays(end, -1) || !existing[d]?.hrComplete);
+
   let done = 0;
   let hrOk = 0, hrErr = null;
   await pool(hrDates, 4, async (d) => {
@@ -272,9 +273,39 @@ export async function syncAll({ onProgress = () => {}, full = false } = {}) {
 
   for (const d of Object.values(out)) d.synced = Date.now();
   await daysStore.putMany(Object.values(out));
-  await kv.set('lastSyncDate', end);
+  if (!todayOnly) await kv.set('lastSyncDate', end);
   await kv.set('lastSyncAt', Date.now());
-  await kv.set('syncLog', { at: Date.now(), ms: Date.now() - t0, from, to: end, log });
+  await kv.set('syncLog', { at: Date.now(), ms: Date.now() - t0, from, to: end, log, todayOnly });
   onProgress('Klaar', 1);
   return log;
+}
+
+/** Elke minuut: alleen de hartslag van vandaag bijwerken (licht, 1 aanvraag). */
+export async function syncHeartNow() {
+  const d = today();
+  const startMs = parseYmd(d).getTime();
+  const day = (await daysStore.get(d)) || blankDay(d);
+  let from = startMs;
+  if (day.hr && day.hr.length) {
+    let last = day.hr.length - 1;
+    while (last > 0 && !day.hr[last]) last--;
+    from = Math.max(startMs, startMs + (last - 20) * 60000);
+  }
+  const pts = await rollUp('heart-rate', new Date(from).toISOString(), new Date(Date.now() + 60000).toISOString(), '60s');
+  const arr = day.hr ? [...day.hr] : [];
+  let mx = day.hrMax || 0;
+  for (const p of pts) {
+    const t = Date.parse(p.startTime);
+    const v = p.heartRate?.beatsPerMinuteAvg;
+    if (!t || v == null) continue;
+    const i = Math.floor((t - startMs) / 60000);
+    if (i < 0 || i > 1500) continue;
+    while (arr.length <= i) arr.push(0);
+    arr[i] = Math.round(v);
+    const m = p.heartRate.beatsPerMinuteMax ?? v;
+    if (m > mx) mx = m;
+  }
+  day.hr = arr; day.hrMax = Math.round(mx) || null; day.hrStart = startMs; day.date = d; day.synced = Date.now();
+  await daysStore.put(day);
+  return { day, newPoints: pts.length };
 }

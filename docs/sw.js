@@ -1,9 +1,9 @@
 // Service worker: app-shell offline beschikbaar. API-verkeer gaat altijd naar het netwerk.
-const VERSION = 'pulse-v8';
+const VERSION = 'pulse-v9';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/util.js', 'js/store.js', 'js/auth.js', 'js/api.js', 'js/sync.js',
-  'js/metrics.js', 'js/strength.js', 'js/charts.js', 'js/demo.js', 'js/icons.js',
+  'js/metrics.js', 'js/strength.js', 'js/charts.js', 'js/demo.js', 'js/icons.js', 'js/interact.js', 'js/live.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
 ];
 
