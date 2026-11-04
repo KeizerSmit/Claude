@@ -39,4 +39,34 @@ export const I = {
   google: '<svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.2 2.4-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>',
 };
 
+// Activiteit-iconen
+export const AI = {
+  hammer: s('<path d="M14 4l6 6-3 3-6-6z"/><path d="M11 7L3 15l3 3 8-8"/><path d="M15 3l2-1 5 5-1 2"/>'),
+  saw: s('<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l1 1M10 10l1 1M13 7l1 1"/>'),
+  wrench: s('<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>'),
+  brush: s('<path d="M18 3l3 3-9 9-3-3z"/><path d="M9 12c-3 0-5 2-5 5 0 1.5-1 2.5-2 3 4 1 9 0 9-5"/>'),
+  house: s('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>'),
+  box: s('<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>'),
+  hand: s('<path d="M7 11V5a1.5 1.5 0 0 1 3 0v5M10 10V3.5a1.5 1.5 0 0 1 3 0V10M13 10V5a1.5 1.5 0 0 1 3 0v6M16 8.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L7 14"/>'),
+  sparkle: s('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>'),
+  leaf: s('<path d="M5 19C5 10 10 4 20 4c0 10-6 15-15 15z"/><path d="M5 19l8-8"/>'),
+  shovel: s('<path d="M14 10l7-7M18 3l3 3"/><path d="M14 10l-3-3-6 6a3 3 0 0 0 0 4l2 2a3 3 0 0 0 4 0l6-6z"/>'),
+  dumbbell: s('<path d="M6.5 6.5v11M17.5 6.5v11M3 9v6M21 9v6M6.5 12h11"/>', 'stroke-width="2.4"'),
+  run: s('<circle cx="14" cy="4" r="2"/><path d="M6 20l3-6 3 2v5M10 9l4-1 3 4 3 1M10 9l-2 4-4 1"/>'),
+  walk: s('<circle cx="13" cy="4" r="2"/><path d="M10 21l2-7 3 3v5M9 11l1-4 4 2 2 3M10 7l-3 4"/>'),
+  bike: s('<circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17l4-8h6l3 8M9.5 9L12 17h3M14 5h3"/>'),
+  swim: s('<path d="M2 18c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/><circle cx="16" cy="7" r="2"/><path d="M5 14l5-5 3 2 3 3"/>'),
+  row: s('<path d="M3 17h18M6 17l10-10M14 5l4 4"/><circle cx="8" cy="9" r="2"/>'),
+  flame: s('<path d="M12 22c4 0 7-3 7-7 0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-2 2-5 5-5 8 0 4 3 7 7 7z"/>'),
+  racket: s('<ellipse cx="14" cy="9" rx="6" ry="6"/><path d="M10 13l-7 7M11 6l6 6M14 3v12M8 9h12"/>'),
+  ball: s('<circle cx="12" cy="12" r="9"/><path d="M12 7l4 3-1.5 4.5h-5L8 10z"/>'),
+  mountain: s('<path d="M3 20l6-10 4 6 2-3 6 7z"/><path d="M8 12l1.5 1.5L11 12"/>'),
+  music: s('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'),
+  lotus: s('<path d="M12 20c-4 0-8-2-9-6 3 0 6 1 9 4 3-3 6-4 9-4-1 4-5 6-9 6z"/><path d="M12 18c-2-2-3-5-3-8 1-2 2-4 3-6 1 2 2 4 3 6 0 3-1 6-3 8z"/>'),
+  flag: s('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
+  scale: s('<rect x="3" y="4" width="18" height="16" rx="4"/><path d="M8 9a5 5 0 0 1 8 0M12 9l1.5-2"/>'),
+  plus: s('<path d="M12 5v14M5 12h14"/>', 'stroke-width="2.6"'),
+  health: s('<path d="M3 12h4l2-5 4 10 2-5h6"/>'),
+};
+
 export const INSIGHT_ICON = { info: I.info, bolt: I.bolt, gauge: I.gauge, bed: I.bed, up: I.up, down: I.down, heart: I.heart, temp: I.temp, moon: I.moon, target: I.target };

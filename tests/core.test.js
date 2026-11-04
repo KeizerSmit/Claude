@@ -105,3 +105,37 @@ test('jouw notitie: Upper 6 / Upper 7 / Lower', async () => {
   assert.equal(ids['Kuiten'], 'calf-raise');
   assert.equal(Object.values(ids).filter((v) => v === 'other').length, 0);
 });
+
+test('activiteit: rangorde hartslag → RPE → MET en spierbelasting bij werk', async () => {
+  const { estimateActivity, newActivity } = await import('../docs/js/activities.js');
+  const ctx = { rest: 55, max: 190, female: false, vo2max: 45, kg: 80 };
+  const a = { ...newActivity('timmeren-buiten', '2026-11-01'), duration: 180, intensity: 'matig', rpe: 5, active: 0.7 };
+  const noHr = estimateActivity(a, null, ctx);
+  assert.equal(noHr.source, 'rpe');
+  assert.ok(noHr.estimated > 50 && noHr.muscular > 30);
+  const metOnly = estimateActivity({ ...a, rpe: null }, null, ctx);
+  assert.equal(metOnly.source, 'met');
+  assert.ok(metOnly.estimated < noHr.estimated);
+  const start = new Date('2026-11-01T00:00:00').getTime();
+  const hr = new Array(1440).fill(0);
+  for (let i = 0; i < 1440; i++) hr[i] = 120;
+  const withHr = estimateActivity(a, { hr, hrStart: start }, ctx);
+  assert.equal(withHr.source, 'hr');
+  assert.equal(withHr.estimated, 0);
+  assert.ok(withHr.measured > 0);
+  const sport = estimateActivity({ ...newActivity('hardlopen', '2026-11-01'), duration: 45 }, null, ctx);
+  assert.equal(sport.muscular, 0);
+});
+
+test('healthspan: leefstijl-leeftijd met interval en hefbomen', async () => {
+  const { computeHealthspan } = await import('../docs/js/healthspan.js');
+  const { days, strength } = generateDemo(120);
+  const { byDate, maxHr } = computeAll(days, strength, { sleepNeed: 450, defaultSets: 2 }, { age: 31 });
+  const end = days[days.length - 1].date;
+  const hs = computeHealthspan(byDate, end, { age: 31, sex: 'm', maxHr });
+  assert.ok(hs.ready);
+  assert.ok(hs.lo <= hs.lifestyleAge && hs.lifestyleAge <= hs.hi);
+  assert.ok(Math.abs(hs.delta) <= 12);
+  assert.ok(hs.tempo >= -1 && hs.tempo <= 3);
+  assert.equal(hs.inputs.length, 7);
+});

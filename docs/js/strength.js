@@ -400,9 +400,16 @@ export function mergeDocs(a, b) {
     const ex = tById[t.id];
     if (!ex || (t.updatedAt || 0) > (ex.updatedAt || 0)) tById[t.id] = t;
   }
+  const mergeList = (key) => {
+    const m = {};
+    for (const x of [...(a?.[key] || []), ...(b?.[key] || [])]) { const ex = m[x.id]; if (!ex || (x.updatedAt || 0) > (ex.updatedAt || 0)) m[x.id] = x; }
+    return Object.values(m);
+  };
   return {
     sessions: Object.values(byId),
     templates: Object.values(tById),
+    activities: mergeList('activities'),
+    weights: mergeList('weights'),
     exerciseMap: newer ? { ...eb, ...ea } : { ...ea, ...eb },
     mapUpdatedAt: Math.max(a?.mapUpdatedAt || 0, b?.mapUpdatedAt || 0),
     updatedAt: Math.max(a?.updatedAt || 0, b?.updatedAt || 0),

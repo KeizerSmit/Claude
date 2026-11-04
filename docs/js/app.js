@@ -4,11 +4,14 @@ import { syncAll, syncHeartNow } from './sync.js';
 import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp } from './metrics.js';
 import { parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
-import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts } from './charts.js';
+import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale } from './charts.js';
 import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle } from './interact.js';
 import { live as liveState, onLive, connect as liveConnect, disconnect as liveDisconnect, current as liveCurrent, liveRmssd, sessionStats as liveSession, bluetoothSupported } from './live.js';
 import { generateDemo } from './demo.js';
-import { I, INSIGHT_ICON } from './icons.js';
+import { I, INSIGHT_ICON, AI } from './icons.js';
+import { TYPES, CATS, typeById, INTENSITY, RPE_LABELS, newActivity, estimateActivity, SOURCE_LABEL } from './activities.js';
+import { computeHealthspan, healthspanHistory, INPUTS, vo2Ref } from './healthspan.js';
+import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00' };
@@ -35,6 +38,8 @@ async function loadAll() {
   S.settings = { ...DEFAULTS, ...((await store.kv.get('settings')) || {}) };
   S.strength = (await store.kv.get('strength')) || { sessions: [], exerciseMap: {}, updatedAt: 0 };
   S.strength.templates ||= [];
+  S.strength.activities ||= [];
+  S.strength.weights ||= [];
   S.profile = (await store.kv.get('profile')) || null;
   S.days = await store.days.all();
   if (store.isDemo() && !S.days.length) {
@@ -452,24 +457,37 @@ function viewToday(date) {
   const recColor = recoveryColor(rec?.score);
   const zoneTxt = { green: 'Goed hersteld', yellow: 'Redelijk hersteld', red: 'Rust nodig' }[recoveryZone(rec?.score)] || '';
 
-  const rings = `<div class="rings card-lift">
-    <button class="r" data-go="#/recovery/${date}">${ring({ frac: (rec?.score || 0) / 100, color: recColor, label: rec ? `${rec.score}%` : '–', size: 104, stroke: 10, glow: true })}<span class="name">Herstel</span><span class="cap">${esc(zoneTxt || (rec?.calibrating ? 'kalibreren' : ''))}</span></button>
-    <button class="r" data-go="#/strain/${date}">${ring({ frac: (strain?.score || 0) / 21, color: 'var(--strain)', label: strain ? fmtStrain(strain.score) : '–', size: 104, stroke: 10, glow: true, target: m?.target ? [m.target[0] / 21, m.target[1] / 21] : null })}<span class="name">Strain</span><span class="cap">${m?.target ? `doel ${fmtStrain(m.target[0])}–${fmtStrain(m.target[1])}` : esc(strainLabel(strain?.score))}</span></button>
-    <button class="r" data-go="#/sleep/${date}">${ring({ frac: sleep?.perf || 0, color: 'var(--sleep)', label: sleep ? pct(sleep.perf) : '–', size: 104, stroke: 10, glow: true })}<span class="name">Slaap</span><span class="cap">${sleep ? `${fmtHM(sleep.asleep)} / ${fmtHM(sleep.need)}` : ''}</span></button>
+  const zone = recoveryZone(rec?.score);
+  const tgt = m?.target;
+  const sc = strain?.score || 0;
+  const rings = `<div class="hero2 card-lift">
+    <button class="h2-rec" data-go="#/recovery/${date}">
+      <div class="h2-k">Herstel${rec?.calibrating ? ' <span class="pill">kalibreren</span>' : ''}</div>
+      <div class="h2-line"><div class="h2-big">${rec ? rec.score : '–'}<small>%</small></div><div class="h2-state" style="color:${recColor}">${rec ? `<span class="zshape z-${zone}"></span>${esc(zoneTxt)}` : 'Nog geen herstel'}</div></div>
+      <div class="gauge"><span class="g-seg g-red"></span><span class="g-seg g-yellow"></span><span class="g-seg g-green"></span>${rec ? `<span class="g-knob" style="left:${rec.score}%"></span>` : ''}</div>
+      <div class="g-ticks"><span>0</span><span>33</span><span>67</span><span>100</span></div>
+    </button>
+    <div class="h2-split">
+      <button class="h2-cell" data-go="#/strain/${date}">
+        <div class="h2-k">Belasting</div>
+        <div class="h2-mid">${strain ? fmtStrain(sc) : '–'}</div>
+        <div class="h2-sub">${tgt ? `doel ${fmtStrain(tgt[0])}–${fmtStrain(tgt[1])}` : 'van 21'}</div>
+        <div class="mbar">${tgt ? `<span class="mbar-band" style="left:${(tgt[0] / 21) * 100}%;width:${((tgt[1] - tgt[0]) / 21) * 100}%"></span>` : ''}<span class="mbar-fill" style="width:${(sc / 21) * 100}%;background:var(--strain)"></span></div>
+      </button>
+      <button class="h2-cell" data-go="#/sleep/${date}">
+        <div class="h2-k">Slaap</div>
+        <div class="h2-mid">${sleep ? fmtHM(sleep.asleep) : '–'}</div>
+        <div class="h2-sub">${sleep ? `van ${fmtHM(sleep.need)} nodig` : 'geen data'}</div>
+        <div class="mbar"><span class="mbar-fill" style="width:${(sleep?.perf || 0) * 100}%;background:var(--sleep)"></span></div>
+      </button>
+    </div>
   </div>`;
 
-  const insightsCard = ins.length ? `<div class="list">${ins.slice(0, 4).map((i) => `<button class="row tap insight" data-go="#/${INSIGHT_GO[i.icon] || 'recovery'}/${date}"><div class="ic">${INSIGHT_ICON[i.icon] || I.info}</div><div class="grow"><p>${esc(i.text)}</p></div><span class="chev">${I.chev}</span></button>`).join('')}</div>` : '';
+  const insightsCard = ins.length ? `<div class="list">${ins.filter((i) => i.icon !== 'target').slice(0, 3).map((i) => `<button class="row tap insight" data-go="#/${INSIGHT_GO[i.icon] || 'recovery'}/${date}"><div class="ic">${INSIGHT_ICON[i.icon] || I.info}</div><div class="grow"><p>${esc(i.text)}</p></div><span class="chev">${I.chev}</span></button>`).join('')}</div>` : '';
 
-  const acts = [];
-  for (const s of strain?.sessions || []) {
-    acts.push(`<button class="row tap" data-go="#/session/${s.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(s.name || 'Krachttraining')}</div><div class="sub">${s.exercises.length} oefeningen${s.activity ? ` · ${fmtDur(s.activity.duration)} · gem. ${num(s.activity.avgHr)} bpm` : ''}</div></div><div class="val"><b style="color:var(--muscle)">+${num(s.muscularTrimp, 0)}</b></div><span class="chev">${I.chev}</span></button>`);
-  }
-  for (const a of strain?.activities || []) {
-    if (a.linked) continue;
-    acts.push(`<button class="row tap" data-sheet="activity:${date}:${esc(a.id)}"><div class="badge" style="background:var(--strain)">${/run|loop/i.test(a.type + a.name) ? I.run : I.flame}</div><div class="grow"><div class="title">${esc(a.name)}</div><div class="sub">${fmtTime(a.start)} · ${fmtDur(a.duration)}${a.avgHr ? ` · gem. ${num(a.avgHr)} bpm` : ''}</div></div><div class="val"><b style="color:var(--strain)">${fmtStrain(a.strain)}</b></div><span class="chev">${I.chev}</span></button>`);
-  }
+  const acts = m ? activityRows(m) : [];
 
-  const empty = !raw && !strain?.sessions?.length;
+  const empty = !raw && !strain?.sessions?.length && !strain?.manual?.length;
   return `${largeTitle(fmtDayTitle(date), t ? fmtDateLong(date) : `${fmtDateLong(date)}`, `${syncBtn()}${avatar()}`)}
   ${syncHeader()}
   ${S.syncError ? `<div class="card small" style="color:var(--red)">${esc(S.syncError)} <a href="#" data-act="relogin">Opnieuw inloggen</a></div>` : ''}
@@ -479,8 +497,8 @@ function viewToday(date) {
   ${rings}
   ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Trek omlaag om te synchroniseren.'}</div>` : ''}
   ${insightsCard}
-  <div class="section-title">Activiteiten <button data-go="#/log/new/${date}">+ Kracht</button></div>
-  <div class="list">${acts.length ? acts.join('') : `<button class="row tap" data-go="#/log/new/${date}"><div class="badge" style="background:var(--card2);color:var(--muscle)">${I.plus}</div><div class="grow"><div class="title">Krachttraining loggen</div><div class="sub">Telt mee in je strain</div></div><span class="chev">${I.chev}</span></button>`}</div>
+  <div class="section-title">Activiteiten <button data-act="plus-activity" data-v="${date}">+ Toevoegen</button></div>
+  <div class="list">${acts.length ? acts.join('') : `<button class="row tap" data-act="plus-activity" data-v="${date}"><div class="badge" style="background:var(--card2);color:var(--muscle)">${I.plus}</div><div class="grow"><div class="title">Workout of klus toevoegen</div><div class="sub">Ook achteraf — telt mee in je belasting</div></div><span class="chev">${I.chev}</span></button>`}</div>
   <div class="section-title">Gezondheid <a href="#/day/${date}">Alle data</a></div>
   <div class="tiles">
     ${t ? liveTile() : ''}
@@ -536,13 +554,17 @@ function activitySheet(date, id) {
       ${stat('Max. hartslag', a.maxHr ? num(a.maxHr) : '–', 'bpm')}
       ${stat('Calorieën', a.calories ? num(a.calories) : '–', 'kcal')}
     </div>
-    <div class="card flat mt">${hrDay(raw, { maxHr: S.computed.maxHr, activities: [a], fromMin: from, toMin: to })}</div>`;
+    <div class="card flat mt">${hrDay(raw, { maxHr: S.computed.maxHr, activities: [a], fromMin: from, toMin: to })}</div>
+    <button class="btn secondary mt" data-act="fb-label" data-v="${date}:${esc(a.id)}">${AI.hammer} Was dit een klus of iets anders? Label het</button>`;
 }
 
 function openSheetFor(spec) {
   const [kind, ...rest] = spec.split(':');
   if (kind === 'metric') openSheet(metricSheet(rest[0], rest[1], Number(rest[2]) || 30));
   else if (kind === 'activity') openSheet(activitySheet(rest[0], rest.slice(1).join(':')));
+  else if (kind === 'hs') openSheet(rest[0] === 'about' ? hsAboutSheet() : hsInputSheet(rest[0]));
+  else if (kind === 'muscle') openSheet(muscleSheet(rest[0]));
+  else if (kind === 'manual') openActivityLog({ id: rest[0] });
 }
 
 // ---------------------------------------------------------------- Live
@@ -890,13 +912,36 @@ function templateLastDate(t) {
   return last;
 }
 
+function activityRows(m, opts = {}) {
+  const rows = [];
+  const date = m.date;
+  for (const a of m.strain?.manual || []) {
+    const t = typeById(a.typeId);
+    rows.push({ t: a.start, html: `<button class="row tap" data-sheet="manual:${a.id}"><div class="badge" style="background:${CATS[t.cat].color}">${actIcon(t)}</div><div class="grow"><div class="title">${esc(t.name)}</div><div class="sub">${opts.withDate ? `${weekdayShort(date)} ${fmtDateShort(date)} · ` : ''}${fmtTime(a.start)} · ${fmtDur(a.duration)} · ${a.est.source === 'hr' ? 'gemeten' : 'geschat'}${t.cat !== 'sport' ? ' · telt niet als fitheid' : ''}</div></div><div class="val"><b style="color:var(--strain)">${fmtStrain(strainFromTrimp(a.est.trimp))}</b></div><span class="chev">${I.chev}</span></button>` });
+  }
+  for (const s of m.strain?.sessions || []) {
+    rows.push({ t: s.activity?.start || parseYmd(date).getTime() + 18 * 3600000, html: `<button class="row tap" data-go="#/session/${s.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(s.name || 'Krachttraining')}</div><div class="sub">${opts.withDate ? `${weekdayShort(date)} ${fmtDateShort(date)} · ` : ''}${s.exercises.length} oefeningen${s.activity ? ` · ${fmtDur(s.activity.duration)}` : ''}</div></div><div class="val"><b style="color:var(--muscle)">+${num(s.muscularTrimp, 0)}</b></div><span class="chev">${I.chev}</span></button>` });
+  }
+  for (const a of m.strain?.activities || []) {
+    if (a.linked || a.linkedManual) continue;
+    rows.push({ t: a.start, html: `<button class="row tap" data-sheet="activity:${date}:${esc(a.id)}"><div class="badge" style="background:var(--strain)">${/run|loop/i.test(a.type + a.name) ? I.run : I.flame}</div><div class="grow"><div class="title">${esc(a.name)}</div><div class="sub">${opts.withDate ? `${weekdayShort(date)} ${fmtDateShort(date)} · ` : ''}${fmtTime(a.start)} · ${fmtDur(a.duration)}${a.avgHr ? ` · gem. ${num(a.avgHr)} bpm` : ''}</div></div><div class="val"><b style="color:var(--strain)">${fmtStrain(a.strain)}</b></div><span class="chev">${I.chev}</span></button>` });
+  }
+  return rows.sort((a, b) => b.t - a.t).map((r) => r.html);
+}
+
+function recentActivitiesList(n = 14) {
+  const rows = [];
+  for (const m of lastDays(S.computed.byDate, today(), n).reverse()) if (m.strain) rows.push(...activityRows(m, { withDate: true }));
+  return `<div class="list">${rows.length ? rows.slice(0, 12).join('') : `<button class="row tap" data-act="plus-activity" data-v="${today()}"><div class="badge" style="background:var(--card2);color:var(--muscle)">${I.plus}</div><div class="grow"><div class="title">Nog niets de afgelopen 2 weken</div><div class="sub">Voeg een workout of klus toe</div></div></button>`}</div>`;
+}
+
 function viewStrength() {
   const sessions = S.strength.sessions.filter((s) => !s.deleted).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
   const loads = S.computed.loads;
   const wk = weekGroups(today());
   const order = [...UPPER, ...LOWER, 'core'];
   const maxSets = Math.max(10, ...Object.values(wk.sets));
-  const exs = allExercises(S.strength.sessions, { exerciseMap: S.strength.exerciseMap }).slice(0, 12);
+  const exs = allExercises(S.strength.sessions, { exerciseMap: S.strength.exerciseMap }).slice(0, 6);
   const tpls = activeTemplates(S.strength);
   const byMonth = {};
   for (const s of sessions.slice(0, showAllSessions ? 1000 : 8)) {
@@ -904,10 +949,14 @@ function viewStrength() {
     (byMonth[k] ||= []).push(s);
   }
   const monthName = (k) => (k === 'zonder datum' ? 'Zonder datum' : new Date(k + '-01T12:00').toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' }));
-  return `${largeTitle('Kracht', '', `<button class="icon-btn" data-go="#/log/new" aria-label="Nieuwe training">${I.plus}</button>${avatar()}`)}
+  return `${largeTitle('Training', '', avatar())}
   <div class="fade-in">
-  <div class="stats three">
-    ${stat('Deze week', wk.count, wk.count === 1 ? 'sessie' : 'sessies')}
+  ${loadBandCard()}
+  ${muscleCard()}
+  <div class="section-title">Recent <button data-act="plus-activity" data-v="${today()}">+ Activiteit</button></div>
+  ${recentActivitiesList(14)}
+  <div class="stats three mt">
+    ${stat('Kracht deze week', wk.count, wk.count === 1 ? 'sessie' : 'sessies')}
     ${stat('Spierbelasting', num(wk.load, 0))}
     ${stat('Zware sets', num(Object.values(wk.sets).reduce((a, b) => a + b, 0), 0), '', 'geschat')}
   </div>
@@ -918,15 +967,13 @@ function viewStrength() {
   }).join('')}</div>`
     : `<div class="card"><div class="small muted">Plak je notitie met <b>Upper 6</b>, <b>Upper 7</b>, <b>Lower</b> en je topsets. Daar maakt de app schema's van: per training zie je je huidige topsets, vink je af wat je deed en pas je aan wat je verbeterd hebt.</div><button class="btn mt" data-go="#/import">${I.doc} Notitie plakken</button></div>`}
   <div class="btn-row mt"><button class="btn secondary" data-go="#/log/new">${I.plus} Losse training</button><button class="btn secondary" data-go="#/import">${I.doc} Notities</button></div>
-  <div class="section-title">Spiergroepen · 7 dagen</div>
-  <div class="card">${order.map((g) => `<div class="mg"><span>${GROUPS[g]}</span><div class="meter"><span style="width:${((wk.sets[g] || 0) / maxSets) * 100}%;background:${(wk.sets[g] || 0) >= 10 ? 'var(--green)' : (wk.sets[g] || 0) >= 5 ? 'var(--muscle)' : 'var(--text3)'}"></span></div><span class="n">${num(wk.sets[g] || 0, 0)}</span></div>`).join('')}
-    <p class="tiny muted" style="margin:8px 0 0">Zware sets per spiergroep, verdeeld over de betrokken spieren (sets uit je notitie, anders ${S.settings.defaultSets} per oefening). Rond de 10 per week is een goede richtlijn voor groei.</p></div>
-  ${sessions.length ? `<div class="section-title">Trainingen</div>` + Object.entries(byMonth).map(([k, list]) => `<div class="list-header">${esc(monthName(k))}</div><div class="list">${list.map((s) => `<button class="row tap" data-go="#/session/${s.id}"><div class="grow"><div class="title">${esc(s.name || 'Training')}</div><div class="sub">${s.date ? `${weekdayShort(s.date)} ${fmtDateShort(s.date)}` : 'geen datum'} · ${s.exercises.length} oefeningen${(loads[s.id]?.exercises || []).some((e) => e.isPR) ? ' · 🏆 PR' : ''}</div></div><div class="val">${num(loads[s.id]?.load, 1)}</div><span class="chev">${I.chev}</span></button>`).join('')}</div>`).join('') + (sessions.length > 8 && !showAllSessions ? `<button class="btn secondary" data-act="all-sessions">Alle ${sessions.length} trainingen</button>` : '') : ''}
+  ${sessions.length && !showAllSessions ? `<button class="btn secondary mt" data-act="all-sessions">Alle ${sessions.length} krachttrainingen</button>` : ''}
+  ${sessions.length && showAllSessions ? `<div class="section-title">Krachttrainingen</div>` + Object.entries(byMonth).map(([k, list]) => `<div class="list-header">${esc(monthName(k))}</div><div class="list">${list.map((s) => `<button class="row tap" data-go="#/session/${s.id}"><div class="grow"><div class="title">${esc(s.name || 'Training')}</div><div class="sub">${s.date ? `${weekdayShort(s.date)} ${fmtDateShort(s.date)}` : 'geen datum'} · ${s.exercises.length} oefeningen${(loads[s.id]?.exercises || []).some((e) => e.isPR) ? ' · 🏆 PR' : ''}</div></div><div class="val">${num(loads[s.id]?.load, 1)}</div><span class="chev">${I.chev}</span></button>`).join('')}</div>`).join('') + (sessions.length > 8 && !showAllSessions ? `<button class="btn secondary" data-act="all-sessions">Alle ${sessions.length} trainingen</button>` : '') : ''}
   ${exs.length ? `<div class="section-title">Oefeningen</div><div class="list">${exs.map((e) => {
     const h = exerciseHistory(S.strength.sessions, e.key, SS());
     const last = h[h.length - 1];
     return `<button class="row tap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${esc(e.lib.name)} · ${e.count}× · laatst ${esc(setText(last))}</div></div>${spark(h.slice(-12).map((x) => x.e1rm), { color: 'var(--muscle)', w: 64, h: 24 })}<span class="chev">${I.chev}</span></button>`;
-  }).join('')}</div>${allExercises(S.strength.sessions, {}).length > 12 ? `<button class="btn secondary" data-go="#/exercises">Alle oefeningen</button>` : ''}` : ''}
+  }).join('')}</div>${allExercises(S.strength.sessions, {}).length > 6 ? `<button class="btn secondary" data-go="#/exercises">Alle oefeningen</button>` : ''}` : ''}
   </div>`;
 }
 
@@ -1212,6 +1259,295 @@ function viewAbout() {
   </div>`;
 }
 
+// ---------------------------------------------------------------- context
+
+function latestWeight() {
+  const ws = (S.strength.weights || []).filter((w) => !w.deleted && w.kg).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.updatedAt || 0) - (b.updatedAt || 0)));
+  return ws.length ? ws[ws.length - 1] : null;
+}
+function userAge() { return S.settings.age || S.profile?.age || null; }
+function hsCtx() { return { age: userAge(), sex: S.settings.sex, maxHr: S.computed.maxHr }; }
+let HS_CACHE = null;
+function healthspan() {
+  if (HS_CACHE && HS_CACHE.c === S.computed) return HS_CACHE;
+  const ctx = hsCtx();
+  HS_CACHE = { c: S.computed, hs: computeHealthspan(S.computed.byDate, today(), ctx), hist: ctx.age ? healthspanHistory(S.computed.byDate, today(), ctx) : [] };
+  return HS_CACHE;
+}
+const yrs = (v, d = 1) => (v == null ? '–' : num(Math.abs(v), d));
+
+function actIcon(t) { return AI[t.icon] || AI.flame; }
+
+// ---------------------------------------------------------------- belastingsband
+
+function loadSeries(end, n = 42) {
+  const all = lastDays(S.computed.byDate, end, n + 27);
+  const daily = all.map((d) => (d.raw || d.strain?.sessions?.length || d.strain?.manual?.length ? d.strain?.trimp || 0 : null));
+  const pts = [];
+  for (let i = 27; i < all.length; i++) {
+    const w7 = daily.slice(i - 6, i + 1).filter((v) => v != null);
+    const w28 = daily.slice(i - 27, i + 1).filter((v) => v != null);
+    const acute = w7.length >= 4 ? mean(w7) : null;
+    const chronic = w28.length >= 14 ? mean(w28) : null;
+    pts.push({ date: all[i].date, daily: daily[i], acute, chronic, lo: chronic != null ? chronic * 0.8 : null, hi: chronic != null ? chronic * 1.3 : null });
+  }
+  return pts;
+}
+
+function loadStatus(p) {
+  if (!p || p.acute == null || p.chronic == null || !p.chronic) return { label: 'Nog aan het leren', text: 'Na ±2 weken data zie je hier of je belasting in balans is.', color: 'var(--text3)' };
+  const r = p.acute / p.chronic;
+  if (r < 0.8) return { r, label: 'Onder je normaal', text: 'Je doet deze week minder dan je gewend bent. Prima als rustweek; anders is er ruimte voor meer.', color: 'var(--z1)' };
+  if (r <= 1.3) return { r, label: 'In balans', text: 'Je belasting zit binnen je duurzame bereik: genoeg prikkel om fitter te worden, zonder overbelasting.', color: 'var(--green)' };
+  if (r <= 1.5) return { r, label: 'Hoog', text: 'Je doet duidelijk meer dan normaal. Plan herstel en let op je slaap en HRV.', color: 'var(--yellow)' };
+  return { r, label: 'Te veel', text: 'Je belasting ligt ver boven je normaal: grotere kans op blessures en slecht herstel. Bouw rustiger op.', color: 'var(--red)' };
+}
+
+function loadBandCard(end = today()) {
+  const pts = loadSeries(end);
+  const last = pts[pts.length - 1];
+  const st = loadStatus(last);
+  const fmtS = (v) => fmtStrain(strainFromTrimp(v));
+  return `<div class="card trend">
+    <div class="trend-head"><div><div class="trend-t">Belastingsband · 7 vs 28 dagen</div>
+      <div class="trend-v" style="color:${st.color}">${st.label}${st.r ? `<small>${num(st.r * 100)}% van normaal</small>` : ''}</div>
+      <div class="trend-s">${last?.acute != null ? `Week-gemiddelde strain ${fmtS(last.acute)} · jouw normaal ${fmtS(last.lo)}–${fmtS(last.hi)}` : ''}</div></div></div>
+    ${loadBand(pts, { fmt: fmtS })}
+    <div class="legend"><span><i style="background:var(--band-strong)"></i>duurzaam bereik</span><span><i style="background:var(--strain)"></i>7-daags gemiddelde</span><span><i style="background:var(--track)"></i>per dag</span></div>
+    <p class="small muted" style="margin:8px 0 0">${st.text}</p>
+  </div>`;
+}
+
+function muscleCard() {
+  const sessions = S.strength.sessions.filter((s) => !s.deleted);
+  // Koppel workouts aan sessies via de berekende dagdata.
+  const withAct = sessions.map((s) => { const m = S.computed.byDate[s.date]?.strain?.sessions?.find((x) => x.id === s.id); return m?.activity ? { ...s, activity: m.activity } : s; });
+  const { fatigue } = muscleFatigue(withAct, S.computed.loads);
+  const tired = Object.entries(fatigue).filter(([, f]) => f >= 0.4).sort((a, b) => b[1] - a[1]).map(([g]) => GROUPS[g]);
+  const fresh = Object.entries(fatigue).filter(([, f]) => f < 0.12).map(([g]) => GROUPS[g]);
+  return `<div class="card">
+    <div class="card-head"><span class="t">Spierherstel</span><span class="small muted">tik op een spier</span></div>
+    ${bodyMap(fatigue)}
+    <div class="legend center-legend"><span><i style="background:var(--mus-fresh)"></i>Fris</span><span><i style="background:var(--mus-low)"></i>Bijna</span><span><i style="background:var(--mus-mid)"></i>Herstellend</span><span><i style="background:var(--mus-high)"></i>Vermoeid</span></div>
+    <p class="small muted" style="margin:8px 0 0">${tired.length ? `Nog vermoeid: <b style="color:var(--text)">${esc(tired.slice(0, 4).join(', '))}</b>. ` : 'Alles is (bijna) hersteld. '}${fresh.length ? `Fris: ${esc(fresh.slice(0, 5).join(', '))}.` : ''}</p>
+  </div>`;
+}
+
+function muscleSheet(g) {
+  const sessions = S.strength.sessions.filter((s) => !s.deleted);
+  const { fatigue, last } = muscleFatigue(sessions, S.computed.loads);
+  const f = fatigue[g] || 0;
+  const recent = sessions.filter((s) => (S.computed.loads[s.id]?.groups?.[g] || 0) > 0.2).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5);
+  return `<div class="sh-head"><div class="eyebrow">Spiergroep</div><h2>${esc(GROUPS[g] || g)}</h2></div>
+    <div class="sh-big" style="color:${fatigueColor(f)}">${Math.round(f * 100)}<small>% vermoeid</small></div>
+    <div class="sh-delta">${fatigueLabel(f)}</div>
+    <div class="list-header">Recent getraind</div>
+    <div class="list">${recent.length ? recent.map((s) => { const r = S.computed.loads[s.id]; const ex = r.exercises.filter((e) => (matchExercise(e.name, S.strength.exerciseMap).g[g] || 0) > 0); return `<button class="row tap wrap" data-go="#/session/${s.id}"><div class="grow"><div class="title">${esc(s.name)} · ${fmtDateShort(s.date)}</div><div class="sub">${esc(ex.map((e) => `${e.name} ${setText({ ...e, sets: null })}`).join(' · '))}</div></div><span class="chev">${I.chev}</span></button>`; }).join('') : '<div class="row"><div class="grow muted small">Nog niet gelogd.</div></div>'}</div>
+    <p class="small muted">Model: elke set belast de betrokken spieren; herstel halveert grofweg elke 1,5–2 dagen (grote spieren langzamer). Het is een schatting, geen meting.</p>`;
+}
+
+// ---------------------------------------------------------------- activiteit loggen (sheet)
+
+let ACT = null; // { draft, mode: 'pick'|'form', cat, q }
+
+function openActivityLog({ id = null, date = null, typeId = null, fromFitbit = null } = {}) {
+  if (id) {
+    const a = (S.strength.activities || []).find((x) => x.id === id);
+    if (!a) return;
+    ACT = { draft: { ...a }, mode: 'form', isNew: false };
+  } else if (typeId) {
+    ACT = { draft: newActivity(typeId, date || today()), mode: 'form', isNew: true };
+  } else {
+    ACT = { draft: null, mode: 'pick', cat: 'alle', q: '', date: date || today(), fromFitbit, isNew: true };
+  }
+  if (fromFitbit && ACT.draft) applyFitbit(ACT.draft, fromFitbit);
+  openSheet(actSheetHtml(), { onClose: () => { ACT = null; } });
+}
+
+function applyFitbit(d, fb) {
+  d.start = fb.start; d.duration = Math.max(1, Math.round((fb.end - fb.start) / 60000)); d.date = ymd(new Date(fb.start)); d.linkedFitbit = fb.id;
+}
+
+function recentTypes() {
+  const seen = [];
+  for (const a of [...(S.strength.activities || [])].filter((x) => !x.deleted).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))) if (!seen.includes(a.typeId)) seen.push(a.typeId);
+  return seen.slice(0, 6).map(typeById);
+}
+
+function actSheetHtml() {
+  if (!ACT) return '';
+  if (ACT.mode === 'pick') {
+    const q = ACT.q.trim().toLowerCase();
+    const list = TYPES.filter((t) => (ACT.cat === 'alle' || t.cat === ACT.cat) && (!q || t.name.toLowerCase().includes(q)));
+    const rec = recentTypes();
+    return `<div class="sh-head"><div class="eyebrow">Ook achteraf invullen</div><h2>Wat heb je gedaan?</h2></div>
+      <input class="field mt" type="search" placeholder="Zoek: timmeren, padel, tuin…" value="${esc(ACT.q)}" data-act-search autocomplete="off">
+      <div class="segmented mt">${[['alle', 'Alles'], ['sport', 'Sport'], ['werk', 'Klussen & werk'], ['huis', 'Huis & tuin']].map(([k, l]) => `<button class="${ACT.cat === k ? 'on' : ''}" data-act="act-cat" data-v="${k}">${l}</button>`).join('')}</div>
+      ${rec.length && !q && ACT.cat === 'alle' ? `<div class="list-header">Recent</div><div class="chips">${rec.map((t) => `<button class="chip" data-act="act-pick" data-v="${t.id}">${esc(t.name)}</button>`).join('')}</div>` : ''}
+      <div class="type-grid">${list.map((t) => `<button class="type-tile" data-act="act-pick" data-v="${t.id}"><span class="tt-ic" style="color:${CATS[t.cat].color}">${actIcon(t)}</span><span class="tt-n">${esc(t.name)}</span></button>`).join('') || '<div class="muted small">Niets gevonden — kies “Iets anders”.</div>'}</div>`;
+  }
+  const d = ACT.draft;
+  const t = typeById(d.typeId);
+  const isWork = t.cat !== 'sport';
+  const st = new Date(d.start);
+  const timeVal = `${pad(st.getHours())}:${pad(st.getMinutes())}`;
+  const durs = [15, 30, 45, 60, 90, 120, 180, 240, 360];
+  return `<div class="sh-head"><div class="eyebrow" style="color:${CATS[t.cat].color}">${CATS[t.cat].label}</div><h2 class="act-title"><span class="tt-ic" style="color:${CATS[t.cat].color}">${actIcon(t)}</span>${esc(t.name)}</h2>
+      ${ACT.isNew ? `<button class="link-btn" data-act="act-back">Ander type</button>` : `<button class="link-btn" data-act="act-back">Type wijzigen</button>`}</div>
+    <div class="list mt">
+      <div class="row"><div class="grow">Datum</div><input type="date" data-af="date" value="${esc(d.date)}" max="${today()}"></div>
+      <div class="row"><div class="grow">Begon om</div><input type="time" data-af="time" value="${timeVal}"></div>
+      <div class="row"><div class="grow">Duur</div><input type="number" inputmode="numeric" data-af="duration" value="${d.duration}" style="width:64px"><span class="muted">&nbsp;min</span></div>
+    </div>
+    <div class="chips">${durs.map((m) => `<button class="chip${d.duration === m ? ' on' : ''}" data-act="act-dur" data-v="${m}">${m < 60 ? `${m} min` : `${num(m / 60, m % 60 ? 1 : 0)} u`}</button>`).join('')}</div>
+    <div class="list-header">Intensiteit</div>
+    <div class="segmented">${Object.entries(INTENSITY).map(([k, l]) => `<button class="${d.intensity === k ? 'on' : ''}" data-act="act-int" data-v="${k}">${l}</button>`).join('')}</div>
+    <div class="list-header">Hoe zwaar voelde het? <span class="opt">optioneel</span></div>
+    <div class="card flat rpe">
+      <div class="rpe-top"><span class="rpe-v" data-rpe-v>${d.rpe ?? '–'}</span><span class="rpe-l" data-rpe-l>${d.rpe != null ? RPE_LABELS[d.rpe] : 'Sleep om in te vullen'}</span>${d.rpe != null ? '<button class="link-btn" data-act="act-rpe-clear">wis</button>' : ''}</div>
+      <input type="range" min="0" max="10" step="1" value="${d.rpe ?? 5}" data-af="rpe" class="slider${d.rpe == null ? ' unset' : ''}">
+      <div class="rpe-scale"><span>0 rust</span><span>5 zwaar</span><span>10 max</span></div>
+    </div>
+    ${isWork ? `<div class="list-header">Actieve tijd</div>
+    <div class="card flat"><div class="rpe-top"><span class="rpe-v" data-active-v>${Math.round((d.active ?? 0.7) * 100)}%</span><span class="rpe-l">echt aan het werk (rest: pauzes, materiaal pakken, overleggen)</span></div>
+      <input type="range" min="30" max="100" step="5" value="${Math.round((d.active ?? 0.7) * 100)}" data-af="active" class="slider"></div>` : ''}
+    <div class="list mt"><div class="row"><input type="text" data-af="note" value="${esc(d.note || '')}" placeholder="Notitie (optioneel)" style="text-align:left;max-width:100%;width:100%"></div></div>
+    <div class="est card flat" data-est>${actEstimateHtml()}</div>
+    <button class="btn mt" data-act="act-save">${ACT.isNew ? 'Toevoegen' : 'Bewaren'}</button>
+    ${!ACT.isNew ? `<button class="btn danger mt" data-act="act-del">${I.trash} Verwijderen</button>` : ''}`;
+}
+
+function actEstimateHtml() {
+  const d = ACT?.draft;
+  if (!d) return '';
+  const m = S.computed.byDate[d.date];
+  const raw = m?.raw && !m.raw.empty ? m.raw : S.days.find((x) => x.date === d.date) || null;
+  const rest = raw?.rhr || m?.recovery?.baseline?.rhr || 60;
+  const vo2 = raw?.vo2max || healthspan().hs?.inputs?.find((i) => i.key === 'vo2')?.value || null;
+  const e = estimateActivity(d, raw, { rest, max: S.computed.maxHr, female: S.settings.sex === 'v', vo2max: vo2, kg: latestWeight()?.kg || S.settings.bodyweight || 80 });
+  const isWork = typeById(d.typeId).cat !== 'sport';
+  const icon = e.source === 'hr' ? '●' : e.source === 'mix' ? '◐' : '○';
+  return `<div class="est-row"><div><div class="est-k">Belasting</div><div class="est-v" style="color:var(--strain)">${fmtStrain(strainFromTrimp(e.trimp))}<small>strain</small></div></div>
+    <div><div class="est-k">Energie</div><div class="est-v">${num(e.kcal)}<small>kcal</small></div></div>
+    <div><div class="est-k">Intensiteit</div><div class="est-v">${num(e.met, 1)}<small>MET</small></div></div></div>
+    <div class="est-split"><span><i style="background:var(--strain)"></i>Hart ${fmtStrain(strainFromTrimp(e.measured + e.estimated))}</span>${e.muscular ? `<span><i style="background:var(--muscle)"></i>Spieren +${num(e.muscular)}</span>` : ''}</div>
+    <div class="small muted mt">${icon} ${esc(SOURCE_LABEL[e.source])}${e.coverage > 0 ? ` · hartslag gemeten in ${Math.round(e.coverage * 100)}% van de tijd${e.avgHr ? `, gem. ${e.avgHr} bpm` : ''}` : ''}.${isWork ? ' Telt mee voor je belasting en herstel, niet als fitheid in je leefstijl-leeftijd.' : ''}</div>`;
+}
+
+function readActForm() {
+  const d = ACT?.draft;
+  const body = document.querySelector('.sheet-body');
+  if (!d || !body) return;
+  const g = (k) => body.querySelector(`[data-af="${k}"]`);
+  if (g('date')?.value) d.date = g('date').value;
+  if (g('time')?.value) d.start = new Date(`${d.date}T${g('time').value}:00`).getTime();
+  else d.start = new Date(`${d.date}T${pad(new Date(d.start).getHours())}:${pad(new Date(d.start).getMinutes())}:00`).getTime();
+  if (g('duration')) d.duration = clamp(Math.round(Number(g('duration').value) || 0), 1, 24 * 60);
+  if (g('active')) d.active = Number(g('active').value) / 100;
+  if (g('note')) d.note = g('note').value;
+}
+
+function refreshActSheet() { const body = document.querySelector('.sheet-body'); if (body) body.innerHTML = actSheetHtml(); }
+function refreshEstimate() { const el = document.querySelector('[data-est]'); if (el) el.innerHTML = actEstimateHtml(); }
+
+// ---------------------------------------------------------------- plus-menu en gewicht
+
+function openPlusMenu() {
+  const d = parseRoute().name === 'today' && parseRoute().a ? parseRoute().a : today();
+  openSheet(`<div class="sh-head"><h2>Toevoegen</h2></div>
+    <div class="list mt">
+      <button class="row tap" data-act="plus-activity" data-v="${d}"><div class="badge" style="background:var(--muscle)">${AI.hammer}</div><div class="grow"><div class="title">Activiteit of klus</div><div class="sub">Sport, timmerwerk, tuin, verhuizen — ook achteraf</div></div><span class="chev">${I.chev}</span></button>
+      <button class="row tap" data-go="#/import"><div class="badge" style="background:var(--strain)">${I.doc}</div><div class="grow"><div class="title">Krachttraining uit notitie</div><div class="sub">Plak je notitie (Upper 6, Upper 7, Lower)</div></div><span class="chev">${I.chev}</span></button>
+      <button class="row tap" data-go="#/log/new"><div class="badge" style="background:var(--card2);color:var(--text)">${I.dumbbell}</div><div class="grow"><div class="title">Krachttraining handmatig</div><div class="sub">Vanuit een schema afvinken</div></div><span class="chev">${I.chev}</span></button>
+      <button class="row tap" data-act="plus-weight"><div class="badge" style="background:var(--green)">${AI.scale}</div><div class="grow"><div class="title">Gewicht</div><div class="sub">${latestWeight() ? `laatst ${num(latestWeight().kg, 1)} kg · ${fmtDateShort(latestWeight().date)}` : 'Voor calorieën en je leefstijl-leeftijd'}</div></div><span class="chev">${I.chev}</span></button>
+    </div>`);
+}
+
+function weightSheetHtml() {
+  const ws = (S.strength.weights || []).filter((w) => !w.deleted).sort((a, b) => (a.date < b.date ? 1 : -1));
+  const last = ws[0];
+  return `<div class="sh-head"><div class="eyebrow">Lichaam</div><h2>Gewicht</h2></div>
+    <div class="weight-in"><input type="number" inputmode="decimal" step="0.1" id="w-kg" value="${last ? last.kg : S.settings.bodyweight || ''}" placeholder="80,0"><span>kg</span></div>
+    <div class="list mt"><div class="row"><div class="grow">Datum</div><input type="date" id="w-date" value="${today()}" max="${today()}"></div></div>
+    <button class="btn mt" data-act="w-save">Opslaan</button>
+    ${ws.length > 1 ? `<div class="card flat mt">${line(ws.slice(0, 60).reverse().map((w) => ({ date: w.date, value: w.kg })), { color: 'var(--green)', fmt: (v) => num(v, 1), unit: ' kg' })}</div>` : ''}
+    ${ws.length ? `<div class="list-header">Geschiedenis</div><div class="list">${ws.slice(0, 12).map((w) => `<div class="row"><div class="grow">${fmtDateShort(w.date)}</div><div class="val">${num(w.kg, 1)} kg</div><button class="x" data-act="w-del" data-v="${w.id}" aria-label="Verwijder" style="border:0;background:none;color:var(--red)">${I.minus}</button></div>`).join('')}</div>` : ''}`;
+}
+
+// ---------------------------------------------------------------- Gezondheid
+
+function viewHealth() {
+  const age = userAge();
+  if (!age) {
+    return `${largeTitle('Gezondheid', '', avatar())}
+      <div class="card"><h2>Hoe oud ben je?</h2><p class="small muted">Je leefstijl-leeftijd wordt vergeleken met je kalenderleeftijd.</p>
+      <div class="weight-in"><input type="number" inputmode="numeric" id="age-in" placeholder="30"><span>jaar</span></div>
+      <div class="segmented mt"><button class="${S.settings.sex !== 'v' ? 'on' : ''}" data-act="sex" data-v="m">Man</button><button class="${S.settings.sex === 'v' ? 'on' : ''}" data-act="sex" data-v="v">Vrouw</button></div>
+      <button class="btn mt" data-act="age-save">Opslaan</button></div>`;
+  }
+  const { hs, hist } = healthspan();
+  const younger = hs.delta < 0;
+  const lw = latestWeight();
+  const vo2In = hs.inputs.find((i) => i.key === 'vo2');
+  const tempoTxt = hs.tempo < 0.7 ? 'Je gewoontes van de laatste 30 dagen laten je trager verouderen dan de kalender.' : hs.tempo <= 1.15 ? 'Je recente gewoontes houden je leefstijl-leeftijd ongeveer stabiel.' : 'Je laatste 30 dagen zijn minder gunstig dan je half-jaargemiddelde.';
+  const rows = hs.inputs.map((i) => ({ label: i.short, years: i.years, sheet: `hs:${i.key}` }));
+  return `${largeTitle('Gezondheid', '', avatar())}
+  ${!hs.ready ? `<div class="card"><div class="card-head"><span class="t">Kalibreren</span><span class="small muted">${hs.nights30} van 14 nachten</span></div><div class="meter"><span style="width:${Math.min(100, (hs.nights30 / 14) * 100)}%;background:var(--accent)"></span></div><p class="small muted" style="margin:8px 0 0">Na 14 nachten in de laatste 30 dagen verschijnt je leefstijl-leeftijd. Hieronder zie je alvast een voorlopige inschatting.</p></div>` : ''}
+  <button class="hs-hero card-lift" data-sheet="hs:about">
+    <div class="hs-k">Leefstijl-leeftijd${hs.provisional ? ' <span class="pill">voorlopig</span>' : ''}</div>
+    <div class="hs-big">${num(hs.lifestyleAge, 1)}</div>
+    <div class="hs-range">marge ${num(hs.lo, 1)} – ${num(hs.hi, 1)} · kalenderleeftijd ${age}</div>
+    <div class="hs-chip ${younger ? 'good' : 'bad'}">${younger ? '▼' : '▲'} ${yrs(hs.delta)} jaar ${younger ? 'jonger' : 'ouder'} dan je kalender</div>
+  </button>
+  <div class="card">
+    <div class="card-head"><span class="t">Tempo</span><span class="tempo-v">${num(hs.tempo, 1)}×</span></div>
+    ${scale(hs.tempo, { fmt: (v) => `${v}×` })}
+    <p class="small muted" style="margin:10px 0 0">${tempoTxt} 1× = even snel als de kalender.</p>
+  </div>
+  ${hs.levers.length ? `<div class="section-title">Grootste hefbomen</div><div class="list">${hs.levers.slice(0, 3).map((l) => `<button class="row tap wrap" data-sheet="hs:${l.key}"><div class="badge" style="background:var(--green)">${I.up}</div><div class="grow"><div class="title">${esc(l.text)}</div><div class="sub">${esc(INPUTS[l.key].lever)}</div></div><div class="val"><b style="color:var(--green)">−${yrs(-l.gain)} j</b></div></button>`).join('')}</div>` : ''}
+  <div class="section-title">Wat telt mee</div>
+  <div class="card">${waterfall(rows)}<p class="tiny muted" style="margin:10px 0 0">Jaren per onderdeel na correctie voor overlap. Tik voor uitleg en het onderzoek erachter. HRV telt niet mee (alleen als trend), klussen niet als fitheid.</p></div>
+  ${hist.filter((h) => h.value != null).length > 1 ? `<div class="section-title">Verloop</div><div class="card">${line(hist.map((h) => ({ date: h.date, value: h.value, label: fmtDateShort(h.date) })), { color: 'var(--green)', fmt: (v) => num(v, 1), unit: ' j', dots: true, min: Math.floor(Math.min(...hist.filter((h) => h.value != null).map((h) => h.value)) - 2), max: Math.ceil(Math.max(...hist.filter((h) => h.value != null).map((h) => h.value)) + 2) })}</div>` : ''}
+  <div class="section-title">Lichaam</div>
+  <div class="tiles">
+    <button class="tile" data-act="plus-weight"><div class="tile-l">Gewicht</div><div class="tile-v">${lw ? num(lw.kg, 1) : '–'}<small>kg</small></div><div class="tile-d">${lw ? fmtDateShort(lw.date) : 'Tik om in te vullen'}</div></button>
+    <button class="tile" data-sheet="hs:vo2"><div class="tile-l">VO₂max${vo2In?.estimated ? ' <span class="pill">geschat</span>' : ''}</div><div class="tile-v">${vo2In?.value ? num(vo2In.value) : '–'}<small>ml/kg/min</small></div><div class="tile-d">gemiddeld ${num(vo2Ref(age, S.settings.sex))} voor ${age} jaar</div></button>
+    ${metricTile('hrv', today())}
+    ${metricTile('rhr', today())}
+  </div>
+  <p class="tiny muted center mt">Gebaseerd op verbanden uit grote bevolkingsstudies (observationeel). Geen diagnose en geen voorspelling van je levensduur.</p>`;
+}
+
+function hsInputSheet(key) {
+  const { hs } = healthspan();
+  const inp = hs.inputs.find((i) => i.key === key);
+  if (!inp) return '';
+  const ctx = hsCtx();
+  const fmtV = (v) => (v == null ? '–' : key === 'sleepDur' ? fmtHM(v * 60) : num(v, inp.digits));
+  const daily = { steps: (d) => d.raw?.steps, rhr: (d) => d.raw?.rhr, sleepDur: (d) => (d.sleep ? d.sleep.asleep / 60 : null), vo2: (d) => d.raw?.vo2max, mvpa: (d) => d.strain?.mvpa ?? null }[key];
+  const pts = daily ? lastDays(S.computed.byDate, today(), 90).map((d) => ({ date: d.date, value: daily(d) ?? null, go: `#/today/${d.date}` })) : null;
+  return `<div class="sh-head"><div class="eyebrow">Leefstijl-leeftijd</div><h2>${esc(inp.label)}</h2></div>
+    <div class="sh-big">${fmtV(inp.value)}<small>${key === 'sleepDur' ? 'per nacht' : inp.unit}</small></div>
+    <div class="sh-delta ${inp.years == null ? '' : inp.years < 0 ? 'good' : inp.years > 0.05 ? 'bad' : ''}">${inp.years == null ? 'Nog geen data' : `${inp.years < 0 ? '−' : '+'}${yrs(inp.years)} jaar op je leefstijl-leeftijd`}${inp.estimated ? ' · geschat uit je rusthartslag' : ''}</div>
+    <div class="stats mt">
+      ${stat('Laatste 30 dagen', fmtV(inp.value30), key === 'sleepDur' ? '' : inp.unit)}
+      ${stat('Referentie', esc(inp.ref(ctx)))}
+    </div>
+    ${pts && pts.some((p) => p.value != null) ? `<div class="card flat mt">${line(pts, { color: 'var(--green)', fmt: (v) => fmtV(v), dots: false })}</div>` : ''}
+    <div class="card flat mt"><div class="small"><b>Wat zegt het onderzoek?</b><br>${esc(inp.evidence)}</div><div class="small mt"><b>Wat kun je doen?</b><br>${esc(inp.lever)}</div></div>`;
+}
+
+function hsAboutSheet() {
+  return `<div class="sh-head"><div class="eyebrow">Uitleg</div><h2>Leefstijl-leeftijd</h2></div>
+    <div class="card flat mt small">
+      <p style="margin-top:0">Je leefstijl-leeftijd laat zien hoe oud je "bent" qua risicoprofiel, op basis van gewoontes die in grote studies samenhangen met hoe lang mensen leven: <b>cardiofitheid (VO₂max), stappen, matig/zwaar bewegen, krachttraining, slaapregelmaat, slaapduur en rusthartslag</b>.</p>
+      <p>Per onderdeel vergelijken we je gemiddelde van het laatste half jaar met een referentie en rekenen het sterfterisico om naar jaren (risico verdubbelt grofweg elke 8 jaar). Overlappende onderdelen tellen minder mee, het totaal wordt afgezwakt (×0,6) en begrensd op ±12 jaar. De marge komt uit 800 simulaties met de onzekerheid uit de studies.</p>
+      <p><b>Tempo</b> vergelijkt je laatste 30 dagen met het half jaar: lager dan 1× betekent dat je huidige gewoontes je leefstijl-leeftijd omlaag duwen.</p>
+      <p style="margin-bottom:0">Klussen en fysiek werk tellen mee voor je belasting, maar niet als fitheid: onderzoek laat zien dat werk-beweging niet dezelfde gezondheidswinst geeft als sport. HRV telt niet mee omdat die per apparaat sterk verschilt.</p>
+    </div>
+    <p class="tiny muted">Geen medisch advies. Observationele verbanden zijn geen oorzaak-gevolg.</p>`;
+}
+
 // ---------------------------------------------------------------- router
 
 function parseRoute() {
@@ -1221,12 +1557,12 @@ function parseRoute() {
 }
 
 function tabbar(active) {
-  const tabs = [['today', 'Vandaag', I.today], ['trends', 'Trends', I.chart], ['strength', 'Kracht', I.dumbbell], ['settings', 'Profiel', I.person]];
-  return `<nav class="tabbar"><div class="inner">${tabs.map(([k, l, ic]) => `<a href="#/${k}" class="${active === k ? 'on' : ''}">${ic}<span>${l}</span></a>`).join('')}</div></nav>`;
+  const tabs = [['today', 'Vandaag', I.today], ['strength', 'Training', I.dumbbell], ['trends', 'Trends', I.chart], ['health', 'Gezondheid', AI.health]];
+  return `<nav class="tabbar"><div class="tb-pill">${tabs.map(([k, l, ic]) => `<a href="#/${k}" class="${active === k ? 'on' : ''}">${ic}<span>${l}</span></a>`).join('')}</div><button class="tb-plus" data-act="plus" aria-label="Toevoegen">${AI.plus}</button></nav>`;
 }
 
 let lastRoute = '';
-const DEPTH = { today: 0, trends: 0, strength: 0, settings: 0, welcome: 0, recovery: 1, strain: 1, sleep: 1, day: 2, live: 1, exercises: 1, session: 1, template: 1, import: 1, about: 1, setup: 1, exercise: 2, log: 2, 'template-edit': 2 };
+const DEPTH = { today: 0, trends: 0, strength: 0, health: 0, settings: 1, welcome: 0, recovery: 1, strain: 1, sleep: 1, day: 2, live: 1, exercises: 1, session: 1, template: 1, import: 1, about: 1, setup: 1, exercise: 2, log: 2, 'template-edit': 2 };
 let lastDepth = 0;
 let lastName = '';
 let titleUpdate = () => {};
@@ -1254,9 +1590,10 @@ function render() {
     case 'import': html = viewImport(); tab = 'strength'; break;
     case 'template': html = viewTemplate(r.a); tab = 'strength'; break;
     case 'template-edit': html = viewTemplateEdit(r.a || 'new'); tab = 'strength'; break;
-    case 'settings': html = viewSettings(); tab = 'settings'; break;
-    case 'about': html = viewAbout(); tab = 'settings'; break;
+    case 'settings': html = viewSettings(); tab = 'today'; break;
+    case 'about': html = viewAbout(); tab = 'today'; break;
     case 'live': html = viewLive(); tab = 'today'; break;
+    case 'health': html = viewHealth(); tab = 'health'; break;
     default: html = viewToday(r.a && /^\d{4}-\d{2}-\d{2}$/.test(r.a) ? (r.a > today() ? today() : r.a) : today()); tab = 'today';
   }
   const showTabs = loggedIn && !['welcome', 'setup', 'log', 'template-edit'].includes(r.name);
@@ -1266,7 +1603,7 @@ function render() {
   const depth = DEPTH[r.name] ?? 1;
   let anim = '';
   if (!same) anim = r.name === lastName ? 'swap' : depth > lastDepth ? 'push' : depth < lastDepth ? 'pop' : 'fade';
-  const ptr = ['today', 'trends', 'strength'].includes(r.name) || (r.name !== 'welcome' && !r.name) ? ' data-ptr' : '';
+  const ptr = ['today', 'trends', 'strength', 'health'].includes(r.name) || (r.name !== 'welcome' && !r.name) ? ' data-ptr' : '';
   app.innerHTML = `<div class="page ${anim}"${ptr}>${html}</div>` + (showTabs ? tabbar(tab || 'today') : '');
   if (!same) { window.scrollTo(0, 0); lastRoute = key; lastDepth = depth; lastName = r.name; }
   titleUpdate();
@@ -1316,6 +1653,68 @@ const actions = {
   login() { if (!auth.getClientId()) { location.hash = '#/setup'; return; } auth.login({ silent: false }); },
   relogin() { auth.login({ silent: false, consent: true }); },
   'drive-login'() { auth.setDriveDisabled(false); auth.login({ kind: 'drive', silent: false }); },
+  plus() { openPlusMenu(); },
+  'plus-activity'(el) { closeSheet(true); openActivityLog({ date: el.dataset.v || today() }); },
+  'plus-weight'() { closeSheet(true); openSheet(weightSheetHtml()); },
+  'fb-label'(el) {
+    const [date, ...idp] = el.dataset.v.split(':');
+    const a = (M(date)?.strain?.activities || []).find((x) => String(x.id) === idp.join(':'));
+    closeSheet(true);
+    if (a) openActivityLog({ date, fromFitbit: a });
+  },
+  'act-cat'(el) { ACT.cat = el.dataset.v; refreshActSheet(); },
+  'act-pick'(el) {
+    const prev = ACT.draft;
+    const d = newActivity(el.dataset.v, prev?.date || ACT.date || today());
+    if (prev) { d.id = prev.id; d.start = prev.start; d.duration = prev.duration; d.intensity = prev.intensity; d.rpe = prev.rpe; d.note = prev.note; d.createdAt = prev.createdAt; d.date = prev.date; d.linkedFitbit = prev.linkedFitbit; }
+    if (ACT.fromFitbit && !prev) applyFitbit(d, ACT.fromFitbit);
+    ACT.draft = d; ACT.mode = 'form';
+    refreshActSheet();
+  },
+  'act-back'() { readActForm(); ACT.mode = 'pick'; ACT.cat = 'alle'; ACT.q = ''; refreshActSheet(); },
+  'act-dur'(el) { readActForm(); ACT.draft.duration = Number(el.dataset.v); refreshActSheet(); },
+  'act-int'(el) { readActForm(); ACT.draft.intensity = el.dataset.v; refreshActSheet(); },
+  'act-rpe-clear'() { readActForm(); ACT.draft.rpe = null; refreshActSheet(); },
+  async 'act-save'() {
+    readActForm();
+    const d = { ...ACT.draft, updatedAt: Date.now() };
+    await saveStrength((doc) => {
+      doc.activities ||= [];
+      const i = doc.activities.findIndex((x) => x.id === d.id);
+      if (i >= 0) doc.activities[i] = d; else doc.activities.push(d);
+    });
+    closeSheet();
+    toast(`${typeById(d.typeId).name} bewaard`);
+    softRender(true);
+  },
+  async 'act-del'() {
+    if (!confirm('Deze activiteit verwijderen?')) return;
+    const id = ACT.draft.id;
+    await saveStrength((doc) => { const a = (doc.activities || []).find((x) => x.id === id); if (a) { a.deleted = true; a.updatedAt = Date.now(); } });
+    closeSheet();
+    softRender(true);
+  },
+  async 'w-save'() {
+    const kg = Number(String(document.getElementById('w-kg').value).replace(',', '.'));
+    const date = document.getElementById('w-date').value || today();
+    if (!(kg > 25 && kg < 300)) { toast('Vul een geldig gewicht in'); return; }
+    await saveStrength((doc) => { doc.weights ||= []; doc.weights.push({ id: uid(), date, kg: Math.round(kg * 10) / 10, updatedAt: Date.now() }); });
+    await saveSettings({ bodyweight: Math.round(kg * 10) / 10 });
+    closeSheet();
+    toast('Gewicht opgeslagen');
+    softRender(true);
+  },
+  async 'w-del'(el) {
+    await saveStrength((doc) => { const w = (doc.weights || []).find((x) => x.id === el.dataset.v); if (w) { w.deleted = true; w.updatedAt = Date.now(); } });
+    const b = document.querySelector('.sheet-body'); if (b) b.innerHTML = weightSheetHtml();
+  },
+  async sex(el) { await saveSettings({ sex: el.dataset.v }); render(); },
+  async 'age-save'() {
+    const a = Number(document.getElementById('age-in').value);
+    if (!(a > 12 && a < 100)) { toast('Vul je leeftijd in'); return; }
+    await saveSettings({ age: a });
+    render();
+  },
   msheet(el) {
     const [k, d, r] = el.dataset.v.split(':');
     const body = document.querySelector('.sheet-body');
@@ -1603,6 +2002,26 @@ document.addEventListener('change', async (ev) => {
 // Naam in krachtlog → toon vorige topset als placeholder.
 document.addEventListener('input', (ev) => {
   const el = ev.target;
+  if (el.matches?.('[data-act-search]') && ACT) {
+    ACT.q = el.value;
+    const pos = el.selectionStart;
+    refreshActSheet();
+    const n = document.querySelector('[data-act-search]'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch { /* */ } }
+    return;
+  }
+  if (el.dataset?.af && ACT?.draft) {
+    if (el.dataset.af === 'rpe') {
+      ACT.draft.rpe = Number(el.value);
+      el.classList.remove('unset');
+      const v = document.querySelector('[data-rpe-v]'); const l = document.querySelector('[data-rpe-l]');
+      if (v) v.textContent = el.value; if (l) l.textContent = RPE_LABELS[Number(el.value)];
+    } else if (el.dataset.af === 'active') {
+      const v = document.querySelector('[data-active-v]'); if (v) v.textContent = `${el.value}%`;
+      readActForm();
+    } else readActForm();
+    refreshEstimate();
+    return;
+  }
   if ((el.dataset?.f === 'weight' || el.dataset?.f === 'reps') && el.closest('.ex-edit.chk')) {
     const row = el.closest('.ex-edit.chk');
     if (row.dataset.done !== '1') {

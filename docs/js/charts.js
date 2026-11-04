@@ -287,3 +287,62 @@ export function liveLine(samples, { height = 150, windowSec = 300, maxHr = 190 }
 }
 
 export { num };
+
+/**
+ * Belastingsband (acuut 7 d vs chronisch 28 d), zoals een "duurzaam bereik".
+ * pts: [{date, daily, acute, lo, hi}]
+ */
+export function loadBand(pts, { height = 170, fmt = (v) => Math.round(v) } = {}) {
+  const W = 340, H = height, pt = 14, pb = 22;
+  const vals = pts.flatMap((p) => [p.daily, p.acute, p.hi]).filter((v) => v != null);
+  if (!vals.length) return `<div class="empty-chart">Nog te weinig data</div>`;
+  const hi = Math.max(...vals) * 1.08;
+  const n = pts.length;
+  const x = (i) => (W * (i + 0.5)) / n;
+  const y = (v) => pt + (H - pt - pb) * (1 - v / hi);
+  const bw = Math.max(2, (W / n) * 0.55);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
+  // Band
+  const top = pts.map((p, i) => (p.hi != null ? `${x(i).toFixed(1)},${y(p.hi).toFixed(1)}` : null)).filter(Boolean);
+  const bot = pts.map((p, i) => (p.lo != null ? `${x(i).toFixed(1)},${y(p.lo).toFixed(1)}` : null)).filter(Boolean).reverse();
+  if (top.length > 1) s += `<polygon points="${top.join(' ')} ${bot.join(' ')}" class="band-fill"/>`;
+  pts.forEach((p, i) => { if (p.daily) s += `<rect x="${x(i) - bw / 2}" y="${y(p.daily)}" width="${bw}" height="${H - pb - y(p.daily)}" rx="${Math.min(3, bw / 2)}" class="band-bar"/>`; });
+  const d = pts.map((p, i) => (p.acute != null ? `${i && pts[i - 1].acute != null ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.acute).toFixed(1)}` : '')).join('');
+  s += `<path d="${d}" fill="none" class="band-line" vector-effect="non-scaling-stroke"/>`;
+  const last = pts[n - 1];
+  if (last.acute != null) s += `<circle cx="${x(n - 1)}" cy="${y(last.acute)}" r="4.5" class="band-dot"/>`;
+  const every = Math.ceil(n / 6);
+  pts.forEach((p, i) => { if ((n - 1 - i) % every === 0) s += `<text x="${Math.min(W - 14, Math.max(14, x(i)))}" y="${H - 6}" text-anchor="middle" class="ct-lab">${esc(fmtDateShort(p.date))}</text>`; });
+  s += '</svg>';
+  const id = register({
+    W, H,
+    at(xv) {
+      const i = Math.max(0, Math.min(n - 1, Math.floor((xv / W) * n)));
+      const p = pts[i];
+      return { x: x(i), y: p.acute != null ? y(p.acute) : H - pb, title: `${fmtDateShort(p.date)} · dag ${fmt(p.daily || 0)}`, value: p.acute != null ? `week-gem. ${fmt(p.acute)} · normaal ${fmt(p.lo)}–${fmt(p.hi)}` : 'geen data', color: 'var(--strain)', go: `#/strain/${p.date}` };
+    },
+  });
+  return wrap(id, s);
+}
+
+/** Horizontale waterval: jaren winst (links, groen) / verlies (rechts, rood). rows: [{label, years, lo, hi, sheet}] */
+export function waterfall(rows) {
+  const max = Math.max(1.5, ...rows.map((r) => Math.abs(r.hi ?? r.years ?? 0)), ...rows.map((r) => Math.abs(r.lo ?? 0)));
+  const pct = (v) => 50 + (v / max) * 50;
+  return `<div class="wf">${rows.map((r) => {
+    if (r.years == null) return `<button class="wf-row" data-sheet="${r.sheet}"><span class="wf-l">${esc(r.label)}</span><span class="wf-track"><span class="wf-mid"></span></span><span class="wf-v muted">geen data</span></button>`;
+    const a = pct(Math.min(0, r.years)), b = pct(Math.max(0, r.years));
+    const good = r.years < 0;
+    return `<button class="wf-row" data-sheet="${r.sheet}"><span class="wf-l">${esc(r.label)}</span><span class="wf-track"><span class="wf-mid"></span>
+      <span class="wf-bar ${good ? 'good' : 'bad'}" style="left:${a}%;width:${Math.max(0.8, b - a)}%"></span>
+      ${r.lo != null ? `<span class="wf-err" style="left:${pct(r.lo)}%;width:${Math.max(0, pct(r.hi) - pct(r.lo))}%"></span>` : ''}</span>
+      <span class="wf-v ${good ? 'up' : r.years > 0.05 ? 'down' : 'muted'}">${r.years > 0 ? '+' : r.years < 0 ? '−' : ''}${Math.abs(r.years).toFixed(1).replace('.', ',')} j</span></button>`;
+  }).join('')}<div class="wf-axis"><span>jonger</span><span>ouder</span></div></div>`;
+}
+
+/** Horizontale schaal (bijv. tempo −1×…3×). */
+export function scale(value, { min = -1, max = 3, ticks = [-1, 0, 1, 2, 3], fmt = (v) => `${v}×`, mark = 1 } = {}) {
+  const p = (v) => ((v - min) / (max - min)) * 100;
+  return `<div class="scale"><div class="scale-track"><span class="scale-grad"></span><span class="scale-mark" style="left:${p(mark)}%"></span><span class="scale-knob" style="left:${p(Math.max(min, Math.min(max, value)))}%"></span></div>
+    <div class="scale-ticks">${ticks.map((t) => `<span style="left:${p(t)}%">${fmt(t)}</span>`).join('')}</div></div>`;
+}

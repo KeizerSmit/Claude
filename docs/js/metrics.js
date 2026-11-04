@@ -8,6 +8,7 @@
 
 import { mean, sd, clamp, normCdf, addDays, median } from './util.js';
 import { computeLoads, MUSCULAR_TO_TRIMP, templateBaselines } from './strength.js';
+import { estimateActivity, nonFitnessWindows, typeById } from './activities.js';
 
 export const STRAIN_K = 110;
 
@@ -78,9 +79,10 @@ function inSleep(t, day) {
 }
 
 /** Strain-berekening voor één dag (zonder kracht). */
-function cardio(day, rest, max, female) {
+function cardio(day, rest, max, female, workWin = []) {
   const zones = [0, 0, 0, 0, 0];
   let trimp = 0;
+  let mod = 0, vig = 0;
   let hasHr = false;
   let peak = 0;
   if (day.hr && day.hr.length) {
@@ -92,6 +94,9 @@ function cardio(day, rest, max, female) {
       if (inSleep(t, day)) continue;
       if (hr > peak) peak = hr;
       trimp += trimpMinute(hr, rest, max, female);
+      // Matig/zwaar voor healthspan — niet tijdens werk/klussen (dat telt niet als fitheid).
+      const hrr = (hr - rest) / (max - rest);
+      if (hrr >= 0.4 && !workWin.some(([a, b]) => t >= a && t < b)) { if (hrr >= 0.6) vig++; else mod++; }
       const pct = hr / max;
       for (let z = ZONES.length - 1; z >= 0; z--) if (pct >= ZONES[z].lo) { zones[z]++; break; }
     }
@@ -101,6 +106,7 @@ function cardio(day, rest, max, female) {
     estimated = true;
     const a = day.azm || {};
     trimp = (a.fatBurn || 0) * 0.9 + (a.cardio || 0) * 2.0 + (a.peak || 0) * 3.5 + ((day.steps || 0) / 1000) * 1.2;
+    mod = a.fatBurn || 0; vig = (a.cardio || 0) + (a.peak || 0);
   }
   const activities = (day.exercises || []).map((ex) => {
     let t = 0, n = 0, mx = 0;
@@ -116,7 +122,7 @@ function cardio(day, rest, max, female) {
     if (!n && ex.avgHr) t = (ex.duration || 0) * trimpMinute(ex.avgHr, rest, max, female);
     return { ...ex, trimp: t, strain: strainFromTrimp(t), maxHr: mx || ex.maxHr || null };
   });
-  return { trimp, zones, activities, estimated, hasHr, peak };
+  return { trimp, zones, activities, estimated, hasHr, peak, mvpa: mod + 2 * vig, mod, vig };
 }
 
 function sleepMetrics(day, prev, settings, history) {
@@ -214,10 +220,15 @@ export function computeAll(days, strengthDoc, settings, profile) {
   const loads = computeLoads(sessions, { ...settings, exerciseMap: strengthDoc?.exerciseMap || {}, baselines: templateBaselines(strengthDoc, settings.bodyweight) });
   const sessionsByDate = {};
   for (const s of sessions) if (s.date) (sessionsByDate[s.date] ||= []).push(s);
+  const actsByDate = {};
+  for (const a of strengthDoc?.activities || []) if (!a.deleted && a.date) (actsByDate[a.date] ||= []).push(a);
+  const weights = (strengthDoc?.weights || []).filter((w) => !w.deleted && w.kg).sort((a, b) => (a.date < b.date ? -1 : 1));
+  const kgAt = (date) => { let k = settings.bodyweight || 80; for (const w of weights) if (w.date <= date) k = w.kg; return k; };
+  let lastVo2 = null;
 
   // Zorg dat ook dagen met alleen een krachtlog (zonder Fitbit-data) meetellen.
   const known = new Set(sorted.map((d) => d.date));
-  for (const date of Object.keys(sessionsByDate)) if (!known.has(date)) sorted.push({ date, empty: true });
+  for (const date of [...Object.keys(sessionsByDate), ...Object.keys(actsByDate)]) if (!known.has(date)) { known.add(date); sorted.push({ date, empty: true }); }
   sorted.sort((a, b) => (a.date < b.date ? -1 : 1));
 
   const byDate = {};
@@ -231,7 +242,17 @@ export function computeAll(days, strengthDoc, settings, profile) {
     const nextRaw = rawByDate[addDays(day.date, 1)];
     if (!day.empty) day.sleepNext = nextRaw?.sleep || null;
     const rest = day.rhr || (prev?.raw?.rhr) || fallbackRest;
-    const c = day.empty ? { trimp: 0, zones: [0, 0, 0, 0, 0], activities: [], estimated: true, hasHr: false } : cardio(day, rest, max, female);
+    const manualActs = actsByDate[day.date] || [];
+    const c = day.empty ? { trimp: 0, zones: [0, 0, 0, 0, 0], activities: [], estimated: true, hasHr: false, mvpa: 0 } : cardio(day, rest, max, female, nonFitnessWindows(manualActs));
+    if (day.vo2max) lastVo2 = day.vo2max;
+    const ctx = { rest, max, female, vo2max: day.vo2max || lastVo2 || null, kg: kgAt(day.date) };
+    const manual = manualActs.map((a) => ({ ...a, est: estimateActivity(a, day.empty ? null : day, ctx) })).sort((a, b) => a.start - b.start);
+    // Fitbit-sessie die samenvalt met een handmatige log: verbergen (de log is leidend, de hartslag telt al).
+    for (const a of c.activities) {
+      const m = manual.find((x) => Math.min(a.end, x.est.end) - Math.max(a.start, x.start) > 0.5 * Math.min(a.end - a.start, x.est.end - x.start));
+      if (m) { a.linkedManual = m.id; m.fitbit = a; }
+    }
+    const estTrimp = manual.reduce((x, a) => x + a.est.estimated + a.est.muscular, 0);
     const daySessions = (sessionsByDate[day.date] || []).map((s) => ({ ...s, ...loads[s.id], muscularTrimp: (loads[s.id]?.load || 0) * MUSCULAR_TO_TRIMP }));
     // Koppel krachtsessie aan een Fitbit-activiteit (krachttraining) op dezelfde dag.
     for (const s of daySessions) {
@@ -239,10 +260,10 @@ export function computeAll(days, strengthDoc, settings, profile) {
       if (act) { act.linked = s.id; s.activity = act; }
     }
     const muscular = daySessions.reduce((a, s) => a + s.muscularTrimp, 0);
-    const total = c.trimp + muscular;
+    const total = c.trimp + muscular + estTrimp;
     const strain = {
       score: strainFromTrimp(total), cardio: strainFromTrimp(c.trimp), cardioTrimp: c.trimp,
-      muscularTrimp: muscular, trimp: total, zones: c.zones, activities: c.activities,
+      muscularTrimp: muscular, estTrimp, manual, mvpa: c.mvpa || 0, trimp: total, zones: c.zones, activities: c.activities,
       sessions: daySessions, estimated: c.estimated, hasHr: c.hasHr, peakHr: c.peak || null,
     };
     const entry = { date: day.date, raw: day, strain };

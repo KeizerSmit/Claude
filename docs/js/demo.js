@@ -134,5 +134,15 @@ export function generateDemo(n = 60) {
   }
   const tpl = (name, list, order) => ({ id: 'demo-' + order, name, order, updatedAt: Date.now(), exercises: list.map(([n, w, reps, bw, sets]) => ({ name: n, weight: w, reps, bw: !!bw, sets: sets || null })) });
   const templates = [tpl('Upper 6', UPPER_A, 0), tpl('Upper 7', UPPER_B, 1), tpl('Lower', LOWER, 2)];
-  return { days, strength: { sessions, templates, exerciseMap: {}, updatedAt: Date.now() } };
+  // Een paar klussen en sportactiviteiten achteraf gelogd + gewicht.
+  const activities = [];
+  const weights = [];
+  days.forEach((d, i) => {
+    const dow = parseYmd(d.date).getDay();
+    if (dow === 6 && i % 2 === 0) activities.push({ id: 'demo-a' + i, typeId: 'timmeren-buiten', date: d.date, start: parseYmd(d.date).getTime() + 9.5 * 3600000, duration: 210, intensity: 'matig', rpe: 5, active: 0.7, note: 'Overkapping', createdAt: 1, updatedAt: 1 });
+    if (dow === 0 && i % 3 === 0) activities.push({ id: 'demo-p' + i, typeId: 'padel', date: d.date, start: parseYmd(d.date).getTime() + 15 * 3600000, duration: 90, intensity: 'matig', rpe: 6, active: 1, note: '', createdAt: 1, updatedAt: 1 });
+    if (dow === 1 && i % 2 === 1) activities.push({ id: 'demo-t' + i, typeId: 'gras', date: d.date, start: parseYmd(d.date).getTime() + 17 * 3600000, duration: 45, intensity: 'matig', rpe: null, active: 0.8, note: '', createdAt: 1, updatedAt: 1 });
+    if (i % 7 === 3) weights.push({ id: 'demo-w' + i, date: d.date, kg: Math.round((82.4 - i * 0.02 + (r() - 0.5) * 0.6) * 10) / 10, updatedAt: 1 });
+  });
+  return { days, strength: { sessions, templates, activities, weights, exerciseMap: {}, updatedAt: Date.now() } };
 }

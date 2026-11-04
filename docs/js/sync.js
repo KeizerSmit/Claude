@@ -5,6 +5,7 @@ import { ymd, addDays, today, parseYmd, toNum, durSec, pad } from './util.js';
 import { setUser, getToken } from './auth.js';
 
 const INITIAL_DAYS = 45;
+const HISTORY_DAYS = 180; // voor healthspan: dagwaarden en slaap (zonder minuut-hartslag)
 
 export function dateOf(d) {
   if (!d) return null;
@@ -108,6 +109,16 @@ export function convertHr(points, dayStartMs) {
   return n ? { hr: arr.slice(0, Math.max(last, 1)), hrMax: Math.round(max), hrCount: n } : { hr: null, hrMax: null, hrCount: 0 };
 }
 
+/** dailyRollUp mag max. 90 dagen per aanvraag: in stukken ophalen. */
+async function rollupChunked(type, from, toExcl) {
+  const out = [];
+  for (let a = from; a < toExcl; a = addDays(a, 89)) {
+    const b = addDays(a, 89) < toExcl ? addDays(a, 89) : toExcl;
+    out.push(...(await dailyRollUp(type, a, b)));
+  }
+  return out;
+}
+
 function blankDay(date) {
   return { date, hrStart: parseYmd(date).getTime(), exercises: [], naps: [] };
 }
@@ -130,7 +141,9 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
   const t0 = Date.now();
   const lastSync = await kv.get('lastSyncDate');
   const end = today();
-  const from = todayOnly ? end : !full && lastSync ? addDays(lastSync, -2) : addDays(end, -(INITIAL_DAYS - 1));
+  const backfilled = await kv.get('historyBackfilled');
+  const from = todayOnly ? end : (!backfilled || full) ? addDays(end, -(HISTORY_DAYS - 1)) : lastSync ? addDays(lastSync, -2) : addDays(end, -(INITIAL_DAYS - 1));
+  const hrFrom = todayOnly ? end : full || !lastSync ? addDays(end, -(INITIAL_DAYS - 1)) : addDays(lastSync, -2);
   const toExcl = addDays(end, 1);
   const existing = {};
   for (const d of await daysStore.all()) existing[d.date] = d;
@@ -179,6 +192,12 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
     ['Rusthartslag', 'daily-resting-heart-rate', 'daily_resting_heart_rate', (dp, o) => { o.rhr = toNum(dp.dailyRestingHeartRate.beatsPerMinute); return dp.dailyRestingHeartRate.date; }],
     ['Ademhaling', 'daily-respiratory-rate', 'daily_respiratory_rate', (dp, o) => { o.resp = toNum(dp.dailyRespiratoryRate.breathsPerMinute); return dp.dailyRespiratoryRate.date; }],
     ['SpO₂', 'daily-oxygen-saturation', 'daily_oxygen_saturation', (dp, o) => { o.spo2 = toNum(dp.dailyOxygenSaturation.averagePercentage); return dp.dailyOxygenSaturation.date; }],
+    ['VO2max', 'daily-vo2-max', 'daily_vo2_max', (dp, o) => {
+      const v = dp.dailyVo2Max;
+      o.vo2max = toNum(v.vo2Max);
+      o.vo2maxEst = v.estimated ?? null;
+      return v.date;
+    }],
     ['Huidtemperatuur', 'daily-sleep-temperature-derivations', 'daily_sleep_temperature_derivations', (dp, o) => {
       const v = dp.dailySleepTemperatureDerivations;
       o.tempNight = toNum(v.nightlyTemperatureCelsius);
@@ -232,7 +251,7 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
 
   onProgress('Stappen…', 0.32);
   await step('Stappen', async () => {
-    const pts = await dailyRollUp('steps', from, toExcl);
+    const pts = await rollupChunked('steps', from, toExcl);
     for (const p of pts) {
       const date = dateOf(p.civilStartTime?.date);
       if (date && out[date]) out[date].steps = toNum(p.steps?.countSum);
@@ -240,7 +259,7 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
     return pts.length;
   });
   await step('Zoneminuten', async () => {
-    const pts = await dailyRollUp('active-zone-minutes', from, toExcl);
+    const pts = await rollupChunked('active-zone-minutes', from, toExcl);
     for (const p of pts) {
       const date = dateOf(p.civilStartTime?.date);
       const a = p.activeZoneMinutes;
@@ -250,7 +269,7 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
   });
 
   // Hartslag per minuut: alleen dagen die nog geen (complete) data hebben, plus vandaag en gisteren.
-  const hrDates = dates.filter((d) => full || !existing[d]?.hr || d >= addDays(end, -1) || !existing[d]?.hrComplete);
+  const hrDates = dates.filter((d) => d >= hrFrom && (full || !existing[d]?.hr || d >= addDays(end, -1) || !existing[d]?.hrComplete));
 
   let done = 0;
   let hrOk = 0, hrErr = null;
@@ -273,7 +292,7 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
 
   for (const d of Object.values(out)) d.synced = Date.now();
   await daysStore.putMany(Object.values(out));
-  if (!todayOnly) await kv.set('lastSyncDate', end);
+  if (!todayOnly) { await kv.set('lastSyncDate', end); await kv.set('historyBackfilled', true); }
   await kv.set('lastSyncAt', Date.now());
   await kv.set('syncLog', { at: Date.now(), ms: Date.now() - t0, from, to: end, log, todayOnly });
   onProgress('Klaar', 1);
