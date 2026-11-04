@@ -6,6 +6,8 @@ Persoonlijke WHOOP-achtige app voor de **Fitbit Air**: herstel, strain en slaap,
 - **Strain (0–21)**: hartslagreserve per minuut (TRIMP), logaritmisch, plus de **spierbelasting** uit je krachtlog. Inclusief optimale strain op basis van je herstel.
 - **Slaap**: slaapbehoefte (basis + strain + slaapschuld − dutjes), prestatie, fasen, efficiëntie, consistentie en bedtijd-advies.
 - **Kracht**: werkt zoals je Apple-notitie. Plak je notitie (`Upper 6`, `Upper 7`, `Lower` met regels als `Lat pulldown 87kg 8 reps` of `Hack squat 75kg 2 sets 6 reps`) en de app maakt er **schema's** van. In de gym tik je *Start*, zie je per oefening je huidige topset, vink je af wat je deed en pas je aan wat je verbeterd hebt. Het schema toont daarna automatisch je nieuwste topsets ("levende notitie"), en *Kopieer als notitie* zet het terug in je eigen notatie. Herkent ~35 machines/oefeningen, toont PR's, geschatte 1RM-progressie en zware sets per spiergroep per week. Spierbelasting telt mee in je dag-strain. Alles wordt bewaard in een verborgen map in je eigen Google Drive.
+- **Live hartslag**: elke minuut ververst uit Google Health; echte realtime (elke hartslag + live HRV + sessie-strain) via Bluetooth *Hartslag delen* van de Fitbit Air — werkt in Chrome (Android/Mac) en op iPhone in de Bluefy-browser.
+- **Interactief**: schuif over elke grafiek om waarden te zien, tik om naar die dag te gaan; tik op elke tegel voor een detailsheet met historie en uitleg; veeg tussen dagen; trek omlaag om te verversen.
 - **Alle data**: per dag de ruwe meetwaarden, hartslag per minuut, slaapfasen en de tussenstappen van de berekeningen.
 
 De app staat in `docs/` (pure HTML/CSS/JS, geen build-stap). Data blijft op je telefoon en in je eigen Google-account.
