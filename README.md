@@ -14,7 +14,7 @@ De app staat in `docs/` (pure HTML/CSS/JS, geen build-stap). Data blijft op je t
 
 1. GitHub → deze repo → **Settings → Pages**.
 2. *Source*: **Deploy from a branch**, branch `claude/fitbit-whoop-app` (of `main` na mergen), map **`/docs`** → Save.
-3. Na een minuut staat de app op `https://keizersmit.github.io/claude/`.
+3. Na een minuut staat de app op `https://keizersmit.github.io/Claude/`.
 
 ## Google-koppeling (eenmalig, ±5 min)
 
@@ -28,7 +28,7 @@ De Fitbit Web API is op 2 november 2026 uitgezet; Fitbit-data loopt nu via de **
    - **Data Access**: scopes `googlehealth.activity_and_fitness.readonly`, `googlehealth.health_metrics_and_measurements.readonly`, `googlehealth.sleep.readonly`, `googlehealth.profile.readonly`, `drive.appdata`.
    - **Clients → Create client** → *Web application*
      - Authorized JavaScript origin: `https://keizersmit.github.io`
-     - Authorized redirect URI: `https://keizersmit.github.io/claude/`
+     - Authorized redirect URI: `https://keizersmit.github.io/Claude/`
 4. Open de app → *Koppeling instellen* → plak de **Client ID** → *Inloggen met Google*. Google meldt “app niet geverifieerd”: dat klopt (het is je eigen app), kies *Doorgaan*.
 
 Wil je de Client ID niet in de app invullen, zet hem dan in `docs/config.js`.
