@@ -149,7 +149,7 @@ export async function syncAll({ onProgress = () => {}, full = false } = {}) {
       log.push({ label, ok: true, count: r });
     } catch (e) {
       if (e instanceof AuthError) throw e;
-      log.push({ label, ok: false, error: e.message, status: e.status });
+      log.push({ label, ok: false, error: e.message, status: e.status, detail: String(e.body || '').slice(0, 400) });
       console.warn(label, e);
     }
   };
@@ -267,7 +267,7 @@ export async function syncAll({ onProgress = () => {}, full = false } = {}) {
     done++;
     onProgress(`Hartslag ${done}/${hrDates.length}…`, 0.35 + 0.6 * (done / hrDates.length));
   });
-  log.push(hrErr ? { label: 'Hartslag', ok: hrOk > 0, count: hrOk, error: hrErr.message, status: hrErr.status } : { label: 'Hartslag', ok: true, count: hrOk });
+  log.push(hrErr ? { label: 'Hartslag', ok: hrOk > 0, count: hrOk, error: hrErr.message, status: hrErr.status, detail: String(hrErr.body || '').slice(0, 400) } : { label: 'Hartslag', ok: true, count: hrOk });
 
   for (const d of Object.values(out)) d.synced = Date.now();
   await daysStore.putMany(Object.values(out));

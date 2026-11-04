@@ -55,7 +55,7 @@ export function logout() {
 }
 
 /** Start de Google-login. silent = zonder scherm als je al toestemming gaf. */
-export function login({ silent = false, returnTo = location.hash } = {}) {
+export function login({ silent = false, consent = false, returnTo = location.hash } = {}) {
   const clientId = getClientId();
   if (!clientId) throw new Error('Geen Google Client ID ingesteld.');
   const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -71,6 +71,7 @@ export function login({ silent = false, returnTo = location.hash } = {}) {
   const user = getUser();
   if (user?.email) p.set('login_hint', user.email);
   if (silent) p.set('prompt', 'none');
+  else if (consent) p.set('prompt', 'consent');
   location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + p.toString());
 }
 

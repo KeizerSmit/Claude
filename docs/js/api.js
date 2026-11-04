@@ -14,11 +14,16 @@ export class ApiError extends Error {
 async function request(url, { method = 'GET', body, headers = {}, raw = false } = {}) {
   const t = getToken();
   if (!t) throw new AuthError('Niet ingelogd of sessie verlopen.');
-  const res = await fetch(url, {
+  let res;
+  try {
+    res = await fetch(url, {
     method,
     headers: { Authorization: `Bearer ${t.access_token}`, ...(body && typeof body === 'object' && !(body instanceof Blob) && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...headers },
     body: body && typeof body === 'object' && !(body instanceof Blob) && !(body instanceof FormData) ? JSON.stringify(body) : body,
-  });
+    });
+  } catch (e) {
+    throw new ApiError(`Netwerkfout (${e.message}) bij ${url.replace(/\?.*/, '').replace('https://', '')}`, 0, '');
+  }
   if (res.status === 401) throw new AuthError('Sessie verlopen.');
   if (!res.ok) {
     let text = '';

@@ -295,6 +295,7 @@ function viewToday(date) {
   return `${largeTitle(fmtDayTitle(date), '', `${syncBtn()}${avatar()}`)}
   ${syncHeader()}
   ${S.syncError ? `<div class="card small" style="color:var(--red)">${esc(S.syncError)} <a href="#" data-act="relogin">Opnieuw inloggen</a></div>` : ''}
+  ${t ? syncProblemCard() : ''}
   ${dayNav(date, '#/today')}
   <div class="fade-in">
   ${rings}
@@ -304,6 +305,29 @@ function viewToday(date) {
   <div class="list">${acts.length ? acts.join('') : `<div class="row"><div class="grow muted small">Geen activiteiten. Log je krachttraining met “+ Kracht”.</div></div>`}</div>` : `<button class="btn secondary" data-go="#/log/new/${date}">${I.plus} Krachttraining loggen</button>`}
   ${stats ? `<div class="section-title">Statistieken <a href="#/day/${date}">Alle data</a></div>${stats}` : ''}
   <p class="center tiny muted mt">${esc(lastSync)}</p>
+  </div>`;
+}
+
+function syncProblemCard() {
+  const log = S.syncLog;
+  if (!log || store.isDemo()) return '';
+  const failed = log.log.filter((l) => !l.ok);
+  if (!failed.length) return '';
+  const tok = auth.getToken();
+  const granted = (tok?.scope || '').split(/\s+/);
+  const missing = tok ? auth.SCOPES.filter((x) => x.startsWith('https://') && !granted.includes(x)).map((x) => x.split('/').pop()) : [];
+  const uniq = [];
+  for (const f of failed) {
+    const k = `${f.status || ''} ${f.error}`;
+    const ex = uniq.find((u) => u.k === k);
+    if (ex) ex.labels.push(f.label); else uniq.push({ k, labels: [f.label], f });
+  }
+  return `<div class="card" style="border:1.5px solid var(--red);overflow-wrap:anywhere">
+    <div style="font-weight:700;color:var(--red)">Ophalen van ${failed.length} onderdelen mislukt</div>
+    ${missing.length ? `<div class="small mt"><b>Niet toegestaan bij inloggen:</b> ${esc(missing.join(', '))}. Log opnieuw in en vink alles aan.</div>` : ''}
+    ${uniq.slice(0, 3).map((u) => `<div class="small mt"><b>${esc(u.labels.join(', '))}</b><br>${esc(u.f.status ? u.f.status + ': ' : '')}${esc(u.f.error)}${u.f.detail && !/^[{]/.test(u.f.error) ? `<div class="tiny muted mono" style="display:block;margin-top:4px;white-space:pre-wrap">${esc(u.f.detail.slice(0, 260))}</div>` : ''}</div>`).join('')}
+    <div class="btn-row mt"><button class="btn small" data-act="sync">Opnieuw proberen</button><button class="btn small secondary" data-act="relogin">Opnieuw inloggen</button></div>
+    <div class="tiny muted mt">Maak hier een screenshot van en stuur hem naar Claude.</div>
   </div>`;
 }
 
@@ -955,7 +979,7 @@ const actions = {
   async sync() { await runSync(); },
   async 'full-sync'() { await runSync({ full: true }); },
   login() { if (!auth.getClientId()) { location.hash = '#/setup'; return; } auth.login({ silent: false }); },
-  relogin() { auth.login({ silent: false }); },
+  relogin() { auth.login({ silent: false, consent: true }); },
   async copy(el) {
     try { await navigator.clipboard.writeText(el.dataset.v); toast('Gekopieerd'); } catch { prompt('Kopieer:', el.dataset.v); }
   },
