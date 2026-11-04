@@ -1,0 +1,42 @@
+// Iconen in SF Symbols-stijl (eigen eenvoudige paden).
+const s = (p, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${p}</svg>`;
+
+export const I = {
+  back: s('<path d="M15 5l-7 7 7 7"/>', 'stroke-width="2.6"'),
+  chev: s('<path d="M9 5l7 7-7 7"/>', 'width="14" height="14" stroke-width="2.6"'),
+  left: s('<path d="M15 5l-7 7 7 7"/>', 'width="20" height="20" stroke-width="2.4"'),
+  right: s('<path d="M9 5l7 7-7 7"/>', 'width="20" height="20" stroke-width="2.4"'),
+  plus: s('<path d="M12 5v14M5 12h14"/>', 'stroke-width="2.4"'),
+  sync: s('<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>'),
+  gear: s('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+  heart: s('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>'),
+  moon: s('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+  bolt: s('<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>'),
+  chart: s('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+  dumbbell: s('<path d="M6.5 6.5v11M17.5 6.5v11M3 9v6M21 9v6M6.5 12h11"/>', 'stroke-width="2.4"'),
+  today: s('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>'),
+  info: s('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
+  up: s('<path d="M7 17L17 7M8 7h9v9"/>'),
+  down: s('<path d="M7 7l10 10M17 8v9H8"/>'),
+  gauge: s('<path d="M12 14l4-4"/><path d="M3.3 17a9 9 0 1 1 17.4 0"/>'),
+  bed: s('<path d="M2 18V6M2 14h20v4M22 14v-2a4 4 0 0 0-4-4h-7v6"/><circle cx="6.5" cy="10.5" r="2"/>'),
+  temp: s('<path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/>'),
+  target: s('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'),
+  lungs: s('<path d="M12 4v8M12 12l-3 2M12 12l3 2"/><path d="M9 7c-3 0-6 5-6 10 0 2 1 3 3 3 2 0 3-1 3-3V7zM15 7c3 0 6 5 6 10 0 2-1 3-3 3-2 0-3-1-3-3V7z"/>'),
+  drop: s('<path d="M12 2.7l5.7 5.6a8 8 0 1 1-11.3 0z"/>'),
+  steps: s('<path d="M4 16v-2.4C4 11.5 3 10.5 3 8c0-2.7 1.5-6 4.5-6C9.4 2 10 3.8 10 5.5c0 3.1-2 5.7-2 8.7V16a2 2 0 1 1-4 0zM20 20v-2.4c0-2.1 1-3.1 1-5.6 0-2.7-1.5-6-4.5-6C14.6 6 14 7.8 14 9.5c0 3.1 2 5.7 2 8.7V20a2 2 0 1 0 4 0z"/>'),
+  trash: s('<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>'),
+  x: s('<path d="M18 6L6 18M6 6l12 12"/>'),
+  minus: s('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>'),
+  check: s('<path d="M5 12l5 5L20 7"/>'),
+  doc: s('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>'),
+  person: s('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+  flame: s('<path d="M12 22c4 0 7-3 7-7 0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-2 2-5 5-5 8 0 4 3 7 7 7z"/>'),
+  run: s('<circle cx="14" cy="4" r="2"/><path d="M6 20l3-6 3 2v5M10 9l4-1 3 4 3 1M10 9l-2 4-4 1"/>'),
+  list: s('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
+  download: s('<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>'),
+  upload: s('<path d="M12 21V9M7 14l5-5 5 5M5 3h14"/>'),
+  google: '<svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.2 2.4-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>',
+};
+
+export const INSIGHT_ICON = { info: I.info, bolt: I.bolt, gauge: I.gauge, bed: I.bed, up: I.up, down: I.down, heart: I.heart, temp: I.temp, moon: I.moon, target: I.target };
