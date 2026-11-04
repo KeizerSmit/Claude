@@ -201,32 +201,53 @@ function viewWelcome() {
     <img class="logo" src="icons/icon-192.png" alt="">
     <h1>Pulse</h1>
     <p>Herstel, belasting en slaap uit je Fitbit Air — met je krachttraining erbij.</p>
-    ${hasClient ? `<button class="btn gbtn" data-act="login">${I.google} Inloggen met Google</button>` : `<button class="btn" data-go="#/setup">Koppeling instellen</button>`}
+    ${hasClient ? `<button class="btn gbtn" data-act="login">${I.google} Inloggen met Google</button>` : `<button class="btn" data-go="#/setup">Instellen</button>`}
     <div style="height:10px"></div>
     <button class="btn secondary" data-act="demo-on">Bekijk met demodata</button>
     ${hasClient ? `<p class="small" style="margin-top:22px"><a href="#/setup">Instellingen koppeling</a></p>` : ''}
   </div>`;
 }
 
+const SETUP_STEPS = [
+  { id: 'project', title: 'Maak een project', text: 'Naam: <b>Pulse</b> → <b>Create</b>.', links: [['Open Google Cloud', 'https://console.cloud.google.com/projectcreate']] },
+  { id: 'apis', title: 'Zet de koppelingen aan', text: 'Kijk of bovenaan project <b>Pulse</b> staat → <b>Next</b> → <b>Enable</b>.', links: [['Aanzetten', 'https://console.cloud.google.com/flows/enableapi?apiid=health.googleapis.com,drive.googleapis.com']] },
+  { id: 'brand', title: 'Inlogscherm', text: '<b>Get started</b> → naam <b>Pulse</b> + je e-mail → <b>External</b> → je e-mail → akkoord → <b>Create</b>.', links: [['Openen', 'https://console.cloud.google.com/auth/overview']] },
+  { id: 'tester', title: 'Jezelf toelaten', text: 'Bij <b>Test users</b> → <b>Add users</b> → je eigen Gmail-adres → <b>Save</b>.', links: [['Openen', 'https://console.cloud.google.com/auth/audience']] },
+  { id: 'client', title: 'Sleutel maken', text: 'Type <b>Web application</b>. Plak bij <i>JavaScript origins</i> en bij <i>Redirect URIs</i> de twee regels hieronder (kopieerknop) → <b>Create</b> → kopieer de <b>Client ID</b>.', links: [['Openen', 'https://console.cloud.google.com/auth/clients/create']], copy: true },
+];
+
+function setupDone() { try { return JSON.parse(localStorage.getItem('pulse.setupDone') || '[]'); } catch { return []; } }
+
+function isIos() { return /iPhone|iPad|iPod/.test(navigator.userAgent); }
+function isStandalone() { return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; }
+
 function viewSetup() {
   const uri = auth.redirectUri();
-  return `${navbar('Koppeling', auth.getClientId() || store.isDemo() ? '#/settings' : '#/welcome')}
+  const done = setupDone();
+  const needHome = isIos() && !isStandalone() && !auth.getClientId();
+  const step = (s, i) => {
+    const ok = done.includes(s.id);
+    return `<div class="card setup-step${ok ? ' ok' : ''}">
+      <div class="ss-head"><span class="ss-num">${ok ? I.check : i + 1}</span><b>${s.title}</b></div>
+      <div class="small muted" style="margin:6px 0 10px">${s.text}</div>
+      ${s.copy ? `<div class="copyrow"><code>${esc(location.origin)}</code><button class="btn small secondary" data-act="copy" data-v="${esc(location.origin)}">Kopieer</button></div>
+      <div class="copyrow"><code>${esc(uri)}</code><button class="btn small secondary" data-act="copy" data-v="${esc(uri)}">Kopieer</button></div>` : ''}
+      ${s.links.map(([l, href]) => `<a class="btn${ok ? ' secondary' : ''}" href="${href}" target="_blank" rel="noopener" data-step="${s.id}">${l} ↗</a>`).join('')}
+    </div>`;
+  };
+  return `${navbar('Instellen', auth.getClientId() || store.isDemo() ? '#/settings' : '#/welcome')}
   <div class="content fade-in">
-    <div class="card"><h2>Eenmalig instellen</h2>
-      <p class="small muted" style="margin-top:-4px">Sinds november 2026 loopt Fitbit-data via de <b>Google Health API</b>. Daarvoor heb je een eigen (gratis) Google Cloud-project nodig. Dit duurt ±5 minuten en hoeft maar één keer.</p>
-      <ol class="steps">
-        <li>Ga naar <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">console.cloud.google.com</a> en maak een project (bijv. “Pulse”).</li>
-        <li>Zet onder <i>APIs &amp; Services → Library</i> de <b>Google Health API</b> en de <b>Google Drive API</b> aan.</li>
-        <li><i>Google Auth Platform → Branding</i>: app-naam “Pulse”, je e-mail. Bij <i>Audience</i>: type <b>External</b>, status <b>Testing</b>, en voeg jezelf toe als <b>test user</b>.</li>
-        <li><i>Data Access</i>: voeg de scopes <code>googlehealth.activity_and_fitness.readonly</code>, <code>googlehealth.health_metrics_and_measurements.readonly</code>, <code>googlehealth.sleep.readonly</code>, <code>googlehealth.profile.readonly</code> en <code>drive.appdata</code> toe.</li>
-        <li><i>Clients → Create client</i>: type <b>Web application</b>.<br>Authorized JavaScript origin: <code>${esc(location.origin)}</code><br>Authorized redirect URI: <code>${esc(uri)}</code></li>
-        <li>Kopieer de <b>Client ID</b> en plak hem hieronder.</li>
-      </ol>
+    ${needHome ? `<div class="card" style="border:1.5px solid var(--accent)"><b>Eerst: zet Pulse op je beginscherm</b>
+      <div class="small muted" style="margin-top:6px">Tik onderin Safari op het deelknopje <b>⬆︎</b> → <b>Zet op beginscherm</b> → <b>Voeg toe</b>. Open daarna Pulse vanaf je beginscherm en doe daar de stappen hieronder.</div></div>` : ''}
+    <p class="small muted" style="margin:0 2px 12px">Eenmalig, ±5 minuten. Elke knop opent de juiste Google-pagina; log in met het Google-account van je Fitbit. Kom daarna terug naar deze app.</p>
+    ${SETUP_STEPS.map(step).join('')}
+    <div class="card setup-step">
+      <div class="ss-head"><span class="ss-num">${SETUP_STEPS.length + 1}</span><b>Plak de Client ID en log in</b></div>
+      <input class="field mt" id="clientId" placeholder="…apps.googleusercontent.com" value="${esc(auth.getClientId())}" autocomplete="off" autocapitalize="off" spellcheck="false" style="background:var(--card2)">
+      <button class="btn small secondary mt" data-act="paste-client">Plakken</button>
+      <button class="btn gbtn mt" data-act="save-client">${I.google} Inloggen met Google</button>
+      <div class="tiny muted mt">Google zegt “app niet geverifieerd”: klopt, het is je eigen app → <b>Doorgaan</b> → alles aanvinken → <b>Doorgaan</b>.</div>
     </div>
-    <div class="list-header">Google Client ID</div>
-    <input class="field" id="clientId" placeholder="123456-abc.apps.googleusercontent.com" value="${esc(auth.getClientId())}" autocomplete="off" autocapitalize="off" spellcheck="false">
-    <div class="list-footer" style="margin-top:6px">Wordt alleen op dit toestel bewaard. Google toont bij inloggen een melding “app niet geverifieerd” — dat klopt, het is je eigen app. Kies <i>Doorgaan</i>.</div>
-    <button class="btn gbtn mt" data-act="save-client">${I.google} Opslaan en inloggen</button>
   </div>`;
 }
 
@@ -933,6 +954,12 @@ const actions = {
   async 'full-sync'() { await runSync({ full: true }); },
   login() { if (!auth.getClientId()) { location.hash = '#/setup'; return; } auth.login({ silent: false }); },
   relogin() { auth.login({ silent: false }); },
+  async copy(el) {
+    try { await navigator.clipboard.writeText(el.dataset.v); toast('Gekopieerd'); } catch { prompt('Kopieer:', el.dataset.v); }
+  },
+  async 'paste-client'() {
+    try { const t = (await navigator.clipboard.readText()).trim(); document.getElementById('clientId').value = t; } catch { toast('Plak met lang drukken in het veld'); }
+  },
   'save-client'() {
     const v = document.getElementById('clientId').value.trim();
     if (!/\.apps\.googleusercontent\.com$/.test(v)) { toast('Dat lijkt geen geldige Client ID'); return; }
@@ -1131,6 +1158,13 @@ const actions = {
 };
 
 document.addEventListener('click', (ev) => {
+  const stepLink = ev.target.closest('[data-step]');
+  if (stepLink) {
+    const d = setupDone();
+    if (!d.includes(stepLink.dataset.step)) { d.push(stepLink.dataset.step); try { localStorage.setItem('pulse.setupDone', JSON.stringify(d)); } catch { /* */ } }
+    setTimeout(render, 300);
+    return;
+  }
   const go = ev.target.closest('[data-go]');
   const back = ev.target.closest('[data-back]');
   const act = ev.target.closest('[data-act]');
