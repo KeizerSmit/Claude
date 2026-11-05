@@ -17,9 +17,11 @@ import { recommendTraining, progressionTip } from './coach.js';
 import { recoveryPatterns } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween } from './util.js';
 
-const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false };
+const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Weekdoelen', 'Vier doelen per week (kracht, beweging, slaap, stappen) met reeksen: hoeveel weken op rij je ze haalt. Tik om je doelen aan te passen.'],
+  ['Strain-coach', 'Het plan op Vandaag zegt hoeveel minuten wandelen of zone 2 je nog nodig hebt voor je strain-doel.'],
   ['Draagtijd', 'Onder Alle data zie je hoeveel van de dag je Fitbit hartslag mat en waar de gaten zitten. Droeg je hem weinig, dan waarschuwt Vandaag dat je strain te laag kan zijn.'],
   ['Slaapschuld', 'Het slaapscherm toont je netto tekort over 7 nachten, met een plan om het in te halen, en je slaapschema met adviestijden.'],
   ['Volume per spiergroep', 'Op Training: hoeveel zware sets elke spier deze week kreeg, naast de richtlijn van 10–20 sets.'],
@@ -582,6 +584,7 @@ function viewToday(date) {
   ${t && parseYmd(date).getDay() === 1 ? `<button class="wk-entry glass" data-go="#/week/${addDays(date, -7)}"><span>${I.chart}</span><div><b>Je vorige week</b><small>Week ${isoWeek(addDays(date, -7))} in één oogopslag</small></div><span class="chev">${I.chev}</span></button>` : ''}
   ${m?.flag ? `<div class="card flag-card flag-${m.flag}"><div class="badge" style="background:${m.flag === 'sick' ? 'var(--red)' : 'var(--sleep)'}">${m.flag === 'sick' ? AI.health || I.heart : I.bed}</div><div class="grow"><div class="title">${m.flag === 'sick' ? 'Ziek-modus' : 'Rustdag'}</div><div class="sub">${m.flag === 'sick' ? 'Telt niet mee in je baseline · strain-doel max 6' : 'Strain-doel max 9 · herstel heeft voorrang'}</div></div><button class="btn small ghost" data-act="flag" data-v="${date}:">Uit</button></div>` : ''}
   ${coachCard(date)}
+  ${t ? goalsCard() : ''}
   ${insightsCard}
   <div class="section-title">Activiteiten <button data-act="plus-activity" data-v="${date}">+ Toevoegen</button></div>
   <div class="list">${acts.length ? acts.join('') : `<button class="row tap" data-act="plus-activity" data-v="${date}"><div class="badge" style="background:var(--card2);color:var(--muscle)">${I.plus}</div><div class="grow"><div class="title">Workout of klus toevoegen</div><div class="sub">Ook achteraf — telt mee in je belasting</div></div><span class="chev">${I.chev}</span></button>`}</div>
@@ -652,6 +655,7 @@ function openSheetFor(spec) {
   else if (kind === 'muscle') openSheet(muscleSheet(rest[0]));
   else if (kind === 'patterns') openSheet(patternsAboutSheet());
   else if (kind === 'volume') openSheet(volumeAboutSheet());
+  else if (kind === 'goals') openSheet(goalsSheet());
   else if (kind === 'manual') openActivityLog({ id: rest[0] });
 }
 
@@ -1791,6 +1795,76 @@ function strainToGo(m) {
   return { kind: 'under', need: tgt[0] - sc, mins, text: `Nog ${fmtStrain(tgt[0] - sc)} tot je doel: ±${mins[0][1]} min ${mins[0][0]} of ${mins[1][1]} min ${mins[1][0].split(' (')[0]}.` };
 }
 
+// ---------------------------------------------------------------- weekdoelen
+
+const GOALS = [
+  { key: 'strength', label: 'Kracht', unit: 'x', color: 'var(--muscle)', fmt: (v) => num(v), goalFmt: (g) => `${g}×`, sum: true },
+  { key: 'mvpa', label: 'Beweging', unit: 'min', color: 'var(--strain)', fmt: (v) => num(v), goalFmt: (g) => `${g} min`, sum: true },
+  { key: 'sleep', label: 'Slaap', unit: '', color: 'var(--sleep)', fmt: (v) => fmtHM(v), goalFmt: (g) => fmtHM(g) },
+  { key: 'steps', label: 'Stappen', unit: '', color: 'var(--green)', fmt: (v) => (v >= 1000 ? `${num(v / 1000, 1)}k` : num(v)), goalFmt: (g) => `${num(g / 1000, 1).replace(/,0$/, '')}k` },
+];
+
+function goalsOf() { return { ...DEFAULTS.goals, ...(S.settings.goals || {}) }; }
+
+function weekGoalValues(start) {
+  const end = addDays(start, 6) > today() ? today() : addDays(start, 6);
+  const days = [];
+  for (let d = start; d <= end; d = addDays(d, 1)) days.push(M(d) || { date: d });
+  const strength = days.reduce((a, d) => a + (d.strain?.sessions?.length || 0) + (d.strain?.manual || []).filter((x) => typeById(x.typeId).id === 'kracht').length, 0);
+  const mvpa = days.reduce((a, d) => a + (d.strain?.mvpa || 0), 0);
+  const sl = days.map((d) => d.sleep?.asleep).filter((v) => v != null);
+  const st = days.filter((d) => d.date < today() || days.length === 1).map((d) => d.raw?.steps).filter((v) => v != null);
+  return { strength, mvpa, sleep: sl.length ? mean(sl) : null, steps: st.length ? mean(st) : null, n: days.length };
+}
+
+function goalMet(key, v, g) { return v != null && v >= g - (key === 'sleep' ? 0.5 : 0); }
+
+/** Hoeveel weken op rij (vóór deze week) haalde je dit doel? Deze week telt mee als hij al gehaald is. */
+function goalStreak(key) {
+  const g = goalsOf()[key];
+  let n = 0;
+  const cur = weekStartOf(today());
+  if (goalMet(key, weekGoalValues(cur)[key], g)) n++;
+  for (let w = 1; w < 52; w++) {
+    const st = addDays(cur, -7 * w);
+    if (st < (S.days[0]?.date || today())) break;
+    if (goalMet(key, weekGoalValues(st)[key], g)) n++; else break;
+  }
+  return n;
+}
+
+function goalsCard(start = weekStartOf(today()), { compact = false } = {}) {
+  const v = weekGoalValues(start);
+  const g = goalsOf();
+  const isCur = start === weekStartOf(today());
+  return `<div class="card goals${compact ? ' compact' : ''}">
+    <div class="card-head"><span class="t">${isCur ? 'Weekdoelen' : 'Doelen deze week'}</span>${isCur ? `<button class="link-btn small" data-go="#/week/${start}">Week ${isoWeek(start)} ›</button>` : ''}</div>
+    <div class="goal-grid">${GOALS.map((x) => {
+      const val = v[x.key], goal = g[x.key];
+      const frac = val == null ? 0 : val / goal;
+      const met = goalMet(x.key, val, goal);
+      const streak = isCur ? goalStreak(x.key) : 0;
+      return `<button class="goal" data-sheet="goals">
+        ${ring({ frac: Math.min(1, frac), color: x.color, size: 64, stroke: 7, label: met ? '✓' : val == null ? '–' : `${Math.round(Math.min(frac, 9.99) * 100)}%` })}
+        <b>${x.label}</b><span>${val == null ? '–' : x.fmt(val)} / ${x.goalFmt(goal)}</span>${streak >= 2 ? `<em>${streak} wk op rij</em>` : ''}
+      </button>`;
+    }).join('')}</div>
+  </div>`;
+}
+
+function goalsSheet() {
+  const g = goalsOf();
+  const inp = (k, v, step, unit) => `<input type="number" inputmode="decimal" step="${step}" data-set="goal.${k}" value="${v}"><span class="muted">&nbsp;${unit}</span>`;
+  return `<div class="sh-head"><div class="eyebrow">Per week</div><h2>Weekdoelen</h2></div>
+  <div class="list mt">
+    <div class="row"><div class="grow"><div class="title">Krachttrainingen</div><div class="sub">sessies per week</div></div>${inp('strength', g.strength, 1, '×')}</div>
+    <div class="row"><div class="grow"><div class="title">Beweging</div><div class="sub">minuten per week · advies 150</div></div>${inp('mvpa', g.mvpa, 10, 'min')}</div>
+    <div class="row"><div class="grow"><div class="title">Slaap</div><div class="sub">gemiddeld per nacht</div></div>${inp('sleepH', String(Math.round((g.sleep / 60) * 100) / 100), 0.25, 'uur')}</div>
+    <div class="row"><div class="grow"><div class="title">Stappen</div><div class="sub">gemiddeld per dag</div></div>${inp('steps', g.steps, 500, '')}</div>
+  </div>
+  <p class="small muted">Beweging telt alleen je hartslag-minuten boven 40% van je hartslagreserve (intensief dubbel) — klussen telt hier bewust niet mee, wel in je strain.</p>`;
+}
+
 function coachCard(date) {
   if (date !== today()) return '';
   const m = M(date);
@@ -2122,6 +2196,7 @@ function viewWeek(start) {
       }).join('')}</div>
       <div class="legend center-legend"><span><i style="background:var(--strain)"></i>strain per dag</span><span><i style="background:var(--green)"></i>herstel</span></div>
     </div>
+    ${goalsCard(start)}
     <div class="list-header">Vergeleken met vorige week</div>
     <div class="card"><div class="kv">
       <div>Herstel</div><div>${cmpCell(w.rec, pw.rec, 0, true, (v) => `${num(v)}%`)}</div>
@@ -2665,6 +2740,15 @@ document.addEventListener('change', async (ev) => {
     const k = el.dataset.set;
     let v = el.value;
     if (k === 'sleepNeedH') { await saveSettings({ sleepNeed: Math.round(clamp(Number(v) || 7.5, 4, 12) * 60) }); return; }
+    if (k.startsWith('goal.')) {
+      const sub = k.slice(5);
+      const n = Number(String(v).replace(',', '.'));
+      if (!isFinite(n) || n <= 0) return;
+      const goals = { ...goalsOf(), ...(sub === 'sleepH' ? { sleep: Math.round(clamp(n, 4, 12) * 60) } : { [sub]: sub === 'strength' ? clamp(Math.round(n), 1, 14) : Math.round(n) }) };
+      await saveSettings({ goals });
+      render();
+      return;
+    }
     if (k === 'morning') { await saveSettings({ morning: el.checked }); return; }
     if (k === 'badge') {
       v = el.checked;

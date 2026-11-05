@@ -880,3 +880,12 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .coach-go { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; padding: 10px 12px; margin: 10px 0 2px; border-radius: 12px; background: var(--track); }
 .coach-go svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
 .coach-go-under svg { color: var(--strain); } .coach-go-over svg { color: var(--muscle); } .coach-go-in svg { color: var(--green); }
+
+/* ---------- weekdoelen ---------- */
+.goal-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 4px; }
+.goal { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; background: none; color: var(--text); font: inherit; padding: 4px 0; cursor: pointer; min-width: 0; }
+.goal .ring { margin-bottom: 4px; }
+.goal .ring-label { font-family: var(--font-round); font-weight: 700; }
+.goal b { font-size: 13px; font-weight: 600; }
+.goal span { font-size: 11px; color: var(--text2); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.goal em { font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--muscle); background: color-mix(in srgb, var(--muscle) 16%, transparent); padding: 2px 6px; border-radius: 999px; margin-top: 2px; white-space: nowrap; }
