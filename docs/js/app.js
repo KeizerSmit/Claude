@@ -3,7 +3,7 @@ import * as auth from './auth.js';
 import { syncAll, syncHeartNow, syncMinute } from './sync.js';
 import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp, trimpForStrain, trimpPerMinute } from './metrics.js';
-import { parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
+import { e1rm, parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
 import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale, sleepRange, calendar, clockMin } from './charts.js';
 import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle } from './interact.js';
 import { live as liveState, onLive, connect as liveConnect, disconnect as liveDisconnect, current as liveCurrent, liveRmssd, sessionStats as liveSession, bluetoothSupported } from './live.js';
@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Slimmer notities plakken', 'Plak je bijgewerkte notitie: de app laat per schema zien wat er verbeterd is (bijv. 87 → 89,5 kg) en logt het meteen als training van vandaag.'],
   ['Weekdoelen', 'Vier doelen per week (kracht, beweging, slaap, stappen) met reeksen: hoeveel weken op rij je ze haalt. Tik om je doelen aan te passen.'],
   ['Strain-coach', 'Het plan op Vandaag zegt hoeveel minuten wandelen of zone 2 je nog nodig hebt voor je strain-doel.'],
   ['Draagtijd', 'Onder Alle data zie je hoeveel van de dag je Fitbit hartslag mat en waar de gaten zitten. Droeg je hem weinig, dan waarschuwt Vandaag dat je strain te laag kan zijn.'],
@@ -1477,6 +1478,39 @@ function exRow(e, i) {
   </div>`;
 }
 
+/** Wat is er veranderd in een geplakt schema t.o.v. het opgeslagen schema? */
+function templateDiff(block) {
+  const t = findTemplate(S.strength, block.name);
+  if (!t) return null;
+  const old = new Map(t.exercises.map((e) => [exKey(e.name), e]));
+  const bw = S.settings.bodyweight || 80;
+  const est = (e) => e1rm(e.bw ? bw + (e.weight || 0) : e.weight, e.reps);
+  const changes = [];
+  for (const e of block.exercises) {
+    const o = old.get(exKey(e.name));
+    old.delete(exKey(e.name));
+    if (!o) { changes.push({ kind: 'new', e }); continue; }
+    if ((o.weight || 0) === (e.weight || 0) && o.reps === e.reps && !!o.bw === !!e.bw) continue;
+    const a = est(o), b = est(e);
+    changes.push({ kind: a != null && b != null ? (b > a + 0.01 ? 'up' : b < a - 0.01 ? 'down' : 'same') : 'same', e, o });
+  }
+  for (const o of old.values()) changes.push({ kind: 'removed', o });
+  return changes;
+}
+
+function diffHtml(changes) {
+  if (!changes) return '<div class="imp-diff"><span class="pill">nieuw schema</span></div>';
+  if (!changes.length) return '<div class="imp-diff muted small">Geen wijzigingen t.o.v. je opgeslagen schema.</div>';
+  const up = changes.filter((c) => c.kind === 'up').length;
+  const sv = (e) => setText({ ...e, sets: null });
+  const cnt = (k) => changes.filter((c) => c.kind === k).length;
+  const sum = [[up, 'verbeterd'], [cnt('new'), 'nieuw'], [cnt('down'), 'lichter'], [cnt('same'), 'aangepast'], [cnt('removed'), 'weg']].filter(([n]) => n).map(([n, l]) => `${n} ${l}`);
+  return `<div class="imp-diff"><div class="small"><b>${sum[0]}</b>${sum.length > 1 ? ` · ${sum.slice(1).join(' · ')}` : ''}</div>
+    ${changes.map((c) => c.kind === 'new' ? `<div class="dl new">＋ ${esc(c.e.name)} <b>${esc(sv(c.e))}</b></div>`
+      : c.kind === 'removed' ? `<div class="dl rem">− ${esc(c.o.name)}</div>`
+      : `<div class="dl ${c.kind}">${c.kind === 'up' ? '▲' : c.kind === 'down' ? '▼' : '•'} ${esc(c.e.name)} <span class="muted">${esc(sv(c.o))} →</span> <b>${esc(sv(c.e))}</b></div>`).join('')}</div>`;
+}
+
 function viewImport() {
   const draft = S.importDraft;
   const existing = new Set(S.strength.sessions.filter((s) => !s.deleted).map((s) => `${s.date}|${(s.name || '').toLowerCase()}`));
@@ -1500,11 +1534,12 @@ function viewImport() {
           ${tplMode ? '' : `<input type="date" class="field" style="padding:8px 6px;font-size:14px;width:150px" data-imp-date="${i}" value="${esc(s.date || '')}" max="${today()}">`}
         </div>
         ${!tplMode && !s.date ? '<div class="small" style="color:var(--yellow);margin-top:6px">Geen datum gevonden — vul hem in.</div>' : ''}
-        ${dup ? `<div class="small" style="color:var(--yellow);margin-top:6px">${tplMode ? 'Vervangt je bestaande schema met deze naam.' : 'Lijkt al te bestaan (zelfde datum en naam).'}</div>` : ''}
+        ${tplMode ? diffHtml(templateDiff(s)) : dup ? `<div class="small" style="color:var(--yellow);margin-top:6px">Lijkt al te bestaan (zelfde datum en naam).</div>` : ''}
         <div class="small muted" style="margin-top:8px;line-height:1.7">${s.exercises.map((e) => `${esc(e.name)} <b style="color:var(--text)">${esc(setText(e))}</b> <span class="tiny">(${esc(matchExercise(e.name, S.strength.exerciseMap).name)})</span>`).join('<br>')}</div>
       </div>`;
     }).join('')}
     ${draft.result.skipped.length ? `<details class="card small"><summary class="muted">${draft.result.skipped.length} regels niet herkend</summary><pre class="raw">${esc(draft.result.skipped.join('\n'))}</pre></details>` : ''}
+    ${tplMode && draft.result.sessions.some((s) => (templateDiff(s) || []).some((c) => c.kind === 'up' || c.kind === 'down' || c.kind === 'same')) ? `<div class="card imp-log"><label class="imp-log-row"><input type="checkbox" id="imp-log" checked><div><b>Ook loggen als training</b><div class="small muted">Elk gewijzigd schema wordt een training op deze datum, zodat je spierbelasting en PR's kloppen.</div></div></label><input type="date" class="field" id="imp-log-date" value="${today()}" max="${today()}"></div>` : ''}
     ${draft.result.sessions.length ? `<button class="btn" data-act="do-import">${tplMode ? 'Schema\'s opslaan' : 'Trainingen importeren'}</button>` : ''}
   ` : ''}
   </div>`;
@@ -2680,7 +2715,12 @@ const actions = {
     const now = Date.now();
     const strip = (e) => ({ name: e.name, weight: e.weight ?? 0, reps: e.reps ?? null, sets: e.sets ?? null, bw: !!e.bw, note: e.note || '' });
     if (tplMode) {
+      const logIt = document.getElementById('imp-log')?.checked;
+      const logDate = document.getElementById('imp-log-date')?.value || today();
+      const toLog = logIt ? chosen.filter((s) => (templateDiff(s) || []).some((c) => ['up', 'down', 'same'].includes(c.kind))) : [];
+      const exists = new Set(S.strength.sessions.filter((x) => !x.deleted).map((x) => `${x.date}|${(x.name || '').toLowerCase()}`));
       await saveStrength((doc) => {
+        toLog.forEach((s, k) => { if (!exists.has(`${logDate}|${s.name.toLowerCase()}`)) doc.sessions.push({ id: uid(), date: logDate, name: s.name, exercises: s.exercises.map(strip), createdAt: now + 100 + k, updatedAt: now + 100 + k, fromNotes: true }); });
         doc.templates ||= [];
         chosen.forEach((s, k) => {
           const ex = doc.templates.find((t) => !t.deleted && t.name.trim().toLowerCase() === s.name.trim().toLowerCase());
@@ -2689,7 +2729,7 @@ const actions = {
         });
       });
       S.importDraft = null;
-      toast(`${chosen.length} schema's opgeslagen`);
+      toast(`${chosen.length} schema's opgeslagen${toLog.length ? ` · ${toLog.length} training${toLog.length === 1 ? '' : 'en'} gelogd` : ''}`);
       location.hash = '#/strength';
       return;
     }
