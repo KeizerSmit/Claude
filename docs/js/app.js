@@ -13,13 +13,14 @@ import { TYPES, CATS, typeById, INTENSITY, RPE_LABELS, newActivity, estimateActi
 import { computeHealthspan, healthspanHistory, INPUTS, vo2Ref } from './healthspan.js';
 import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js';
 import { buildShare } from './share.js';
-import { recommendTraining, progressionTip } from './coach.js';
+import { recommendTraining, progressionTip, splitOf } from './coach.js';
 import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
-const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
+const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit' };
 const APP_VERSION = 'v36';
 const CHANGELOG = [
+  ['Jouw trainingsstijl', 'Laag volume tot falen met 2× upper + 1× lower: volume per spiergroep rekent nu met ±3–8 sets tot falen per week, het weekdoel is Upper 2× · Lower 1×, en de coach kiest het schema dat je deze week nog nodig hebt.'],
   ['Signaal overbelasting', 'Ligt je HRV meerdere dagen op rij onder je normaal (zeker bij hoge belasting), dan waarschuwt Vandaag en adviseert lichte dagen.'],
   ['Ochtendrapport', 'Bij de eerste keer openen in de ochtend: je herstel in één zin uitgelegd, je nacht, wat gisteren deed en je plan voor vandaag.'],
   ['Verwachting morgen', 'Vanaf 17:00 op Vandaag (en altijd op het slaapscherm): je verwachte herstel van morgen bij verschillende bedtijden, geleerd uit je eigen data.'],
@@ -30,7 +31,7 @@ const CHANGELOG = [
   ['Vergelijk met vorige keer', 'In een training zie je per oefening je vorige topset en of je vooruit ging, en hoeveel zwaarder de hele training was dan de vorige keer.'],
   ['Rusttimer', 'Vink je tijdens een training een oefening af, dan loopt er een rusttimer met een piepje als je weer kunt. Tik voor +30 s; instellen in Profiel.'],
   ['Hartslag per training', 'In een training zie je je hartslag tijdens de sessie en hoeveel minuten je in elke zone zat.'],
-  ['Volume per spiergroep', 'Op Training: hoeveel zware sets elke spier deze week kreeg, naast de richtlijn van 10–20 sets.'],
+  ['Volume per spiergroep', 'Op Training: hoeveel sets elke spier deze week kreeg en hoe vaak, afgestemd op jouw stijl (laag volume tot falen).'],
   ['Voortgang per oefening', 'Per oefening: winst sinds je begon, tempo in kg per maand en wat je de volgende keer probeert.'],
   ['Krachtindex', 'Op Training: één getal voor je krachtvooruitgang over al je oefeningen samen, per week.'],
   ['Slaapschuld', 'Het slaapscherm toont je netto tekort over 7 nachten, met een plan om het in te halen, en je slaapschema met adviestijden.'],
@@ -1210,20 +1211,32 @@ function volumeCard() {
   const order = ['borst', 'rug', 'schouders', 'biceps', 'triceps', 'quads', 'hamstrings', 'billen', 'kuiten', 'core'];
   const rows = order.filter((g) => (cur[g] || 0) + (prev4[g] || 0) > 0);
   if (!rows.length) return '';
-  const MAX = 24;
+  const hit = (S.settings.style || 'hit') === 'hit';
+  // Laag volume tot falen: elke set is een maximale prikkel, dus de doelen liggen veel lager.
+  const band = hit ? [3, 8] : [10, 20];
+  const MAX = hit ? 12 : 24;
   const x = (v) => `${Math.min(100, (v / MAX) * 100)}%`;
-  const status = (v) => (v >= 20 ? ['veel', 'var(--muscle)'] : v >= 10 ? ['optimaal', 'var(--green)'] : v >= 5 ? ['onderhoud', 'var(--yellow)'] : ['weinig', 'var(--text3)']);
-  const low = rows.filter((g) => (cur[g] || 0) < 5).map((g) => GROUPS[g].toLowerCase());
+  const status = hit
+    ? (v) => (v > 10 ? ['veel', 'var(--muscle)'] : v >= 3 ? ['goed', 'var(--green)'] : v >= 1.5 ? ['minimaal', 'var(--yellow)'] : ['weinig', 'var(--text3)'])
+    : (v) => (v >= 20 ? ['veel', 'var(--muscle)'] : v >= 10 ? ['optimaal', 'var(--green)'] : v >= 5 ? ['onderhoud', 'var(--yellow)'] : ['weinig', 'var(--text3)']);
+  const lowT = hit ? 1.5 : 5;
+  const low = rows.filter((g) => (cur[g] || 0) < lowT).map((g) => GROUPS[g].toLowerCase());
+  // Hoe vaak raakte je elke spier deze week (trainingen met ≥ 1 set voor die spier)?
+  const freq = {};
+  for (const s of S.strength.sessions) {
+    if (s.deleted || !s.date || s.date < addDays(end, -6) || s.date > end) continue;
+    for (const [g, v] of Object.entries(S.computed.loads[s.id]?.fracSets || {})) if (v >= 1) freq[g] = (freq[g] || 0) + 1;
+  }
   return `<div class="card vol">
     <div class="card-head"><span class="t">Volume per spiergroep</span><button class="link-btn small" data-sheet="volume:about">Hoe?</button></div>
-    <div class="vol-sub">Zware sets in de laatste 7 dagen · streepje = je gemiddelde van de 4 weken ervoor</div>
-    <div class="vol-scale"><span style="left:${x(10)}">10</span><span style="left:${x(20)}">20</span></div>
+    <div class="vol-sub">${hit ? 'Sets tot falen' : 'Zware sets'} in de laatste 7 dagen · ×&nbsp;= trainingen · streepje = gemiddelde van de 4 weken ervoor</div>
+    <div class="vol-scale"><span style="left:${x(band[0])}">${band[0]}</span><span style="left:${x(band[1])}">${band[1]}</span></div>
     ${rows.map((g) => {
       const v = cur[g] || 0, p = (prev4[g] || 0) / 4;
       const [lbl, col] = status(v);
-      return `<button class="vol-row" data-sheet="muscle:${g}"><span class="vol-g">${GROUPS[g]}</span><span class="vol-bar"><i class="vol-band" style="left:${x(10)};width:calc(${x(20)} - ${x(10)})"></i><i class="vol-fill" style="width:${x(v)};background:${col}"></i>${p > 0 ? `<i class="vol-prev" style="left:${x(p)}"></i>` : ''}</span><span class="vol-n">${num(v, v % 1 && v < 10 ? 1 : 0)}</span><span class="vol-s" style="color:${col}">${lbl}</span></button>`;
+      return `<button class="vol-row" data-sheet="muscle:${g}"><span class="vol-g">${GROUPS[g]}${freq[g] ? ` <small>${freq[g]}×</small>` : ''}</span><span class="vol-bar"><i class="vol-band" style="left:${x(band[0])};width:calc(${x(band[1])} - ${x(band[0])})"></i><i class="vol-fill" style="width:${x(v)};background:${col}"></i>${p > 0 ? `<i class="vol-prev" style="left:${x(p)}"></i>` : ''}</span><span class="vol-n">${num(v, v % 1 && v < 10 ? 1 : 0)}</span><span class="vol-s" style="color:${col}">${lbl}</span></button>`;
     }).join('')}
-    ${low.length && low.length < rows.length ? `<p class="small muted" style="margin:10px 0 0">Weinig deze week: ${esc(low.join(', '))}. Voor groei is ±10 sets per week een goed doel; minder houdt vooral vast wat je hebt.</p>` : ''}
+    ${low.length && low.length < rows.length ? `<p class="small muted" style="margin:10px 0 0">Weinig deze week: ${esc(low.join(', '))}. ${hit ? 'Bij training tot falen zijn ±3 sets per spier per week, verdeeld over 1–2 trainingen, al een volwaardige prikkel.' : 'Voor groei is ±10 sets per week een goed doel; minder houdt vooral vast wat je hebt.'}</p>` : ''}
   </div>`;
 }
 
@@ -1231,7 +1244,9 @@ function volumeAboutSheet() {
   return `<div class="sh-head"><div class="eyebrow">Uitleg</div><h2>Volume per spiergroep</h2></div>
   <div class="card flat mt small"><p style="margin-top:0">Telt je <b>zware sets</b> per spiergroep over de laatste 7 dagen. Een oefening telt volledig voor de spier die het meeste werk doet en half voor meewerkende spieren (bijv. chest press: borst 1, triceps ½; een kleine bijrol telt niet).</p>
   <p>Omdat je alleen je topset noteert, gebruiken we het aantal sets uit je notitie (bijv. "2 sets"), anders ${S.settings.defaultSets} per oefening — aan te passen in Profiel.</p>
-  <p><b>Richtlijn</b>: onderzoek (o.a. meta-analyses van Schoenfeld en Pelland) laat zien dat spiergroei toeneemt tot ongeveer <b>10–20 zware sets per spier per week</b>, met afnemende meerwaarde daarboven. Rond 5 sets per week behoud je vooral wat je hebt.</p>
+  ${(S.settings.style || 'hit') === 'hit' ? `<p><b>Jouw stijl: laag volume, elke set tot falen.</b> Meer sets geven gemiddeld iets meer groei, maar met sterk afnemende meerwaarde: de eerste paar sets per spier per week leveren verreweg het meeste op, vooral als ze echt tot (bijna) falen gaan. Daarom geldt hier <b>±3–8 sets tot falen per spier per week</b> als goed, verdeeld over 1–2 trainingen (bij 2× upper + 1× lower krijgt je bovenlichaam 2× en je benen 1× per week een prikkel).</p>
+  <p>Belangrijker dan het aantal sets is bij deze stijl dat elke set echt zwaar is én dat je topsets omhoog blijven gaan — kijk daarvoor naar je krachtindex en de ▲'s bij je oefeningen.</p>` : `<p><b>Richtlijn</b>: onderzoek (o.a. meta-analyses van Schoenfeld en Pelland) laat zien dat spiergroei toeneemt tot ongeveer <b>10–20 zware sets per spier per week</b>, met afnemende meerwaarde daarboven. Rond 5 sets per week behoud je vooral wat je hebt.</p>`}
+  <p>Trainingsstijl wijzigen: Profiel → Kracht.</p>
   <p style="margin-bottom:0">Het blijft een schatting: tempo, rust tussen sets en hoe dicht je bij falen zit tellen ook mee.</p></div>`;
 }
 
@@ -1301,7 +1316,7 @@ function viewStrength() {
   <div class="stats three mt">
     ${stat('Deze week', wk.count, wk.count === 1 ? 'training' : 'trainingen')}
     ${stat('Spierbelasting', num(wk.load, 0))}
-    ${stat('Zware sets', num(Object.values(wk.sets).reduce((a, b) => a + b, 0), 0), '', 'geschat')}
+    ${stat((S.settings.style || 'hit') === 'hit' ? 'Sets tot falen' : 'Zware sets', num(Object.values(wk.sets).reduce((a, b) => a + b, 0), 0), '', 'geschat')}
   </div>
   ${sessions.length && !showAllSessions ? `<button class="btn secondary mt" data-act="all-sessions">Alle ${sessions.length} krachttrainingen</button>` : ''}
   ${sessions.length && showAllSessions ? `<div class="section-title">Krachttrainingen</div>` + Object.entries(byMonth).map(([k, list]) => `<div class="list-header">${esc(monthName(k))}</div><div class="list">${list.map((s) => `<button class="row tap" data-go="#/session/${s.id}"><div class="grow"><div class="title">${esc(s.name || 'Training')}</div><div class="sub">${s.date ? `${weekdayShort(s.date)} ${fmtDateShort(s.date)}` : 'geen datum'} · ${s.exercises.length} oefeningen${(loads[s.id]?.exercises || []).some((e) => e.isPR) ? ' · 🏆 PR' : ''}</div></div><div class="val">${num(loads[s.id]?.load, 1)}</div><span class="chev">${I.chev}</span></button>`).join('')}</div>`).join('') + (sessions.length > 8 && !showAllSessions ? `<button class="btn secondary" data-act="all-sessions">Alle ${sessions.length} trainingen</button>` : '') : ''}
@@ -1405,7 +1420,7 @@ function shareExtras() {
   const wk = weekGoalValues(weekStartOf(today()));
   return {
     volume7d: Object.fromEntries(Object.entries(setsPerGroup(addDays(today(), -6), today())).map(([g, v]) => [g, r1(v)])),
-    goals: { target: goalsOf(), thisWeek: { strength: wk.strength, mvpa: Math.round(wk.mvpa), sleep: wk.sleep && Math.round(wk.sleep), steps: wk.steps && Math.round(wk.steps) } },
+    goals: { target: goalsOf(), style: S.settings.style || 'hit', thisWeek: { upper: wk.split.upper, lower: wk.split.lower, strength: wk.strength, mvpa: Math.round(wk.mvpa), sleep: wk.sleep && Math.round(wk.sleep), steps: wk.steps && Math.round(wk.steps) } },
     forecast: fm ? { n: fm.n, perHourSleep: r1(fm.perHourSleep), perStrain: r1(fm.perStrain), rse: r1(fm.rse) } : null,
     rpeCal: S.computed.rpeCal || null,
     wear: lastDays(S.computed.byDate, today(), 7).map((d) => { const w = wearOf(d.date); return w ? Math.round(w.pct * 100) : null; }),
@@ -1739,6 +1754,7 @@ function viewSettings() {
   <div class="list-header">Kracht</div>
   <div class="list">
     ${row('Zware sets per oefening', numIn('defaultSets', st.defaultSets, '3'), 'je noteert alleen je topset; dit schat het totaal')}
+    ${row('Trainingsstijl', `<select data-set="style"><option value="hit" ${(st.style || 'hit') === 'hit' ? 'selected' : ''}>Laag volume, tot falen</option><option value="volume" ${st.style === 'volume' ? 'selected' : ''}>Meer volume</option></select>`, 'bepaalt de doelen bij volume per spiergroep')}
     ${row('Rusttimer', `<select data-set="restSec">${[[0, 'Uit'], [60, '1:00'], [90, '1:30'], [120, '2:00'], [150, '2:30'], [180, '3:00'], [240, '4:00']].map(([v, l]) => `<option value="${v}" ${(st.restTimer === false ? 0 : (st.restSec || 150)) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`, 'start bij afvinken tijdens een training, met piepje')}
   </div>
   <div class="list-header">Weergave</div>
@@ -2032,7 +2048,7 @@ function strainToGo(m) {
 // ---------------------------------------------------------------- weekdoelen
 
 const GOALS = [
-  { key: 'strength', label: 'Kracht', unit: 'x', color: 'var(--muscle)', fmt: (v) => num(v), goalFmt: (g) => `${g}×`, sum: true },
+  { key: 'strength', label: 'Upper/Lower', color: 'var(--muscle)' },
   { key: 'mvpa', label: 'Beweging', unit: 'min', color: 'var(--strain)', fmt: (v) => num(v), goalFmt: (g) => `${g} min`, sum: true },
   { key: 'sleep', label: 'Slaap', unit: '', color: 'var(--sleep)', fmt: (v) => fmtHM(v), goalFmt: (g) => fmtHM(g) },
   { key: 'steps', label: 'Stappen', unit: '', color: 'var(--green)', fmt: (v) => (v >= 1000 ? `${num(v / 1000, 1)}k` : num(v)), goalFmt: (g) => `${num(g / 1000, 1).replace(/,0$/, '')}k` },
@@ -2053,25 +2069,38 @@ function weekGoalValuesRaw(start) {
   const end = addDays(start, 6) > today() ? today() : addDays(start, 6);
   const days = [];
   for (let d = start; d <= end; d = addDays(d, 1)) days.push(M(d) || { date: d });
-  const strength = days.reduce((a, d) => a + (d.strain?.sessions?.length || 0) + (d.strain?.manual || []).filter((x) => typeById(x.typeId).id === 'kracht').length, 0);
+  const split = { upper: 0, lower: 0, other: 0 };
+  for (const d of days) for (const x of d.strain?.sessions || []) split[splitOf(x.name, x.groups) || 'other']++;
+  const strength = split.upper + split.lower + split.other;
   const mvpa = days.reduce((a, d) => a + (d.strain?.mvpa || 0), 0);
   const sl = days.map((d) => d.sleep?.asleep).filter((v) => v != null);
   const st = days.filter((d) => d.date < today() || days.length === 1).map((d) => d.raw?.steps).filter((v) => v != null);
-  return { strength, mvpa, sleep: sl.length ? mean(sl) : null, steps: st.length ? mean(st) : null, n: days.length };
+  return { strength, split, mvpa, sleep: sl.length ? mean(sl) : null, steps: st.length ? mean(st) : null, n: days.length };
 }
 
-function goalMet(key, v, g) { return v != null && v >= g - (key === 'sleep' ? 0.5 : 0); }
+/** Voortgang (0..1), gehaald, en tekst per doel. wk = weekwaarden, g = alle doelen. */
+function goalState(key, wk, g) {
+  if (key === 'strength') {
+    const u = wk.split.upper, l = wk.split.lower;
+    return { frac: (Math.min(u, g.upper) + Math.min(l, g.lower)) / Math.max(1, g.upper + g.lower), met: u >= g.upper && l >= g.lower, text: `U ${u}/${g.upper} · L ${l}/${g.lower}`, has: true };
+  }
+  const v = wk[key], goal = g[key];
+  const x = GOALS.find((q) => q.key === key);
+  return { frac: v == null ? 0 : v / goal, met: v != null && v >= goal - (key === 'sleep' ? 0.5 : 0), text: `${v == null ? '–' : x.fmt(v)} / ${x.goalFmt(goal)}`, has: v != null };
+}
+
+function goalMet(key, wk, g) { return goalState(key, wk, g).met; }
 
 /** Hoeveel weken op rij (vóór deze week) haalde je dit doel? Deze week telt mee als hij al gehaald is. */
 function goalStreak(key) {
-  const g = goalsOf()[key];
+  const g = goalsOf();
   let n = 0;
   const cur = weekStartOf(today());
-  if (goalMet(key, weekGoalValues(cur)[key], g)) n++;
+  if (goalMet(key, weekGoalValues(cur), g)) n++;
   for (let w = 1; w < 52; w++) {
     const st = addDays(cur, -7 * w);
     if (st < (S.days[0]?.date || today())) break;
-    if (goalMet(key, weekGoalValues(st)[key], g)) n++; else break;
+    if (goalMet(key, weekGoalValues(st), g)) n++; else break;
   }
   return n;
 }
@@ -2083,13 +2112,11 @@ function goalsCard(start = weekStartOf(today()), { compact = false } = {}) {
   return `<div class="card goals${compact ? ' compact' : ''}">
     <div class="card-head"><span class="t">${isCur ? 'Weekdoelen' : 'Doelen deze week'}</span>${isCur ? `<button class="link-btn small" data-go="#/week/${start}">Week ${isoWeek(start)} ›</button>` : ''}</div>
     <div class="goal-grid">${GOALS.map((x) => {
-      const val = v[x.key], goal = g[x.key];
-      const frac = val == null ? 0 : val / goal;
-      const met = goalMet(x.key, val, goal);
+      const st = goalState(x.key, v, g);
       const streak = isCur ? goalStreak(x.key) : 0;
       return `<button class="goal" data-sheet="goals">
-        ${ring({ frac: Math.min(1, frac), color: x.color, size: 64, stroke: 7, label: met ? '✓' : val == null ? '–' : `${Math.round(Math.min(frac, 9.99) * 100)}%` })}
-        <b>${x.label}</b><span>${val == null ? '–' : x.fmt(val)} / ${x.goalFmt(goal)}</span>${streak >= 2 ? `<em>${streak} wk op rij</em>` : ''}
+        ${ring({ frac: Math.min(1, st.frac), color: x.color, size: 64, stroke: 7, label: st.met ? '✓' : !st.has ? '–' : `${Math.round(Math.min(st.frac, 9.99) * 100)}%` })}
+        <b>${x.label}</b><span>${st.text}</span>${streak >= 2 ? `<em>${streak} wk op rij</em>` : ''}
       </button>`;
     }).join('')}</div>
   </div>`;
@@ -2100,7 +2127,8 @@ function goalsSheet() {
   const inp = (k, v, step, unit) => `<input type="number" inputmode="decimal" step="${step}" data-set="goal.${k}" value="${v}"><span class="muted">&nbsp;${unit}</span>`;
   return `<div class="sh-head"><div class="eyebrow">Per week</div><h2>Weekdoelen</h2></div>
   <div class="list mt">
-    <div class="row"><div class="grow"><div class="title">Krachttrainingen</div><div class="sub">sessies per week</div></div>${inp('strength', g.strength, 1, '×')}</div>
+    <div class="row"><div class="grow"><div class="title">Upper</div><div class="sub">bovenlichaam-trainingen per week</div></div>${inp('upper', g.upper, 1, '×')}</div>
+    <div class="row"><div class="grow"><div class="title">Lower</div><div class="sub">benen-trainingen per week</div></div>${inp('lower', g.lower, 1, '×')}</div>
     <div class="row"><div class="grow"><div class="title">Beweging</div><div class="sub">minuten per week · advies 150</div></div>${inp('mvpa', g.mvpa, 10, 'min')}</div>
     <div class="row"><div class="grow"><div class="title">Slaap</div><div class="sub">gemiddeld per nacht</div></div>${inp('sleepH', String(Math.round((g.sleep / 60) * 100) / 100), 0.25, 'uur')}</div>
     <div class="row"><div class="grow"><div class="title">Stappen</div><div class="sub">gemiddeld per dag</div></div>${inp('steps', g.steps, 500, '')}</div>
@@ -2150,7 +2178,9 @@ let REC_CACHE = null;
 function todayRecommendation(date = today()) {
   if (REC_CACHE?.c === S.computed && REC_CACHE.d === date && REC_CACHE.u === S.strength.updatedAt) return REC_CACHE.v;
   const m = M(date);
-  const rec = recommendTraining({ templates: activeTemplates(S.strength), sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: date, settings: SS(), doneToday: (m?.strain?.sessions?.length || 0) > 0, flag: m?.flag });
+  const wk = weekGoalValues(weekStartOf(date)), g = goalsOf();
+  const weekNeed = { upper: g.upper - wk.split.upper, lower: g.lower - wk.split.lower };
+  const rec = recommendTraining({ templates: activeTemplates(S.strength), sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: date, settings: SS(), doneToday: (m?.strain?.sessions?.length || 0) > 0, flag: m?.flag, weekNeed });
   const sig = strainSignal(date);
   if (sig?.high && rec?.kind === 'template') { rec.intensity = 'licht'; rec.reason += ' · houd het licht: je HRV zit al een paar dagen onder normaal'; }
   REC_CACHE = { c: S.computed, d: date, u: S.strength.updatedAt, v: rec };
@@ -3121,7 +3151,7 @@ document.addEventListener('change', async (ev) => {
       const sub = k.slice(5);
       const n = Number(String(v).replace(',', '.'));
       if (!isFinite(n) || n <= 0) return;
-      const goals = { ...goalsOf(), ...(sub === 'sleepH' ? { sleep: Math.round(clamp(n, 4, 12) * 60) } : { [sub]: sub === 'strength' ? clamp(Math.round(n), 1, 14) : Math.round(n) }) };
+      const goals = { ...goalsOf(), ...(sub === 'sleepH' ? { sleep: Math.round(clamp(n, 4, 12) * 60) } : { [sub]: ['upper', 'lower'].includes(sub) ? clamp(Math.round(n), 0, 7) : Math.round(n) }) };
       await saveSettings({ goals });
       render();
       return;
@@ -3141,7 +3171,7 @@ document.addEventListener('change', async (ev) => {
     if (k === 'defaultSets' && v != null) v = clamp(Math.round(v), 1, 10);
     await saveSettings({ [k]: v });
     if (k === 'theme' || k === 'palette') applyTheme();
-    if (k === 'theme' || k === 'palette' || k === 'maxHr' || k === 'age') render();
+    if (k === 'theme' || k === 'palette' || k === 'maxHr' || k === 'age' || k === 'style') render();
     return;
   }
   if (el.dataset.act === 'map-ex') {

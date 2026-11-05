@@ -13,7 +13,7 @@ Persoonlijke WHOOP-achtige app voor de **Fitbit Air**: herstel, strain en slaap,
 - **Weekdoelen en reeksen**: kracht, beweging, slaap en stappen per week; weekoverzicht met vergelijking en PR's; records.
 - **Trends**: maandkalender, slaapschema, persoonlijke normaalbanden, automatische herstelpatronen (zonder dagboek).
 - **Slaap**: slaapschuld over 7 nachten met inhaalplan, slaapschema met adviestijden.
-- **Kracht**: volume per spiergroep (zware sets per week t.o.v. 10–20), voortgang per oefening, vergelijking met vorige keer, hartslag per training, rusttimer, samenvatting na je training, en notities plakken met automatische verschillen.
+- **Kracht**: volume per spiergroep (afgestemd op laag volume tot falen, of meer volume), Upper/Lower-weekdoel, voortgang per oefening, vergelijking met vorige keer, hartslag per training, rusttimer, samenvatting na je training, en notities plakken met automatische verschillen.
 - **Ziek- en rustdagen**, draagtijd-controle, herstel als app-badge, kleurenblind-palet, "Deel met Claude"-export.
 - **Interactief**: schuif over elke grafiek, tik op alles voor details, veeg tussen dagen, trek omlaag om te verversen; ＋-knop om iets toe te voegen.
 

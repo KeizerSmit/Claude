@@ -944,3 +944,6 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .wn-old summary::-webkit-details-marker { display: none; }
 .kv span.lo { color: var(--yellow); font-weight: 600; }
 .kv small.muted { font-size: 12px; color: var(--text3); }
+.vol-g small { font-size: 11px; color: var(--text3); font-weight: 600; }
+.vol-row { grid-template-columns: 104px 1fr 34px 62px; }
+.vol-scale { margin-left: 112px; margin-right: 112px; }

@@ -11,12 +11,26 @@ export function templateProfile(t, settings) {
   return { groups: Object.fromEntries(Object.entries(groups).map(([g, v]) => [g, v / tot])), load: r?.load || 0 };
 }
 
+const LOWER_GROUPS = ['quads', 'hamstrings', 'billen', 'kuiten', 'heupen'];
+
+/** Upper of lower? Eerst op naam ("Upper 6", "Lower", "Benen"), anders op welke spieren het zwaarst geraakt worden. */
+export function splitOf(name, groups = {}) {
+  const n = (name || '').toLowerCase();
+  if (/upper|boven|push|pull|bovenlichaam/.test(n)) return 'upper';
+  if (/lower|onder|been|benen|\bleg|onderlichaam/.test(n)) return 'lower';
+  let lo = 0, tot = 0;
+  for (const [g, v] of Object.entries(groups)) { tot += v; if (LOWER_GROUPS.includes(g)) lo += v; }
+  if (!tot) return null;
+  return lo / tot >= 0.5 ? 'lower' : 'upper';
+}
+
 /**
  * Aanbeveling voor vandaag.
- * ctx: { templates, sessions, fatigue (groep→0..1), recovery (score|null), today, settings, doneToday }
+ * ctx: { templates, sessions, fatigue (groep→0..1), recovery (score|null), today, settings, doneToday, flag,
+ *        weekNeed: { upper, lower } (hoeveel van elk nog nodig deze week; optioneel) }
  */
 export function recommendTraining(ctx) {
-  const { templates, sessions, fatigue, recovery, today, settings, doneToday, flag } = ctx;
+  const { templates, sessions, fatigue, recovery, today, settings, doneToday, flag, weekNeed } = ctx;
   if (flag === 'sick') return { kind: 'rest', title: 'Beterschap', reason: 'Ziek-modus: geen training vandaag. Slaap extra, drink genoeg en begin pas weer rustig als je 24 uur koortsvrij bent.' };
   if (flag === 'rest') return { kind: 'rest', title: 'Rustdag', reason: 'Je hebt vandaag als rustdag gemarkeerd. Wandelen of mobiliteit mag; je spieren herstellen nu.' };
   if (doneToday) return { kind: 'done', title: 'Training gedaan', reason: 'Je hebt vandaag al getraind. Herstel nu: eet genoeg eiwit en slaap op tijd.' };
@@ -29,20 +43,25 @@ export function recommendTraining(ctx) {
     const fat = Object.entries(prof.groups).reduce((a, [g, w]) => a + w * (fatigue[g] || 0), 0);
     const last = sessions.filter((s) => !s.deleted && s.date && (s.name || '').trim().toLowerCase() === t.name.trim().toLowerCase()).map((s) => s.date).sort().pop() || null;
     const since = last ? daysBetween(last, today) : 99;
-    const score = (1 - fat) * 0.65 + Math.min(since, 7) / 7 * 0.35;
+    const split = splitOf(t.name, prof.groups);
+    // Weekschema (bijv. 2× upper + 1× lower): wat je deze week nog nodig hebt krijgt voorrang.
+    const need = weekNeed && split ? weekNeed[split] : null;
+    const planBonus = need == null ? 0 : need > 0 ? 0.2 : -0.12;
+    const score = (1 - fat) * 0.65 + Math.min(since, 7) / 7 * 0.35 + planBonus;
     const topGroups = Object.entries(prof.groups).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([g]) => g);
-    return { t, fresh: 1 - fat, since, last, score, topGroups };
+    return { t, fresh: 1 - fat, since, last, score, topGroups, split, need };
   }).sort((a, b) => b.score - a.score);
   if (!cands.length) return null;
   const best = cands[0];
   if (best.fresh < 0.45) {
     return { kind: 'cardio', title: 'Cardio of rust', reason: 'Je spieren zijn nog niet hersteld van je laatste trainingen. Een rustige cardiosessie (zone 2) of rust past beter.', alt: best };
   }
+  // Tot falen trainen kan altijd; bij matig herstel wel met wat minder sets/oefeningen.
   const intensity = recovery == null ? 'normaal' : recovery >= 67 ? 'zwaar' : 'gecontroleerd';
   return {
     kind: 'template', template: best.t, fresh: best.fresh, since: best.since, intensity,
     title: best.t.name,
-    reason: `${best.since >= 99 ? 'Nog niet gedaan' : best.since === 0 ? 'Vandaag' : best.since === 1 ? 'Gisteren voor het laatst' : `${best.since} dagen geleden`} · spieren ${Math.round(best.fresh * 100)}% fris${recovery != null ? ` · herstel ${recovery}%` : ''}`,
+    reason: `${best.since >= 99 ? 'Nog niet gedaan' : best.since === 0 ? 'Vandaag' : best.since === 1 ? 'Gisteren voor het laatst' : `${best.since} dagen geleden`} · spieren ${Math.round(best.fresh * 100)}% fris${recovery != null ? ` · herstel ${recovery}%` : ''}${best.need > 0 ? ` · ${best.split === 'lower' ? 'Lower' : 'Upper'} nog ${best.need}× deze week` : ''}`,
     others: cands.slice(1, 3),
   };
 }

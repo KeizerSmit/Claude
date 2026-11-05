@@ -115,3 +115,19 @@ test('slaapschema: opstaan na 12:00 blijft na de bedtijd', async () => {
   assert.equal(a, 23 * 60 + 30);
   assert.equal(b - a, 13 * 60);
 });
+
+test('coach: weekschema 2× upper + 1× lower geeft voorrang aan wat nog nodig is', async () => {
+  const { splitOf } = await import('../docs/js/coach.js');
+  assert.equal(splitOf('Upper 6'), 'upper');
+  assert.equal(splitOf('Lower'), 'lower');
+  assert.equal(splitOf('Benen'), 'lower');
+  assert.equal(splitOf('Training', { quads: 3, billen: 2, borst: 1 }), 'lower');
+  const templates = [
+    { id: 'u', name: 'Upper 6', exercises: [{ name: 'Chest press', weight: 60, reps: 8 }, { name: 'Lat pulldown', weight: 80, reps: 8 }] },
+    { id: 'l', name: 'Lower', exercises: [{ name: 'Hack squat', weight: 75, reps: 6 }, { name: 'Leg curl', weight: 50, reps: 8 }] },
+  ];
+  const base = { templates, sessions: [], fatigue: {}, recovery: 80, today: '2026-11-05', settings: SET };
+  assert.equal(recommendTraining({ ...base, weekNeed: { upper: 0, lower: 1 } }).template.id, 'l');
+  assert.equal(recommendTraining({ ...base, weekNeed: { upper: 2, lower: 0 } }).template.id, 'u');
+  assert.match(recommendTraining({ ...base, weekNeed: { upper: 0, lower: 1 } }).reason, /Lower nog 1× deze week/);
+});
