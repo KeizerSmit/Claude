@@ -805,3 +805,8 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .flag-card .badge { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; color: #fff; }
 .flag-card .badge svg { width: 19px; height: 19px; }
 .flag-card .btn.small.ghost, .flag-card .btn.ghost { background: var(--track); color: var(--text); box-shadow: none; }
+.cal { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-c { min-width: 0; }
+@media (max-width: 360px) { .cal { gap: 3px; } .cal-c small { font-size: 11px; } .cal-c span { font-size: 11px; } }
+.btn-row > .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 360px) { .btn-row > .btn { font-size: 14px; padding-left: 8px; padding-right: 8px; } }
