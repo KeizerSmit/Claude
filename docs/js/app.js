@@ -265,7 +265,7 @@ function toast(msg) {
 }
 
 function navbar(title, back = '#/today', right = '') {
-  return `<div class="navbar"><button class="back" data-back="${esc(back)}">${I.left}<span>Terug</span></button><div class="title">${esc(title)}</div><div class="right">${right}</div></div>`;
+  return `<div class="navbar"><button class="back glass" data-back="${esc(back)}" aria-label="Terug">${I.left}</button><div class="title">${esc(title)}</div><div class="right">${right}</div></div>`;
 }
 
 function largeTitle(title, eyebrow = '', right = '') {
@@ -291,13 +291,13 @@ function syncHeader() {
 
 function avatar() {
   const u = auth.getUser();
-  if (store.isDemo()) return `<button class="icon-btn" data-go="#/settings" aria-label="Instellingen">${I.person}</button>`;
+  if (store.isDemo()) return `<button class="icon-btn glass" data-go="#/settings" aria-label="Instellingen">${I.person}</button>`;
   if (u?.picture) return `<img class="avatar" src="${esc(u.picture)}" alt="" data-go="#/settings" referrerpolicy="no-referrer">`;
-  return `<button class="icon-btn" data-go="#/settings" aria-label="Instellingen">${I.person}</button>`;
+  return `<button class="icon-btn glass" data-go="#/settings" aria-label="Instellingen">${I.person}</button>`;
 }
 
 function syncBtn() {
-  return `<button class="icon-btn" data-act="sync" aria-label="Synchroniseren">${S.syncing ? I.sync.replace('<svg', '<svg class="spin"') : I.sync}</button>`;
+  return `<button class="icon-btn glass" data-act="sync" aria-label="Synchroniseren">${S.syncing ? I.sync.replace('<svg', '<svg class="spin"') : I.sync}</button>`;
 }
 
 const M = (date) => S.computed?.byDate?.[date] || null;
@@ -1028,7 +1028,7 @@ function viewTemplate(id) {
     const improved = cur && !cur.fromTemplate && e.reps && cur.reps && (e1rmOf(cur) > e1rmOf(e) + 0.01);
     return `<button class="row tap wrap" data-go="#/exercise/${encodeURIComponent(exKey(e.name))}"><div class="grow"><div class="title">${esc(e.name)} ${improved ? '<span class="pill pr">↑</span>' : ''}</div><div class="sub">${esc(lib.name)} · ${cur?.date ? fmtDateShort(cur.date) : 'uit notitie'}${h.length > 1 ? ` · ${h.length}× gelogd` : ''}</div></div><div class="val"><b style="color:var(--text)">${esc(setText(cur || e))}</b></div></button>`;
   }).join('');
-  return `${navbar(t.name, '#/strength', `<button class="back" data-go="#/template-edit/${t.id}">Wijzig</button>`)}
+  return `${navbar(t.name, '#/strength', `<button class="nav-pill glass" data-go="#/template-edit/${t.id}">Wijzig</button>`)}
   <div class="content fade-in">
   ${largeTitle(t.name, last ? `Laatst ${fmtDateLong(last)}` : 'Schema')}
   <button class="btn" data-act="start-template" data-id="${t.id}">${I.dumbbell} Start training</button>
@@ -1053,7 +1053,7 @@ function viewTemplateEdit(id) {
     S.tplDraft = d;
   }
   const exNames = allExercises(S.strength.sessions, {}).map((e) => e.name);
-  return `${navbar(id === 'new' ? 'Nieuw schema' : 'Schema wijzigen', id === 'new' ? '#/strength' : `#/template/${id}`, `<button class="back" data-act="save-template" style="font-weight:600">Bewaar</button>`)}
+  return `${navbar(id === 'new' ? 'Nieuw schema' : 'Schema wijzigen', id === 'new' ? '#/strength' : `#/template/${id}`, `<button class="nav-pill glass prominent" data-act="save-template" style="font-weight:600">Bewaar</button>`)}
   <div class="content fade-in">
   <div class="list"><div class="row"><div class="grow">Naam</div><input type="text" id="tpl-name" value="${esc(d.name)}" placeholder="bijv. Upper 6"></div></div>
   <div class="list">
@@ -1086,7 +1086,7 @@ function viewSession(id) {
   const maxG = Math.max(1, ...groups.map((g) => g[1]));
   const m = s.date ? M(s.date) : null;
   const sess = m?.strain?.sessions?.find((x) => x.id === id);
-  return `${navbar(s.name || 'Training', '#/strength', `<button class="back" data-go="#/log/${id}">Wijzig</button>`)}
+  return `${navbar(s.name || 'Training', '#/strength', `<button class="nav-pill glass" data-go="#/log/${id}">Wijzig</button>`)}
   <div class="content fade-in">
   ${largeTitle(s.name || 'Training', s.date ? fmtDateLong(s.date) : 'Geen datum')}
   <div class="stats">
@@ -1172,7 +1172,7 @@ function viewLog(id, presetDate) {
   const isNew = d._for === 'new';
   const fromTpl = d.exercises.some((e) => e.done === false || e.done === true);
   const doneCount = d.exercises.filter((e) => e.done !== false && e.name).length;
-  return `${navbar(isNew ? 'Training' : 'Bewerken', isNew ? (presetDate ? `#/today/${presetDate}` : '#/strength') : `#/session/${id}`, `<button class="back" data-act="save-log" style="font-weight:600">Bewaar</button>`)}
+  return `${navbar(isNew ? 'Training' : 'Bewerken', isNew ? (presetDate ? `#/today/${presetDate}` : '#/strength') : `#/session/${id}`, `<button class="nav-pill glass prominent" data-act="save-log" style="font-weight:600">Bewaar</button>`)}
   <div class="content fade-in">
   <div class="list">
     <div class="row"><div class="grow">Datum</div><input type="date" id="log-date" value="${esc(d.date || '')}" max="${today()}"></div>
@@ -1628,9 +1628,20 @@ function parseRoute() {
   return { name: name || 'today', a: a ? decodeURIComponent(a) : null, b: b || null };
 }
 
-function tabbar(active) {
-  const tabs = [['today', 'Vandaag', I.today], ['strength', 'Training', I.dumbbell], ['trends', 'Trends', I.chart], ['health', 'Gezondheid', AI.health]];
-  return `<nav class="tabbar"><div class="tb-pill">${tabs.map(([k, l, ic]) => `<a href="#/${k}" class="${active === k ? 'on' : ''}">${ic}<span>${l}</span></a>`).join('')}</div><button class="tb-plus" data-act="plus" aria-label="Toevoegen">${AI.plus}</button></nav>`;
+const TABS = [['today', 'Vandaag', I.today], ['strength', 'Training', I.dumbbell], ['trends', 'Trends', I.chart], ['health', 'Gezondheid', AI.health]];
+let tabEl = null;
+/** Blijvende glazen tabbalk (buiten de pagina), zodat de 'druppel' kan meeschuiven. */
+function updateTabbar(active, show) {
+  if (!tabEl) {
+    tabEl = document.createElement('nav');
+    tabEl.className = 'tabbar';
+    tabEl.innerHTML = `<div class="tb-pill glass"><span class="tb-drop"></span>${TABS.map(([k, l, ic]) => `<a href="#/${k}" data-tab="${k}">${ic}<span>${l}</span></a>`).join('')}</div><button class="tb-plus glass" data-act="plus" aria-label="Toevoegen">${AI.plus}</button>`;
+    document.body.appendChild(tabEl);
+  }
+  tabEl.classList.toggle('hidden', !show);
+  const i = Math.max(0, TABS.findIndex(([k]) => k === active));
+  tabEl.style.setProperty('--ti', i);
+  tabEl.querySelectorAll('a').forEach((a) => a.classList.toggle('on', a.dataset.tab === active));
 }
 
 let lastRoute = '';
@@ -1676,7 +1687,10 @@ function render() {
   let anim = '';
   if (!same) anim = r.name === lastName ? 'swap' : depth > lastDepth ? 'push' : depth < lastDepth ? 'pop' : 'fade';
   const ptr = ['today', 'trends', 'strength', 'health'].includes(r.name) || (r.name !== 'welcome' && !r.name) ? ' data-ptr' : '';
-  app.innerHTML = `<div class="page ${anim}"${ptr}>${html}</div>` + (showTabs ? tabbar(tab || 'today') : '');
+  app.innerHTML = `<div class="page ${anim}"${ptr}>${html}</div>`;
+  updateTabbar(tab || 'today', showTabs);
+  // Achtergrondgloed in de kleur van je herstel van vandaag.
+  document.documentElement.dataset.zone = recoveryZone(M(today())?.recovery?.score) || 'none';
   if (!same) { window.scrollTo(0, 0); lastRoute = key; lastDepth = depth; lastName = r.name; }
   titleUpdate();
 }

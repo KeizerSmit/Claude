@@ -76,7 +76,7 @@ export function openSheet(html, { onClose } = {}) {
   const back = document.createElement('div');
   back.className = 'sheet-back';
   const sh = document.createElement('div');
-  sh.className = 'sheet';
+  sh.className = 'sheet glass-sheet';
   sh.innerHTML = `<div class="grabber"></div><button class="sheet-x" aria-label="Sluiten">✕</button><div class="sheet-body">${html}</div>`;
   document.body.append(back, sh);
   document.body.classList.add('sheet-open');
@@ -175,9 +175,10 @@ export function enableSwipe(onSwipe) {
 
 export function enableCollapsingTitle() {
   const bar = document.createElement('div');
-  bar.className = 'topbar';
+  bar.className = 'topbar glass-bar';
   document.body.appendChild(bar);
   const update = () => {
+    document.body.classList.toggle('scrolled', window.scrollY > 8);
     const lt = document.querySelector('.large-title h1');
     if (!lt || document.querySelector('.navbar')) { bar.classList.remove('show'); return; }
     bar.textContent = lt.textContent;
