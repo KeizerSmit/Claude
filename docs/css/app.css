@@ -710,3 +710,20 @@ body { font-family: var(--font); font-size: 17px; letter-spacing: -0.43px; font-
 .live-bpm { letter-spacing: -2px; }
 .eyebrow, .large-title .eyebrow { font-size: 13px; font-weight: 600; letter-spacing: -0.08px; color: var(--text2); text-transform: none; }
 @media (prefers-reduced-transparency: reduce) { .glass, .segmented, .weekstrip, .chip, .btn.secondary, .sheet.glass-sheet { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--card) !important; } }
+/* Coach */
+.card.coach { padding: 16px; }
+.coach-k { font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 10px; }
+.coach-main { display: flex; align-items: center; gap: 12px; }
+.coach-main .badge { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #fff; flex-shrink: 0; }
+.coach-main .badge svg { width: 22px; height: 22px; }
+.coach-t { font-size: 20px; font-weight: 700; letter-spacing: -0.45px; font-family: var(--font-display); display: flex; align-items: center; gap: 8px; }
+.coach-row { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
+.coach-row::-webkit-scrollbar { display: none; }
+.coach-chip { flex-shrink: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; border: 0; border-radius: 14px; padding: 8px 12px; background: var(--card2); color: var(--text); cursor: pointer; }
+.coach-chip span { font-size: 11.5px; color: var(--text2); font-weight: 600; }
+.coach-chip b { font-size: 15px; font-family: var(--font-round); font-variant-numeric: tabular-nums; }
+.tip { display: inline-block; margin-top: 3px; font-size: 11.5px; font-weight: 700; padding: 2px 7px; border-radius: 99px; }
+.tip-up { color: var(--green); background: color-mix(in srgb, var(--green) 15%, transparent); }
+.tip-reps { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.tip-hold { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 15%, transparent); }
+.tip-pr { color: var(--muscle); background: color-mix(in srgb, var(--muscle) 15%, transparent); }

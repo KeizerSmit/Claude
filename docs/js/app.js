@@ -13,6 +13,7 @@ import { TYPES, CATS, typeById, INTENSITY, RPE_LABELS, newActivity, estimateActi
 import { computeHealthspan, healthspanHistory, INPUTS, vo2Ref } from './healthspan.js';
 import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js';
 import { buildShare } from './share.js';
+import { recommendTraining, progressionTip } from './coach.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00' };
@@ -535,6 +536,7 @@ function viewToday(date) {
   <div data-swipe data-base="#/today" data-date="${date}">
   ${rings}
   ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Trek omlaag om te synchroniseren.'}</div>` : ''}
+  ${coachCard(date)}
   ${insightsCard}
   <div class="section-title">Activiteiten <button data-act="plus-activity" data-v="${date}">+ Toevoegen</button></div>
   <div class="list">${acts.length ? acts.join('') : `<button class="row tap" data-act="plus-activity" data-v="${date}"><div class="badge" style="background:var(--card2);color:var(--muscle)">${I.plus}</div><div class="grow"><div class="title">Workout of klus toevoegen</div><div class="sub">Ook achteraf — telt mee in je belasting</div></div><span class="chev">${I.chev}</span></button>`}</div>
@@ -1214,9 +1216,15 @@ function lastSet(name) {
 function exRow(e, i) {
   const last = e.name ? lastSet(e.name) : null;
   const done = e.done !== false;
+  let tip = null;
+  if (e.fixed && e.name) {
+    const h = exerciseHistory(S.strength.sessions, exKey(e.name), SS());
+    const tplEx = activeTemplates(S.strength).flatMap((t) => t.exercises).find((x) => exKey(x.name) === exKey(e.name));
+    tip = progressionTip(h.length ? h : (last ? [last] : []), tplEx?.reps);
+  }
   return `<div class="ex-edit chk${done ? '' : ' off'}" data-i="${i}" data-done="${done ? 1 : 0}">
     <button class="ck${done ? ' on' : ''}" data-act="toggle-done" data-i="${i}" aria-label="Gedaan">${done ? I.check : ''}</button>
-    ${e.fixed ? `<div class="nm" data-act="toggle-done" data-i="${i}">${esc(e.name)}${last?.date ? `<small>${fmtDateShort(last.date)}: ${esc(setText({ ...last, sets: null }))}</small>` : ''}</div>` : `<input type="text" list="ex-names" data-f="name" value="${esc(e.name || '')}" placeholder="Oefening" autocomplete="off">`}
+    ${e.fixed ? `<div class="nm" data-act="toggle-done" data-i="${i}">${esc(e.name)}${last?.date ? `<small>${fmtDateShort(last.date)}: ${esc(setText({ ...last, sets: null }))}</small>` : ''}${tip ? `<span class="tip tip-${tip.kind}">${tip.kind === 'up' ? '↑ ' : ''}${esc(tip.text)}</span>` : ''}</div>` : `<input type="text" list="ex-names" data-f="name" value="${esc(e.name || '')}" placeholder="Oefening" autocomplete="off">`}
     <input class="num" type="number" inputmode="decimal" step="0.5" data-f="weight" value="${e.weight ?? ''}" placeholder="${e.bw || last?.bw ? 'BW' : last ? num(last.weight, 1) : 'kg'}">
     <input class="num" type="number" inputmode="numeric" data-f="reps" value="${e.reps ?? ''}" placeholder="${last?.reps ?? 'reps'}">
     <button class="x" data-act="del-ex" data-i="${i}" aria-label="Verwijder">${I.minus}</button>
@@ -1387,6 +1395,34 @@ function loadBandCard(end = today()) {
     ${loadBand(pts, { fmt: fmtS })}
     <div class="legend"><span><i style="background:var(--band-strong)"></i>duurzaam bereik</span><span><i style="background:var(--strain)"></i>7-daags gemiddelde</span><span><i style="background:var(--track)"></i>per dag</span></div>
     <p class="small muted" style="margin:8px 0 0">${st.text}</p>
+  </div>`;
+}
+
+function currentFatigue() {
+  const sessions = S.strength.sessions.filter((s) => !s.deleted).map((s) => { const m = S.computed.byDate[s.date]?.strain?.sessions?.find((x) => x.id === s.id); return m?.activity ? { ...s, activity: m.activity } : s; });
+  return muscleFatigue(sessions, S.computed.loads).fatigue;
+}
+
+function coachCard(date) {
+  if (date !== today()) return '';
+  const m = M(date);
+  const tpls = activeTemplates(S.strength);
+  const doneToday = (m?.strain?.sessions?.length || 0) > 0;
+  const rec = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: today(), settings: SS(), doneToday });
+  const adv = bedtimeAdvice(m, toMin(S.settings.wake));
+  const tgt = m?.target;
+  if (!rec && !tgt) return '';
+  const icon = rec?.kind === 'template' ? I.dumbbell : rec?.kind === 'rest' ? I.bed : rec?.kind === 'done' ? I.check : I.run;
+  const color = rec?.kind === 'template' ? 'var(--muscle)' : rec?.kind === 'rest' ? 'var(--sleep)' : rec?.kind === 'done' ? 'var(--green)' : 'var(--strain)';
+  return `<div class="card coach">
+    <div class="coach-k">Plan voor vandaag</div>
+    ${rec ? `<div class="coach-main"><div class="badge" style="background:${color}">${icon}</div><div class="grow"><div class="coach-t">${esc(rec.title)}${rec.intensity ? ` <span class="pill">${rec.intensity}</span>` : ''}</div><div class="small muted">${esc(rec.reason)}</div></div>
+      ${rec.kind === 'template' ? `<button class="btn small" data-act="start-template" data-id="${rec.template.id}">Start</button>` : ''}</div>` : ''}
+    <div class="coach-row">
+      ${tgt ? `<button class="coach-chip" data-go="#/strain/${date}"><span>Strain-doel</span><b>${fmtStrain(tgt[0])}–${fmtStrain(tgt[1])}</b></button>` : ''}
+      ${adv ? `<button class="coach-chip" data-go="#/sleep/${date}"><span>Naar bed</span><b>${fmtHM(adv.bed)}</b></button>` : ''}
+      ${rec?.others?.length ? `<button class="coach-chip" data-go="#/strength"><span>Ook goed</span><b>${esc(rec.others.map((o) => o.t.name).join(', '))}</b></button>` : ''}
+    </div>
   </div>`;
 }
 
