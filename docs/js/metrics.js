@@ -12,6 +12,18 @@ import { estimateActivity, nonFitnessWindows, typeById, RPE_HRR } from './activi
 
 export const STRAIN_K = 110;
 
+/** Omgekeerde van strainFromTrimp: hoeveel TRIMP is nodig voor een strain-score? */
+export function trimpForStrain(s) {
+  if (!s || s <= 0) return 0;
+  return -STRAIN_K * Math.log(1 - Math.min(s, 20.9) / 21);
+}
+
+/** TRIMP per minuut bij een bepaalde %hartslagreserve (Banister). */
+export function trimpPerMinute(hrr, female = false) {
+  const h = Math.min(Math.max(hrr, 0), 1.05);
+  return female ? h * 0.86 * Math.exp(1.67 * h) : h * 0.64 * Math.exp(1.92 * h);
+}
+
 export function strainFromTrimp(t) {
   if (!t || t < 0) return 0;
   return 21 * (1 - Math.exp(-t / STRAIN_K));

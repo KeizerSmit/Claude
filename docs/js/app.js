@@ -2,7 +2,7 @@ import * as store from './store.js';
 import * as auth from './auth.js';
 import { syncAll, syncHeartNow, syncMinute } from './sync.js';
 import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
-import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp } from './metrics.js';
+import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp, trimpForStrain, trimpPerMinute } from './metrics.js';
 import { parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
 import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale, sleepRange, calendar, clockMin } from './charts.js';
 import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle } from './interact.js';
@@ -1776,6 +1776,21 @@ function currentFatigue() {
   return muscleFatigue(sessions, S.computed.loads).fatigue;
 }
 
+/** Wat moet je nog doen om je strain-doel te halen (of: zit je er al boven)? */
+function strainToGo(m) {
+  const tgt = m?.target, st = m?.strain;
+  if (!tgt || !st) return null;
+  const sc = st.score || 0;
+  if (sc > tgt[1] + 0.3) return { kind: 'over', text: `Je zit ${fmtStrain(sc - tgt[1])} boven je doel — houd de rest van de dag rustig.` };
+  if (sc >= tgt[0]) return { kind: 'in', text: 'Je zit binnen je strain-doel. Lekker bezig!' };
+  if (new Date().getHours() >= 22) return null;
+  const need = trimpForStrain(tgt[0]) - (st.trimp || 0);
+  const fem = S.settings.sex === 'v';
+  const opts = [['stevig wandelen', 0.38], ['zone 2 (fietsen, rustig joggen)', 0.62], ['hardlopen', 0.78]];
+  const mins = opts.map(([l, h]) => [l, Math.max(5, Math.round(need / trimpPerMinute(h, fem) / 5) * 5)]);
+  return { kind: 'under', need: tgt[0] - sc, mins, text: `Nog ${fmtStrain(tgt[0] - sc)} tot je doel: ±${mins[0][1]} min ${mins[0][0]} of ${mins[1][1]} min ${mins[1][0].split(' (')[0]}.` };
+}
+
 function coachCard(date) {
   if (date !== today()) return '';
   const m = M(date);
@@ -1791,6 +1806,7 @@ function coachCard(date) {
     <div class="coach-k">Plan voor vandaag</div>
     ${rec ? `<div class="coach-main"><div class="badge" style="background:${color}">${icon}</div><div class="grow"><div class="coach-t">${esc(rec.title)}${rec.intensity ? ` <span class="pill">${rec.intensity}</span>` : ''}</div><div class="small muted">${esc(rec.reason)}</div></div>
       ${rec.kind === 'template' ? `<button class="btn small" data-act="start-template" data-id="${rec.template.id}">Start</button>` : ''}</div>` : ''}
+    ${(() => { const g = strainToGo(m); return g ? `<div class="coach-go coach-go-${g.kind}">${g.kind === 'under' ? I.run : g.kind === 'over' ? I.bed : I.check}<span>${esc(g.text)}</span></div>` : ''; })()}
     <div class="coach-row">
       ${tgt ? `<button class="coach-chip" data-go="#/strain/${date}"><span>Strain-doel</span><b>${fmtStrain(tgt[0])}–${fmtStrain(tgt[1])}</b></button>` : ''}
       ${adv ? `<button class="coach-chip" data-go="#/sleep/${date}"><span>Naar bed</span><b>${fmtHM(adv.bed)}</b></button>` : ''}

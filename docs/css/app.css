@@ -877,3 +877,6 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .wear-strip { display: grid; grid-template-columns: repeat(96, 1fr); gap: 0; height: 22px; margin-top: 10px; border-radius: 6px; overflow: hidden; }
 .wear-strip i { display: block; }
 .wear-ax { display: flex; justify-content: space-between; font-size: 11px; color: var(--text3); margin-top: 4px; }
+.coach-go { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; padding: 10px 12px; margin: 10px 0 2px; border-radius: 12px; background: var(--track); }
+.coach-go svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+.coach-go-under svg { color: var(--strain); } .coach-go-over svg { color: var(--muscle); } .coach-go-in svg { color: var(--green); }

@@ -77,3 +77,12 @@ test('RPE-ijking: leert van activiteiten met gemeten hartslag', () => {
   assert.ok(res.rpeCal.sport.n >= 3);
   assert.ok(res.rpeCal.sport.scale > 1.05, `schaal ${res.rpeCal.sport.scale}`);
 });
+
+test('strain-coach: TRIMP ↔ strain is omkeerbaar', async () => {
+  const { strainFromTrimp, trimpForStrain, trimpPerMinute } = await import('../docs/js/metrics.js');
+  for (const s of [2, 8, 12.5, 17, 20]) assert.ok(Math.abs(strainFromTrimp(trimpForStrain(s)) - s) < 1e-6);
+  assert.ok(trimpPerMinute(0.6) > trimpPerMinute(0.4));
+  // 30 min zone 2 vanaf 0 geeft een realistische strain (±5–9).
+  const s30 = strainFromTrimp(30 * trimpPerMinute(0.62));
+  assert.ok(s30 > 5 && s30 < 9, `strain ${s30}`);
+});
