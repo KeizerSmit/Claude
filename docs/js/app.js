@@ -20,20 +20,21 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v36';
 const CHANGELOG = [
-  ['Krachtindex', 'Op Training: één getal voor je krachtvooruitgang over al je oefeningen samen, per week.'],
-  ['Rusttimer', 'Vink je tijdens een training een oefening af, dan loopt er een rusttimer met een piepje als je weer kunt. Tik voor +30 s; instellen in Profiel.'],
-  ['Hartslag per training', 'In een training zie je je hartslag tijdens de sessie en hoeveel minuten je in elke zone zat.'],
+  ['Ochtendrapport', 'Bij de eerste keer openen in de ochtend: je herstel in één zin uitgelegd, je nacht, wat gisteren deed en je plan voor vandaag.'],
   ['Verwachting morgen', 'Vanaf 17:00 op Vandaag (en altijd op het slaapscherm): je verwachte herstel van morgen bij verschillende bedtijden, geleerd uit je eigen data.'],
-  ['Samenvatting na je training', 'Na het opslaan: je records, hoeveel oefeningen beter gingen dan vorige keer en je spierbelasting.'],
-  ['Vergelijk met vorige keer', 'In een training zie je per oefening je vorige topset en of je vooruit ging, en hoeveel zwaarder de hele training was dan de vorige keer.'],
-  ['Slimmer notities plakken', 'Plak je bijgewerkte notitie: de app laat per schema zien wat er verbeterd is (bijv. 87 → 89,5 kg) en logt het meteen als training van vandaag.'],
   ['Weekdoelen', 'Vier doelen per week (kracht, beweging, slaap, stappen) met reeksen: hoeveel weken op rij je ze haalt. Tik om je doelen aan te passen.'],
   ['Strain-coach', 'Het plan op Vandaag zegt hoeveel minuten wandelen of zone 2 je nog nodig hebt voor je strain-doel.'],
-  ['Draagtijd', 'Onder Alle data zie je hoeveel van de dag je Fitbit hartslag mat en waar de gaten zitten. Droeg je hem weinig, dan waarschuwt Vandaag dat je strain te laag kan zijn.'],
-  ['Slaapschuld', 'Het slaapscherm toont je netto tekort over 7 nachten, met een plan om het in te halen, en je slaapschema met adviestijden.'],
+  ['Slimmer notities plakken', 'Plak je bijgewerkte notitie: de app laat per schema zien wat er verbeterd is (bijv. 87 → 89,5 kg) en logt het meteen als training van vandaag.'],
+  ['Samenvatting na je training', 'Na het opslaan: je records, hoeveel oefeningen beter gingen dan vorige keer en je spierbelasting.'],
+  ['Vergelijk met vorige keer', 'In een training zie je per oefening je vorige topset en of je vooruit ging, en hoeveel zwaarder de hele training was dan de vorige keer.'],
+  ['Rusttimer', 'Vink je tijdens een training een oefening af, dan loopt er een rusttimer met een piepje als je weer kunt. Tik voor +30 s; instellen in Profiel.'],
+  ['Hartslag per training', 'In een training zie je je hartslag tijdens de sessie en hoeveel minuten je in elke zone zat.'],
   ['Volume per spiergroep', 'Op Training: hoeveel zware sets elke spier deze week kreeg, naast de richtlijn van 10–20 sets.'],
   ['Voortgang per oefening', 'Per oefening: winst sinds je begon, tempo in kg per maand en wat je de volgende keer probeert.'],
-  ['Ochtendrapport', 'Bij de eerste keer openen in de ochtend: je herstel in één zin uitgelegd, je nacht, wat gisteren deed en je plan voor vandaag.'],
+  ['Krachtindex', 'Op Training: één getal voor je krachtvooruitgang over al je oefeningen samen, per week.'],
+  ['Slaapschuld', 'Het slaapscherm toont je netto tekort over 7 nachten, met een plan om het in te halen, en je slaapschema met adviestijden.'],
+  ['Draagtijd', 'Onder Alle data zie je hoeveel van de dag je Fitbit hartslag mat en waar de gaten zitten. Droeg je hem weinig, dan waarschuwt Vandaag dat je strain te laag kan zijn.'],
+  ['—'],
   ['Weekoverzicht', 'Elke week in één scherm: gemiddeld herstel, strain, slaap en je PR\'s, vergeleken met de week ervoor. Op maandag staat hij op Vandaag.'],
   ['Records', 'Je persoonlijke records: hoogste herstel en HRV, langste slaap, en je beste topset per oefening.'],
   ['Kalender', 'Trends heeft nu een maandkalender met herstel, strain, slaap of trainingen per dag.'],
@@ -102,7 +103,12 @@ function updateBadge() {
 
 function whatsNewSheet() {
   openSheet(`<div class="sh-head"><div class="eyebrow">Pulse ${APP_VERSION}</div><h2>Wat is nieuw</h2></div>
-    <div class="list mt">${CHANGELOG.map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${esc(t)}</div><div class="sub" style="white-space:normal">${esc(d)}</div></div></div>`).join('')}</div>
+    ${(() => {
+      const cut = CHANGELOG.findIndex((x) => x[0] === '—');
+      const item = ([t, d]) => `<div class="row"><div class="grow"><div class="title">${esc(t)}</div><div class="sub" style="white-space:normal">${esc(d)}</div></div></div>`;
+      const fresh = cut >= 0 ? CHANGELOG.slice(0, cut) : CHANGELOG, older = cut >= 0 ? CHANGELOG.slice(cut + 1) : [];
+      return `<div class="list mt">${fresh.map(item).join('')}</div>${older.length ? `<details class="wn-old"><summary>Eerdere update (${older.length})</summary><div class="list">${older.map(item).join('')}</div></details>` : ''}`;
+    })()}
     <button class="btn mt" data-act="close-sheet">Oké</button>`);
 }
 

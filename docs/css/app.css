@@ -939,3 +939,6 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .rest-pill span, .rest-pill b, .rest-pill small, .rest-pill em { position: relative; z-index: 1; }
 .btn-row + .card, .btn-row + .card-lift { margin-top: 14px; }
 .tip-pill { background: color-mix(in srgb, var(--green) 20%, transparent) !important; color: var(--green) !important; font-size: 11px; vertical-align: 2px; }
+.wn-old { margin-top: 14px; }
+.wn-old summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 6px 4px 10px; list-style: none; }
+.wn-old summary::-webkit-details-marker { display: none; }
