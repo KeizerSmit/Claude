@@ -109,7 +109,7 @@ function whatsNewSheet() {
       const fresh = cut >= 0 ? CHANGELOG.slice(0, cut) : CHANGELOG, older = cut >= 0 ? CHANGELOG.slice(cut + 1) : [];
       return `<div class="list mt">${fresh.map(item).join('')}</div>${older.length ? `<details class="wn-old"><summary>Eerdere update (${older.length})</summary><div class="list">${older.map(item).join('')}</div></details>` : ''}`;
     })()}
-    <button class="btn mt" data-act="close-sheet">Oké</button>`);
+    <button class="btn mt" data-act="close-sheet">Oké</button>`, { onClose: () => setTimeout(maybeMorning, 450) });
 }
 
 async function saveSettings(patch) {
