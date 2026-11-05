@@ -1,6 +1,6 @@
 // Service worker: app direct uit de cache starten (stale-while-revalidate),
 // nieuwe versie op de achtergrond ophalen. API-verkeer gaat altijd naar het netwerk.
-const VERSION = 'pulse-v44';
+const VERSION = 'pulse-v45';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/util.js', 'js/store.js', 'js/auth.js', 'js/api.js', 'js/sync.js',

@@ -3048,6 +3048,11 @@ const actions = {
       for (const e of S.computed.loads[ss.id]?.exercises || []) ex.push([ss.date, ss.name, e.name, e.weight, e.reps, e.sets, e.bw ? 'ja' : '', e.e1rm, e.isPR ? 'ja' : '', e.load]);
     }
     const csv = (t) => t.map((r) => r.map((v, i) => (i === 0 && typeof v === 'string' ? v : q(v))).join(';')).join('\n');
+    // iPhone: via het deelmenu (Bewaar in Bestanden / Numbers); anders gewoon downloaden.
+    try {
+      const files = [['dagen', rows], ['krachttraining', ex]].map(([name, t]) => new File(['\ufeff' + csv(t)], `pulse-${name}-${today()}.csv`, { type: 'text/csv' }));
+      if (navigator.canShare?.({ files })) { navigator.share({ files, title: 'Pulse-export' }).catch(() => {}); return; }
+    } catch { /* val terug op downloaden */ }
     for (const [name, t] of [['dagen', rows], ['krachttraining', ex]]) {
       const blob = new Blob(['﻿' + csv(t)], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a');
