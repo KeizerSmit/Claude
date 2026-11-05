@@ -350,7 +350,12 @@ export function scale(value, { min = -1, max = 3, ticks = [-1, 0, 1, 2, 3], fmt 
 /** Klokminuten vanaf 12:00 (12:00 = 720 … 11:59 = 2159) zodat nachten doorlopen over middernacht. */
 export function clockMin(ms) { const d = new Date(ms); let m = d.getHours() * 60 + d.getMinutes(); if (m < 720) m += 1440; return m; }
 /** Begin en eind van een slaapperiode als klokminuten; het eind volgt uit de duur (werkt ook bij opstaan na 12:00). */
-export function sleepSpan(start, end) { const a = clockMin(start); return [a, a + (end - start) / 60000]; }
+export function sleepSpan(start, end) {
+  const a = clockMin(start);
+  let b = clockMin(end);
+  while (b <= a) b += 1440; // wandkloktijd, dus ook goed in de nacht van de zomer-/wintertijd
+  return [a, b];
+}
 export const clk = (m) => { const v = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
 
 /**
@@ -380,7 +385,7 @@ export function sleepRange(nights, { height = 190, labelEvery = 1, target = null
     const cx = pl + step * (i + 0.5);
     if (nt.start && nt.end) {
       const [sa, sb] = sleepSpan(nt.start, nt.end);
-      const a = y(sa), b = y(Math.min(sb, hi));
+      const a = y(sa), b = y(sb);
       s += `<rect class="bar" data-i="${i}" x="${cx - bw / 2}" y="${a}" width="${bw}" height="${Math.max(2, b - a)}" rx="${Math.min(5, bw / 2)}" fill="${nt.color || 'var(--sleep)'}"/>`;
     }
     if ((n - 1 - i) % labelEvery === 0) s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" class="ct-lab">${esc(dayLabel(nt.date, n))}</text>`;

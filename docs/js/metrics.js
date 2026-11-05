@@ -6,7 +6,7 @@
 //   huidtemperatuur, telkens ten opzichte van je eigen 30-daagse baseline.
 // Sleep: slaapbehoefte = basis + extra door strain van gisteren + slaapschuld − dutjes.
 
-import { mean, sd, clamp, normCdf, addDays, median } from './util.js';
+import { mean, sd, clamp, normCdf, addDays, median, today } from './util.js';
 import { computeLoads, MUSCULAR_TO_TRIMP, templateBaselines } from './strength.js';
 import { estimateActivity, nonFitnessWindows, typeById, RPE_HRR } from './activities.js';
 
@@ -245,7 +245,7 @@ export function computeAll(days, strengthDoc, settings, profile) {
 
   // Zorg dat ook dagen met alleen een krachtlog (zonder Fitbit-data) meetellen.
   const known = new Set(sorted.map((d) => d.date));
-  for (const f of strengthDoc?.flags || []) if (!f.deleted && f.date && f.date <= addDays(sorted[sorted.length - 1]?.date || f.date, 1)) actsByDate[f.date] ||= [];
+  for (const f of strengthDoc?.flags || []) if (!f.deleted && f.date && f.date <= today()) actsByDate[f.date] ||= [];
   for (const date of [...Object.keys(sessionsByDate), ...Object.keys(actsByDate)]) if (!known.has(date)) { known.add(date); sorted.push({ date, empty: true }); }
   sorted.sort((a, b) => (a.date < b.date ? -1 : 1));
 

@@ -99,9 +99,10 @@ test('verwachting morgen: meer slaap → hoger voorspeld herstel', async () => {
 });
 
 test('ziek-modus werkt ook op een dag zonder data', () => {
-  const { days, strength } = generateDemo(20);
-  const last = days[days.length - 1].date;
-  const empty = addDays(last, 1);
+  const { days: all, strength } = generateDemo(20);
+  // Sync loopt 3 dagen achter; vandaag als ziek gemarkeerd.
+  const days = all.filter((d) => d.date <= addDays(today(), -3));
+  const empty = today();
   const { byDate } = computeAll(days, { ...strength, flags: [{ id: 'f', date: empty, kind: 'sick', updatedAt: 1 }] }, SET, { age: 30 });
   assert.equal(byDate[empty]?.flag, 'sick');
   assert.deepEqual(byDate[empty].target, [0, 6]);

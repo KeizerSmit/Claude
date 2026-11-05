@@ -4,7 +4,7 @@ import { syncAll, syncHeartNow, syncMinute } from './sync.js';
 import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp, trimpForStrain, trimpPerMinute } from './metrics.js';
 import { e1rm, parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
-import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale, sleepRange, calendar, clockMin, sleepSpan, clk } from './charts.js';
+import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale, sleepRange, calendar, sleepSpan, clk } from './charts.js';
 import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle } from './interact.js';
 import { live as liveState, onLive, connect as liveConnect, disconnect as liveDisconnect, current as liveCurrent, liveRmssd, sessionStats as liveSession, bluetoothSupported } from './live.js';
 import { generateDemo } from './demo.js';
@@ -100,7 +100,8 @@ function updateBadge() {
     if (!('setAppBadge' in navigator)) return;
     if (!S.settings.badge) return;
     const r = S.computed?.byDate?.[today()]?.recovery?.score;
-    if (r) navigator.setAppBadge(r).catch(() => {});
+    // Geen herstel voor vandaag (nog niet gesynchroniseerd)? Dan geen oud getal van gisteren tonen.
+    (r ? navigator.setAppBadge(r) : navigator.clearAppBadge()).catch(() => {});
   } catch { /* niet ondersteund */ }
 }
 
@@ -1274,7 +1275,7 @@ function viewStrength() {
   const maxSets = Math.max(10, ...Object.values(wk.sets));
   const exs = allExercises(S.strength.sessions, { exerciseMap: S.strength.exerciseMap }).slice(0, 6);
   const tpls = activeTemplates(S.strength);
-  const recId = (() => { const m = M(today()); const r = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: today(), settings: SS(), doneToday: (m?.strain?.sessions?.length || 0) > 0, flag: m?.flag }); return r?.kind === 'template' ? r.template.id : null; })();
+  const recId = (() => { const r = todayRecommendation(); return r?.kind === 'template' ? r.template.id : null; })();
   const byMonth = {};
   for (const s of sessions.slice(0, showAllSessions ? 1000 : 8)) {
     const k = s.date ? s.date.slice(0, 7) : 'zonder datum';
@@ -1835,21 +1836,35 @@ function loadStatus(p) {
  * Vroeg signaal van overbelasting: HRV ligt meerdere dagen op rij duidelijk onder je normaal
  * (en/of rusthartslag erboven), vaak samen met een hoge belasting.
  */
+let SIG_CACHE = null;
 function strainSignal(date = today()) {
-  const ds = lastDays(S.computed.byDate, date, 7).filter((d) => d.recovery && d.flag !== 'sick');
-  if (ds.length < 4) return null;
-  let streak = 0;
+  const k = `${date}`;
+  if (SIG_CACHE?.c === S.computed && SIG_CACHE.k === k) return SIG_CACHE.v;
+  const v = strainSignalRaw(date);
+  SIG_CACHE = { c: S.computed, k, v };
+  return v;
+}
+
+function strainSignalRaw(date) {
+  let ds = lastDays(S.computed.byDate, date, 8);
+  // Vandaag nog zonder herstel (niet gesynchroniseerd)? Begin dan bij gisteren.
+  if (!ds[ds.length - 1].recovery) ds = ds.slice(0, -1);
+  const run = [];
   for (let i = ds.length - 1; i >= 0; i--) {
-    const r = ds[i].recovery;
-    const low = (r.hrv && r.baseline.hrv && r.hrv < r.baseline.hrv * 0.93) || (r.rhr && r.baseline.rhr && r.rhr > r.baseline.rhr + 3);
-    if (low) streak++; else break;
+    const d = ds[i], r = d.recovery;
+    if (!r || d.flag === 'sick') break; // alleen echt opeenvolgende dagen
+    const hrvLow = !!(r.hrv && r.baseline.hrv && r.hrv < r.baseline.hrv * 0.93);
+    const rhrHigh = !!(r.rhr && r.baseline.rhr && r.rhr > r.baseline.rhr + 3);
+    if (!hrvLow && !rhrHigh) break;
+    run.push({ d, hrvLow });
   }
+  const streak = run.length;
   if (streak < 3) return null;
   const pts = loadSeries(date, 1);
   const st = loadStatus(pts[pts.length - 1]);
   const high = st.r != null && st.r > 1.15;
-  const hrvs = ds.slice(-streak).map((d) => d.recovery.hrv / d.recovery.baseline.hrv).filter((x) => x);
-  const pct = hrvs.length ? Math.round((1 - mean(hrvs)) * 100) : null;
+  const hrvs = run.filter((x) => x.hrvLow).map((x) => x.d.recovery.hrv / x.d.recovery.baseline.hrv);
+  const pct = hrvs.length >= 2 ? Math.round((1 - mean(hrvs)) * 100) : null;
   return {
     streak, high,
     text: `${streak} dagen op rij ${pct > 0 ? `HRV gemiddeld ${pct}% onder je normaal` : 'verhoogde rusthartslag'}${high ? ' terwijl je belasting hoger is dan normaal' : ''}. ${high ? 'Signaal van overbelasting: plan 1–2 lichte dagen en slaap extra.' : 'Kan wijzen op stress, slecht slapen of beginnende ziekte. Doe het rustiger aan.'}`,
@@ -1931,8 +1946,7 @@ function morningSheet(date = today()) {
   const color = recoveryColor(r?.score);
   const hour = new Date().getHours();
   const hello = hour < 6 ? 'Vroeg op' : hour < 12 ? 'Goedemorgen' : hour < 18 ? 'Goedemiddag' : 'Goedenavond';
-  const tpls = activeTemplates(S.strength);
-  const rec = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: r?.score ?? null, today: date, settings: SS(), doneToday: (m?.strain?.sessions?.length || 0) > 0, flag: m?.flag });
+  const rec = date === today() ? todayRecommendation(date) : null;
   const adv = bedtimeAdvice(m, toMin(S.settings.wake));
   const eff = yesterdayEffects(date);
   const y = M(addDays(date, -1));
@@ -2131,14 +2145,22 @@ function forecastAboutSheet() {
   <p style="margin-bottom:0">De marge (±${fm ? Math.round(fm.rse) : '–'}%) is groot: HRV schommelt ook door stress, alcohol, eten en toeval. Gebruik het als richting — vooral om te zien wat een uur eerder slapen oplevert.</p></div>`;
 }
 
+/** Eén aanbeveling voor vandaag, gedeeld door Vandaag, het ochtendrapport en Training (gecachet per berekening). */
+let REC_CACHE = null;
+function todayRecommendation(date = today()) {
+  if (REC_CACHE?.c === S.computed && REC_CACHE.d === date && REC_CACHE.u === S.strength.updatedAt) return REC_CACHE.v;
+  const m = M(date);
+  const rec = recommendTraining({ templates: activeTemplates(S.strength), sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: date, settings: SS(), doneToday: (m?.strain?.sessions?.length || 0) > 0, flag: m?.flag });
+  const sig = strainSignal(date);
+  if (sig?.high && rec?.kind === 'template') { rec.intensity = 'licht'; rec.reason += ' · houd het licht: je HRV zit al een paar dagen onder normaal'; }
+  REC_CACHE = { c: S.computed, d: date, u: S.strength.updatedAt, v: rec };
+  return rec;
+}
+
 function coachCard(date) {
   if (date !== today()) return '';
   const m = M(date);
-  const tpls = activeTemplates(S.strength);
-  const doneToday = (m?.strain?.sessions?.length || 0) > 0;
-  const rec = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: today(), settings: SS(), doneToday, flag: m?.flag });
-  const sig = strainSignal(date);
-  if (sig?.high && rec?.kind === 'template') { rec.intensity = 'licht'; rec.reason += ' · houd het licht: je HRV zit al een paar dagen onder normaal'; }
+  const rec = todayRecommendation(date);
   const adv = bedtimeAdvice(m, toMin(S.settings.wake));
   const tgt = m?.target;
   if (!rec && !tgt) return '';
@@ -3050,20 +3072,21 @@ const actions = {
       for (const e of S.computed.loads[ss.id]?.exercises || []) ex.push([ss.date, ss.name, e.name, e.weight, e.reps, e.sets, e.bw ? 'ja' : '', e.e1rm, e.isPR ? 'ja' : '', e.load]);
     }
     const csv = (t) => t.map((r) => r.map((v, i) => (i === 0 && typeof v === 'string' ? v : q(v))).join(';')).join('\n');
-    // iPhone: via het deelmenu (Bewaar in Bestanden / Numbers); anders gewoon downloaden.
-    try {
-      const files = [['dagen', rows], ['krachttraining', ex]].map(([name, t]) => new File(['\ufeff' + csv(t)], `pulse-${name}-${today()}.csv`, { type: 'text/csv' }));
-      if (navigator.canShare?.({ files })) { navigator.share({ files, title: 'Pulse-export' }).catch(() => {}); return; }
-    } catch { /* val terug op downloaden */ }
-    for (const [name, t] of [['dagen', rows], ['krachttraining', ex]]) {
-      const blob = new Blob(['﻿' + csv(t)], { type: 'text/csv;charset=utf-8' });
+    const files = [['dagen', rows], ['krachttraining', ex]].map(([name, t]) => new File(['﻿' + csv(t)], `pulse-${name}-${today()}.csv`, { type: 'text/csv' }));
+    // Eén voor één downloaden (browsers blokkeren vaak een tweede download die direct volgt).
+    const download = () => files.forEach((f, k) => setTimeout(() => {
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `pulse-${name}-${today()}.csv`;
+      a.href = URL.createObjectURL(f);
+      a.download = f.name;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    }
-    toast('2 CSV-bestanden gemaakt (dagen + krachttraining)');
+      if (k === files.length - 1) toast(`${files.length} CSV-bestanden: dagen en krachttraining`);
+    }, k * 900));
+    // iPhone: via het deelmenu (Bewaar in Bestanden / Numbers); anders downloaden.
+    let canShare = false;
+    try { canShare = !!navigator.canShare?.({ files }); } catch { /* */ }
+    if (canShare) navigator.share({ files, title: 'Pulse-export' }).catch((e) => { if (e?.name !== 'AbortError') download(); });
+    else download();
   },
 };
 
