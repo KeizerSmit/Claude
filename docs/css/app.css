@@ -901,3 +901,9 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .val small.vs { display: block; font-size: 11.5px; font-weight: 500; color: var(--text2); margin-top: 2px; white-space: nowrap; }
 .val small.vs.up { color: var(--green); } .val small.vs.down { color: var(--red); } .val small.vs.new { color: var(--accent); }
 .row .val { text-align: right; }
+.wo-sum { padding-top: 6px; }
+.wo-badge { width: 72px; height: 72px; margin: 4px auto 12px; border-radius: 50%; display: grid; place-items: center; font-size: 36px; background: color-mix(in srgb, var(--yellow) 22%, transparent); color: var(--green); box-shadow: 0 0 40px color-mix(in srgb, var(--yellow) 30%, transparent); animation: wo-pop .5s cubic-bezier(.2,1.4,.4,1); }
+.wo-badge svg { width: 36px; height: 36px; }
+.wo-sum h2 { font-size: 28px; margin: 4px 0 0; }
+.center { text-align: center; }
+@keyframes wo-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }

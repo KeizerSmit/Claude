@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Samenvatting na je training', 'Na het opslaan: je records, hoeveel oefeningen beter gingen dan vorige keer en je spierbelasting.'],
   ['Vergelijk met vorige keer', 'In een training zie je per oefening je vorige topset en of je vooruit ging, en hoeveel zwaarder de hele training was dan de vorige keer.'],
   ['Slimmer notities plakken', 'Plak je bijgewerkte notitie: de app laat per schema zien wat er verbeterd is (bijv. 87 → 89,5 kg) en logt het meteen als training van vandaag.'],
   ['Weekdoelen', 'Vier doelen per week (kracht, beweging, slaap, stappen) met reeksen: hoeveel weken op rij je ze haalt. Tik om je doelen aan te passen.'],
@@ -1313,6 +1314,35 @@ function prevExercise(key, sess) {
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
   for (const x of prev) { const e = loads[x.id]?.exercises.find((y) => y.key === key); if (e) return { ...e, date: x.date }; }
   return null;
+}
+
+/** Samenvatting direct na het opslaan van een training. */
+function workoutSummarySheet(id) {
+  const s = S.strength.sessions.find((x) => x.id === id);
+  const r = S.computed.loads[id];
+  if (!s || !r) return '<p>Training bewaard.</p>';
+  const prs = r.exercises.filter((e) => e.isPR);
+  let up = 0, same = 0, down = 0;
+  for (const e of r.exercises) { const pv = prevExercise(e.key, s); if (!pv) continue; const d = (e.e1rm || 0) - (pv.e1rm || 0); if (d > 0.05) up++; else if (d < -0.05) down++; else same++; }
+  const pv = S.strength.sessions.filter((x) => !x.deleted && x.id !== s.id && x.date && x.date <= s.date && (x.name || '').toLowerCase() === (s.name || '').toLowerCase()).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  const pl = pv ? S.computed.loads[pv.id]?.load : null;
+  const top = Object.entries(r.groups).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([g]) => GROUPS[g]);
+  const m = M(s.date);
+  const tgt = m?.target;
+  const headline = prs.length ? `${prs.length} ${prs.length === 1 ? 'record' : 'records'}!` : up > down ? 'Sterker dan vorige keer' : up === 0 && down === 0 ? 'Training bewaard' : down > up ? 'Zwaardere dag' : 'Stabiel';
+  return `<div class="wo-sum">
+    <div class="wo-badge">${prs.length ? '🏆' : I.check}</div>
+    <div class="eyebrow center">${esc(s.name || 'Training')} · ${esc(fmtDateShort(s.date))}</div>
+    <h2 class="center">${headline}</h2>
+    <div class="stats three mt">
+      ${stat('Beter', up, '', `${same} gelijk · ${down} lager`)}
+      ${stat('Spierbelasting', num(r.load, 1), '', pl ? `${r.load >= pl ? '▲' : '▼'} ${num(Math.abs((r.load / pl - 1) * 100), 0)}% vs vorige` : 'eerste keer')}
+      ${stat('Dag-strain', m?.strain ? fmtStrain(m.strain.score) : '–', '', tgt ? `doel ${fmtStrain(tgt[0])}–${fmtStrain(tgt[1])}` : '')}
+    </div>
+    ${prs.length ? `<div class="list mt">${prs.map((e) => `<div class="row"><div class="badge" style="background:var(--yellow);color:#000">${I.flame}</div><div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">e1RM ${num(e.e1rm, 1)} kg</div></div><div class="val"><b>${esc(setText({ ...e, sets: null }))}</b></div></div>`).join('')}</div>` : ''}
+    <p class="small muted center mt">Vooral ${esc(top.join(', ').toLowerCase())} getraind. Eet binnen een paar uur ±0,4 g eiwit per kg en slaap vannacht genoeg — daar groei je van.</p>
+    <button class="btn mt" data-act="close-sheet">Klaar</button>
+  </div>`;
 }
 
 function viewSession(id) {
@@ -2630,10 +2660,11 @@ const actions = {
         if (extra.length) { t.exercises.push(...extra.map(({ note, ...e }) => e)); t.updatedAt = Date.now(); }
       }
     });
+    const wasNew = !S.strength.sessions.some((x) => x.id === clean.id && x.createdAt && x.createdAt < clean.updatedAt - 1000);
     S.editDraft = null; S.draftRestored = false;
     clearDraftLS();
-    toast('Training bewaard');
     location.hash = `#/session/${clean.id}`;
+    if (wasNew) setTimeout(() => openSheet(workoutSummarySheet(clean.id)), 450); else toast('Training bewaard');
   },
   async 'share-claude'() {
     const pts = loadSeries(today());
