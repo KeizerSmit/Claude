@@ -541,6 +541,7 @@ function viewToday(date) {
   <div data-swipe data-base="#/today" data-date="${date}">
   ${rings}
   ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Trek omlaag om te synchroniseren.'}</div>` : ''}
+  ${t && parseYmd(date).getDay() === 1 ? `<button class="wk-entry glass" data-go="#/week/${addDays(date, -7)}"><span>${I.chart}</span><div><b>Je vorige week</b><small>Week ${isoWeek(addDays(date, -7))} in één oogopslag</small></div><span class="chev">${I.chev}</span></button>` : ''}
   ${coachCard(date)}
   ${insightsCard}
   <div class="section-title">Activiteiten <button data-act="plus-activity" data-v="${date}">+ Toevoegen</button></div>
@@ -915,6 +916,7 @@ function viewTrends() {
   const steps = (d) => d.raw?.steps ?? null;
   const zoneCount = ['green', 'yellow', 'red'].map((z) => ds.filter((d) => recoveryZone(rec(d)) === z).length);
   return `${largeTitle('Trends', '', avatar())}
+  <button class="wk-entry glass" data-go="#/week/${weekStartOf(today())}"><span>${I.chart}</span><div><b>Weekoverzicht</b><small>Week ${isoWeek(today())} · vergelijk met vorige week</small></div><span class="chev">${I.chev}</span></button>
   <div class="segmented">${[7, 30, 90].map((r) => `<button class="${r === n ? 'on' : ''}" data-act="range" data-v="${r}">${r === 7 ? 'Week' : r === 30 ? 'Maand' : '3 maanden'}</button>`).join('')}</div>
   <div>
   ${trendCard('Herstel', `${num(avgOf(ds, rec))}<small>% gem.</small>`, `${cmp(rec)} · <span style="color:var(--green)">●</span> ${zoneCount[0]} <span style="color:var(--yellow)">●</span> ${zoneCount[1]} <span style="color:var(--red)">●</span> ${zoneCount[2]}`,
@@ -1002,7 +1004,7 @@ function viewStrength() {
   <div class="fade-in">
   ${loadBandCard()}
   ${muscleCard()}
-  <button class="btn secondary" data-act="share-claude">${I.doc} Deel met Claude ter controle</button>
+  <div class="btn-row"><button class="btn secondary" data-go="#/records">${I.flame} Records</button><button class="btn secondary" data-act="share-claude">${I.doc} Deel met Claude</button></div>
   <div class="section-title">Recent <button data-act="plus-activity" data-v="${today()}">+ Activiteit</button></div>
   ${recentActivitiesList(14)}
   <div class="stats three mt">
@@ -1698,6 +1700,119 @@ function hsAboutSheet() {
     <p class="tiny muted">Geen medisch advies. Observationele verbanden zijn geen oorzaak-gevolg.</p>`;
 }
 
+// ---------------------------------------------------------------- Weekoverzicht & records
+
+function weekStartOf(date) { const d = parseYmd(date); return addDays(date, -((d.getDay() + 6) % 7)); }
+function isoWeek(date) {
+  const d = parseYmd(date); const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t - y0) / 86400000 + 1) / 7);
+}
+
+function weekStats(start) {
+  const days = Array.from({ length: 7 }, (_, i) => S.computed.byDate[addDays(start, i)] || { date: addDays(start, i) });
+  const past = days.filter((d) => d.date <= today());
+  const vals = (f) => past.map(f).filter((v) => v != null);
+  const sessions = past.flatMap((d) => (d.strain?.sessions || []).map((s) => ({ ...s, date: d.date })));
+  const manual = past.flatMap((d) => (d.strain?.manual || []).map((a) => ({ ...a, date: d.date })));
+  const prs = sessions.flatMap((s) => (s.exercises || []).filter((e) => e.isPR).map((e) => ({ ...e, date: s.date, session: s.name })));
+  return {
+    days, past,
+    rec: mean(vals((d) => d.recovery?.score)), strain: mean(vals((d) => d.strain?.score || null)), strainSum: vals((d) => d.strain?.score || null).reduce((a, b) => a + b, 0),
+    sleep: mean(vals((d) => d.sleep?.asleep)), sleepPerf: mean(vals((d) => d.sleep?.perf)), hrv: mean(vals((d) => d.recovery?.hrv)), rhr: mean(vals((d) => d.recovery?.rhr)),
+    steps: mean(vals((d) => d.raw?.steps)), musc: sessions.reduce((a, s) => a + (s.load || 0), 0),
+    sessions, manual, prs,
+    best: past.filter((d) => d.recovery).sort((a, b) => b.recovery.score - a.recovery.score)[0] || null,
+    hardest: past.filter((d) => d.strain?.score).sort((a, b) => b.strain.score - a.strain.score)[0] || null,
+    zones: ['green', 'yellow', 'red'].map((z) => past.filter((d) => recoveryZone(d.recovery?.score) === z).length),
+  };
+}
+
+function cmpCell(a, b, digits = 0, higher = true, fmt = (v) => num(v, digits)) {
+  if (a == null) return '–';
+  if (b == null) return fmt(a);
+  const d = a - b;
+  const z = Math.round(Math.abs(d) * Math.pow(10, digits)) === 0;
+  const good = higher ? d > 0 : d < 0;
+  return `${fmt(a)} <span class="${z ? 'muted' : good ? 'up' : 'down'} small">${z ? '=' : `${d > 0 ? '▲' : '▼'}${fmt(Math.abs(d))}`}</span>`;
+}
+
+function viewWeek(start) {
+  start = weekStartOf(start || today());
+  const w = weekStats(start), pw = weekStats(addDays(start, -7));
+  const end = addDays(start, 6);
+  const next = addDays(start, 7);
+  const recColor = recoveryColor(w.rec);
+  return `${navbar(`Week ${isoWeek(start)}`, '#/trends', `<button class="nav-pill glass" data-act="share-claude">Deel</button>`)}
+  <div class="content" data-swipe data-base="#/week" data-date="${start}" data-step="7">
+    <div class="weeknav"><button class="icon-btn glass" data-go="#/week/${addDays(start, -7)}" aria-label="Vorige week">${I.left}</button>
+      <div class="center"><div class="eyebrow">${fmtDateShort(start)} – ${fmtDateShort(end)}</div><div class="wk-title">Week ${isoWeek(start)}</div></div>
+      <button class="icon-btn glass" data-go="#/week/${next}" ${next > today() ? 'disabled style="opacity:.3"' : ''} aria-label="Volgende week">${I.right}</button></div>
+    <div class="wk-hero card-lift">
+      <div class="wk-big" style="color:${recColor}">${w.rec != null ? num(w.rec) : '–'}<small>%</small></div>
+      <div class="wk-sub">gemiddeld herstel · <span style="color:var(--green)">●</span> ${w.zones[0]} <span style="color:var(--yellow)">◆</span> ${w.zones[1]} <span style="color:var(--red)">▲</span> ${w.zones[2]}</div>
+      <div class="wk-days">${w.days.map((d) => {
+        const fut = d.date > today();
+        const r = d.recovery?.score, st = d.strain?.score || 0;
+        return `<button class="wk-day" ${fut ? 'disabled' : ''} data-go="#/today/${d.date}"><span class="wk-st" style="height:${Math.max(3, (st / 21) * 56)}px"></span><span class="wk-dot" style="background:${r != null ? recoveryColor(r) : 'var(--track)'}"></span><span class="wk-w">${weekdayShort(d.date)}</span></button>`;
+      }).join('')}</div>
+      <div class="legend center-legend"><span><i style="background:var(--strain)"></i>strain per dag</span><span><i style="background:var(--green)"></i>herstel</span></div>
+    </div>
+    <div class="list-header">Vergeleken met vorige week</div>
+    <div class="card"><div class="kv">
+      <div>Herstel</div><div>${cmpCell(w.rec, pw.rec, 0, true, (v) => `${num(v)}%`)}</div>
+      <div>Strain (gem. per dag)</div><div>${cmpCell(w.strain, pw.strain, 1, true, fmtStrain)}</div>
+      <div>Slaap per nacht</div><div>${cmpCell(w.sleep, pw.sleep, 0, true, fmtHM)}</div>
+      <div>HRV</div><div>${cmpCell(w.hrv, pw.hrv, 0, true, (v) => `${num(v)} ms`)}</div>
+      <div>Rusthartslag</div><div>${cmpCell(w.rhr, pw.rhr, 0, false, (v) => `${num(v)}`)}</div>
+      <div>Stappen per dag</div><div>${cmpCell(w.steps, pw.steps, 0, true, (v) => num(v))}</div>
+      <div>Krachttrainingen</div><div>${cmpCell(w.sessions.length, pw.sessions.length, 0, true)}</div>
+      <div>Spierbelasting</div><div>${cmpCell(w.musc, pw.musc, 0, true)}</div>
+    </div></div>
+    ${w.best || w.hardest || w.prs.length ? `<div class="list-header">Hoogtepunten</div><div class="list">
+      ${w.best ? `<button class="row tap" data-go="#/recovery/${w.best.date}"><div class="badge" style="background:var(--green)">${I.bolt}</div><div class="grow"><div class="title">Best hersteld: ${weekdayShort(w.best.date)} ${fmtDateShort(w.best.date)}</div><div class="sub">${w.best.recovery.score}% herstel</div></div><span class="chev">${I.chev}</span></button>` : ''}
+      ${w.hardest ? `<button class="row tap" data-go="#/strain/${w.hardest.date}"><div class="badge" style="background:var(--strain)">${I.flame}</div><div class="grow"><div class="title">Zwaarste dag: ${weekdayShort(w.hardest.date)} ${fmtDateShort(w.hardest.date)}</div><div class="sub">strain ${fmtStrain(w.hardest.strain.score)}</div></div><span class="chev">${I.chev}</span></button>` : ''}
+      ${w.prs.slice(0, 5).map((e) => `<button class="row tap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="badge" style="background:var(--muscle)">🏆</div><div class="grow"><div class="title">PR: ${esc(e.name)}</div><div class="sub">${esc(setText({ ...e, sets: null }))} · ${esc(e.session)} · ${fmtDateShort(e.date)}</div></div><span class="chev">${I.chev}</span></button>`).join('')}
+    </div>` : ''}
+    ${w.sessions.length || w.manual.length ? `<div class="list-header">Trainingen & activiteiten</div><div class="list">
+      ${w.sessions.map((s) => `<button class="row tap" data-go="#/session/${s.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(s.name)}</div><div class="sub">${weekdayShort(s.date)} ${fmtDateShort(s.date)} · belasting ${num(s.load, 1)}${s.rpe != null ? ` · zwaarte ${s.rpe}/10` : ''}</div></div><span class="chev">${I.chev}</span></button>`).join('')}
+      ${w.manual.map((a) => `<button class="row tap" data-sheet="manual:${a.id}"><div class="badge" style="background:${CATS[typeById(a.typeId).cat].color}">${actIcon(typeById(a.typeId))}</div><div class="grow"><div class="title">${esc(typeById(a.typeId).name)}</div><div class="sub">${weekdayShort(a.date)} ${fmtDateShort(a.date)} · ${fmtDur(a.duration)}</div></div><span class="chev">${I.chev}</span></button>`).join('')}
+    </div>` : ''}
+    <button class="btn secondary mt" data-go="#/records">${I.flame} Al je records</button>
+  </div>`;
+}
+
+function viewRecords() {
+  const exs = allExercises(S.strength.sessions, { exerciseMap: S.strength.exerciseMap });
+  const rows = exs.map((e) => {
+    const h = exerciseHistory(S.strength.sessions, e.key, SS());
+    const best = h.reduce((a, x) => ((x.e1rm || 0) > (a?.e1rm || 0) ? x : a), null);
+    const first = h.find((x) => x.e1rm);
+    return { e, best, gain: best && first && first.e1rm ? (best.e1rm / first.e1rm - 1) * 100 : null };
+  }).filter((r) => r.best);
+  const recentPRs = S.strength.sessions.filter((s) => !s.deleted && s.date >= addDays(today(), -30)).flatMap((s) => (S.computed.loads[s.id]?.exercises || []).filter((e) => e.isPR).map((e) => ({ ...e, date: s.date }))).sort((a, b) => (a.date < b.date ? 1 : -1));
+  const all = Object.values(S.computed.byDate);
+  const top = (f, cmp = (a, b) => b - a) => all.filter((d) => f(d) != null).sort((a, b) => cmp(f(a), f(b)))[0];
+  const tRec = top((d) => d.recovery?.score), tStr = top((d) => d.strain?.score || null), tSleep = top((d) => d.sleep?.asleep), tHrv = top((d) => d.recovery?.hrv), tRhr = top((d) => d.raw?.rhr, (a, b) => a - b), tSteps = top((d) => d.raw?.steps);
+  const pb = (label, d, v, go) => (d ? `<button class="tile" data-go="${go}"><div class="tile-l">${label}</div><div class="tile-v">${v}</div><div class="tile-d">${fmtDateShort(d.date)}</div></button>` : '');
+  return `${navbar('Records', '#/strength')}
+  <div class="content">
+    ${largeTitle('Records')}
+    <div class="tiles">
+      ${pb('Hoogste herstel', tRec, `${tRec?.recovery.score}<small>%</small>`, `#/recovery/${tRec?.date}`)}
+      ${pb('Hoogste strain', tStr, fmtStrain(tStr?.strain.score), `#/strain/${tStr?.date}`)}
+      ${pb('Langste slaap', tSleep, fmtHM(tSleep?.sleep.asleep), `#/sleep/${tSleep?.date}`)}
+      ${pb('Hoogste HRV', tHrv, `${num(tHrv?.recovery.hrv)}<small>ms</small>`, `#/recovery/${tHrv?.date}`)}
+      ${pb('Laagste rusthartslag', tRhr, `${tRhr?.raw.rhr}<small>bpm</small>`, `#/day/${tRhr?.date}`)}
+      ${pb('Meeste stappen', tSteps, num(tSteps?.raw.steps), `#/day/${tSteps?.date}`)}
+    </div>
+    ${recentPRs.length ? `<div class="section-title">PR's laatste 30 dagen</div><div class="list">${recentPRs.slice(0, 10).map((e) => `<button class="row tap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="badge" style="background:var(--muscle)">🏆</div><div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${fmtDateShort(e.date)} · e1RM ${num(e.e1rm, 1)} kg</div></div><div class="val"><b>${esc(setText({ ...e, sets: null }))}</b></div></button>`).join('')}</div>` : ''}
+    <div class="section-title">Beste topset per oefening</div>
+    <div class="list">${rows.sort((a, b) => (b.best.e1rm || 0) - (a.best.e1rm || 0)).map((r) => `<button class="row tap wrap" data-go="#/exercise/${encodeURIComponent(r.e.key)}"><div class="grow"><div class="title">${esc(r.e.name)}</div><div class="sub">${esc(setText({ ...r.best, sets: null }))} · ${fmtDateShort(r.best.date)}${r.gain != null && r.gain > 0.5 ? ` · <span class="up">+${num(r.gain, 0)}% sinds start</span>` : ''}</div></div><div class="val"><b>${num(r.best.e1rm, 1)}</b> kg</div></button>`).join('')}</div>
+  </div>`;
+}
+
 // ---------------------------------------------------------------- router
 
 function parseRoute() {
@@ -1723,7 +1838,7 @@ function updateTabbar(active, show) {
 }
 
 let lastRoute = '';
-const DEPTH = { today: 0, trends: 0, strength: 0, health: 0, settings: 1, welcome: 0, recovery: 1, strain: 1, sleep: 1, day: 2, live: 1, exercises: 1, session: 1, template: 1, import: 1, about: 1, setup: 1, exercise: 2, log: 2, 'template-edit': 2 };
+const DEPTH = { today: 0, trends: 0, strength: 0, health: 0, week: 1, records: 1, settings: 1, welcome: 0, recovery: 1, strain: 1, sleep: 1, day: 2, live: 1, exercises: 1, session: 1, template: 1, import: 1, about: 1, setup: 1, exercise: 2, log: 2, 'template-edit': 2 };
 let lastDepth = 0;
 let lastName = '';
 let titleUpdate = () => {};
@@ -1755,6 +1870,8 @@ function render() {
     case 'about': html = viewAbout(); tab = 'today'; break;
     case 'live': html = viewLive(); tab = 'today'; break;
     case 'health': html = viewHealth(); tab = 'health'; break;
+    case 'week': html = viewWeek(r.a); tab = 'trends'; break;
+    case 'records': html = viewRecords(); tab = 'strength'; break;
     default: html = viewToday(r.a && /^\d{4}-\d{2}-\d{2}$/.test(r.a) ? (r.a > today() ? today() : r.a) : today()); tab = 'today';
   }
   const showTabs = loggedIn && !['welcome', 'setup', 'log', 'template-edit'].includes(r.name);
@@ -2257,7 +2374,7 @@ window.addEventListener('hashchange', () => {
 async function boot() {
   enablePullToRefresh(() => runSync());
   enableSwipe((dir, area) => {
-    const d = addDays(area.dataset.date, dir);
+    const d = addDays(area.dataset.date, dir * Number(area.dataset.step || 1));
     if (d > today()) return;
     location.hash = `${area.dataset.base || '#/today'}/${d}`;
   });

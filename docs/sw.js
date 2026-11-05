@@ -1,11 +1,11 @@
 // Service worker: app direct uit de cache starten (stale-while-revalidate),
 // nieuwe versie op de achtergrond ophalen. API-verkeer gaat altijd naar het netwerk.
-const VERSION = 'pulse-v17';
+const VERSION = 'pulse-v18';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/util.js', 'js/store.js', 'js/auth.js', 'js/api.js', 'js/sync.js',
   'js/metrics.js', 'js/strength.js', 'js/charts.js', 'js/demo.js', 'js/icons.js', 'js/interact.js', 'js/live.js',
-  'js/activities.js', 'js/healthspan.js', 'js/bodymap.js', 'js/share.js',
+  'js/activities.js', 'js/healthspan.js', 'js/bodymap.js', 'js/share.js', 'js/coach.js', 'js/patterns.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
 ];
 
