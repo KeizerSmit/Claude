@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Slaapschuld', 'Het slaapscherm toont je netto tekort over 7 nachten, met een plan om het in te halen, en je slaapschema met adviestijden.'],
   ['Volume per spiergroep', 'Op Training: hoeveel zware sets elke spier deze week kreeg, naast de richtlijn van 10–20 sets.'],
   ['Voortgang per oefening', 'Per oefening: winst sinds je begon, tempo in kg per maand en wat je de volgende keer probeert.'],
   ['Ochtendrapport', 'Bij de eerste keer openen in de ochtend: je herstel in één zin uitgelegd, je nacht, wat gisteren deed en je plan voor vandaag.'],
@@ -853,9 +854,39 @@ function viewSleep(date) {
   ${advice ? `<div class="card"><div class="card-head"><span class="t">${I.bed} Vanavond</span></div>
     <div style="font-size:28px;font-weight:700">${fmtHM(advice.bed)}</div>
     <div class="small muted">Ga rond deze tijd naar bed om om ${esc(S.settings.wake)} op te staan met ${fmtHM(advice.need)} slaap (strain van vandaag meegerekend).</div></div>` : ''}
+  ${sleepDebtCard(date)}
+  ${(() => {
+    const nights = days14.map((d) => ({ date: d.date, start: d.sleep?.start || null, end: d.sleep?.end || null, go: `#/sleep/${d.date}`, color: d.date === date ? 'var(--sleep)' : 'color-mix(in srgb, var(--sleep) 60%, transparent)' }));
+    const wake = toMin(S.settings.wake) + 1440;
+    const adv = bedtimeAdvice(m, toMin(S.settings.wake));
+    const bedT = adv ? (adv.bed < 720 ? adv.bed + 1440 : adv.bed) : null;
+    return nights.some((n) => n.start) ? `<div class="section-title">Slaapschema · 14 dagen</div><div class="card">${sleepRange(nights, { labelEvery: 2, target: bedT ? [bedT, wake] : null })}<div class="legend"><span><i style="background:var(--band)"></i>advies: ${bedT ? clockTxt(bedT) : ''}–${esc(S.settings.wake)}</span><span>tik voor die nacht</span></div></div>` : '';
+  })()}
   <div class="section-title">Slaap · 14 dagen</div>
   <div class="card">${bars(days14.map((d) => ({ date: d.date, go: `#/sleep/${d.date}`, value: d.sleep ? d.sleep.asleep / 60 : null, color: d.sleep && d.sleep.perf >= 0.85 ? 'var(--sleep)' : 'rgba(125,122,255,.5)' })), { fmt: (v) => num(v, 1), labelEvery: 2 })}
   <div class="legend"><span><i style="background:var(--sleep)"></i>≥ 85% van behoefte</span><span>gem. ${fmtHM(mean(days14.map((d) => d.sleep?.asleep)))}</span></div></div>
+  </div>`;
+}
+
+/** Slaapschuld: netto tekort over de laatste 7 nachten (te veel slapen lost een deel af). */
+function sleepDebtCard(date) {
+  const ds = lastDays(S.computed.byDate, date, 7);
+  const bal = ds.map((d) => (d.sleep ? d.sleep.asleep - d.sleep.need : null));
+  const have = bal.filter((v) => v != null);
+  if (have.length < 2) return '';
+  const net = have.reduce((a, v) => a + v, 0);
+  const debt = Math.max(0, -net);
+  const maxAbs = Math.max(60, ...have.map((v) => Math.abs(v)));
+  const word = debt < 30 ? 'Uitgerust' : debt < 120 ? 'Klein tekort' : debt < 300 ? 'Flink tekort' : 'Groot tekort';
+  const col = debt < 30 ? 'var(--green)' : debt < 120 ? 'var(--yellow)' : 'var(--red)';
+  const extra = Math.max(20, Math.min(60, Math.round(debt / 4)));
+  const nights = Math.min(7, Math.ceil(debt / extra));
+  const plan = debt >= 30 ? `Inhalen: ${fmtHM(extra)} extra per nacht, ${nights} ${nights === 1 ? 'nacht' : 'nachten'} lang. Eerder naar bed werkt beter dan uitslapen — dat houdt je ritme stabiel.` : 'Je slaapt ongeveer wat je nodig hebt. Zo houden!';
+  return `<div class="section-title">Slaapschuld · 7 nachten</div>
+  <div class="card debt">
+    <div class="debt-top"><div><div class="debt-v" style="color:${col}">${debt < 1 ? '0:00' : fmtHM(debt)}</div><div class="debt-w">${word}</div></div>
+    <div class="debt-chart">${ds.map((d, i) => { const v = bal[i]; const h = v == null ? 0 : (Math.abs(v) / maxAbs) * 32; return `<a class="debt-col" href="#/sleep/${d.date}" title="${v == null ? 'geen data' : `${v >= 0 ? '+' : '−'}${fmtHM(Math.abs(v))}`}"><span class="debt-bar ${v == null ? 'none' : v >= 0 ? 'pos' : 'neg'}" style="height:${Math.max(2, h)}px"></span><small>${weekdayShort(d.date)}</small></a>`; }).join('')}</div></div>
+    <p class="small muted" style="margin:10px 0 0">${plan}</p>
   </div>`;
 }
 

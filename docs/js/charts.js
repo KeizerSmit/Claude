@@ -69,7 +69,7 @@ export function bars(items, { height = 140, max = null, fmt = (v) => v, showValu
     } else {
       s += `<rect x="${cx - bw / 2}" y="${H - pb - 2}" width="${bw}" height="2" rx="1" fill="var(--track)"/>`;
     }
-    if (i % labelEvery === 0 || i === n - 1) s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" class="ct-lab">${esc(it.label ?? dayLabel(it.date, n))}</text>`;
+    if ((n - 1 - i) % labelEvery === 0) s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" class="ct-lab">${esc(it.label ?? dayLabel(it.date, n))}</text>`;
   });
   s += '</svg>';
   const id = register({
@@ -379,7 +379,7 @@ export function sleepRange(nights, { height = 190, labelEvery = 1, target = null
       const a = y(clockMin(nt.start)), b = y(clockMin(nt.end));
       s += `<rect class="bar" data-i="${i}" x="${cx - bw / 2}" y="${a}" width="${bw}" height="${Math.max(2, b - a)}" rx="${Math.min(5, bw / 2)}" fill="${nt.color || 'var(--sleep)'}"/>`;
     }
-    if (i % labelEvery === 0 || i === n - 1) s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" class="ct-lab">${esc(dayLabel(nt.date, n))}</text>`;
+    if ((n - 1 - i) % labelEvery === 0) s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" class="ct-lab">${esc(dayLabel(nt.date, n))}</text>`;
   });
   s += '</svg>';
   const id = register({

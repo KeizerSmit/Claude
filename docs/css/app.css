@@ -857,3 +857,16 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .vol-prev { width: 2px; top: -3px !important; bottom: -3px !important; background: var(--text); opacity: .7; border-radius: 1px; }
 .vol-n { font-family: var(--font-round); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .vol-s { font-size: 12px; font-weight: 600; }
+
+/* ---------- slaapschuld ---------- */
+.debt-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.debt-v { font-family: var(--font-round); font-size: 36px; font-weight: 700; line-height: 1; }
+.debt-w { font-size: 14px; color: var(--text2); margin-top: 4px; font-weight: 500; }
+.debt-chart { display: flex; gap: 6px; height: 92px; align-items: stretch; }
+.debt-col { display: grid; grid-template-rows: 1fr 1fr auto; width: 18px; text-decoration: none; position: relative; }
+.debt-col::before { content: ''; position: absolute; left: -3px; right: -3px; top: 36px; height: 1px; background: var(--sep); }
+.debt-bar { width: 10px; justify-self: center; border-radius: 3px; }
+.debt-bar.pos { grid-row: 1; align-self: end; background: var(--sleep); }
+.debt-bar.neg { grid-row: 2; align-self: start; background: var(--red); opacity: .85; }
+.debt-bar.none { grid-row: 1; align-self: end; background: var(--track); }
+.debt-col small { grid-row: 3; font-size: 10px; color: var(--text3); text-align: center; text-transform: lowercase; margin-top: 4px; }
