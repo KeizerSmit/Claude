@@ -18,8 +18,9 @@ import { recoveryPatterns } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false };
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Ochtendrapport', 'Bij de eerste keer openen in de ochtend: je herstel in één zin uitgelegd, je nacht, wat gisteren deed en je plan voor vandaag.'],
   ['Weekoverzicht', 'Elke week in één scherm: gemiddeld herstel, strain, slaap en je PR\'s, vergeleken met de week ervoor. Op maandag staat hij op Vandaag.'],
   ['Records', 'Je persoonlijke records: hoogste herstel en HRV, langste slaap, en je beste topset per oefening.'],
   ['Kalender', 'Trends heeft nu een maandkalender met herstel, strain, slaap of trainingen per dag.'],
@@ -571,6 +572,7 @@ function viewToday(date) {
   <div data-swipe data-base="#/today" data-date="${date}">
   ${rings}
   ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Trek omlaag om te synchroniseren.'}</div>` : ''}
+  ${t && rec && new Date().getHours() < 14 ? `<button class="wk-entry glass" data-act="morning" data-v="${date}"><span>${I.sun}</span><div><b>Ochtendrapport</b><small>${esc(recoveryVerdict(m)).slice(0, 80)}${recoveryVerdict(m).length > 80 ? '…' : ''}</small></div><span class="chev">${I.chev}</span></button>` : ''}
   ${t && parseYmd(date).getDay() === 1 ? `<button class="wk-entry glass" data-go="#/week/${addDays(date, -7)}"><span>${I.chart}</span><div><b>Je vorige week</b><small>Week ${isoWeek(addDays(date, -7))} in één oogopslag</small></div><span class="chev">${I.chev}</span></button>` : ''}
   ${m?.flag ? `<div class="card flag-card flag-${m.flag}"><div class="badge" style="background:${m.flag === 'sick' ? 'var(--red)' : 'var(--sleep)'}">${m.flag === 'sick' ? AI.health || I.heart : I.bed}</div><div class="grow"><div class="title">${m.flag === 'sick' ? 'Ziek-modus' : 'Rustdag'}</div><div class="sub">${m.flag === 'sick' ? 'Telt niet mee in je baseline · strain-doel max 6' : 'Strain-doel max 9 · herstel heeft voorrang'}</div></div><button class="btn small ghost" data-act="flag" data-v="${date}:">Uit</button></div>` : ''}
   ${coachCard(date)}
@@ -1402,6 +1404,7 @@ function viewSettings() {
   <div class="list">${row('Thema', `<select data-set="theme"><option value="auto" ${st.theme === 'auto' ? 'selected' : ''}>Automatisch</option><option value="dark" ${st.theme === 'dark' ? 'selected' : ''}>Donker</option><option value="light" ${st.theme === 'light' ? 'selected' : ''}>Licht</option></select>`)}
     ${row('Kleuren', `<select data-set="palette"><option value="standard" ${st.palette !== 'cb' ? 'selected' : ''}>Standaard</option><option value="cb" ${st.palette === 'cb' ? 'selected' : ''}>Kleurenblind</option></select>`, 'herstel in blauw · geel · oranje')}
     ${row('Herstel op app-icoon', `<label class="switch"><input type="checkbox" data-set="badge" ${st.badge ? 'checked' : ''}><span></span></label>`, 'navigator' in window && 'setAppBadge' in navigator ? 'vraagt toestemming voor meldingen (nodig voor badges op iPhone)' : 'werkt als Pulse op je beginscherm staat (iOS 16.4+)')}
+    ${row('Ochtendrapport', `<label class="switch"><input type="checkbox" data-set="morning" ${st.morning !== false ? 'checked' : ''}><span></span></label>`, 'automatisch bij de eerste keer openen')}
     <button class="row tap" data-act="whats-new"><div class="grow">Wat is nieuw</div><span class="muted">${APP_VERSION}</span><span class="chev">${I.chev}</span></button></div>
 
   <div class="list-header">Data</div>
@@ -1527,6 +1530,96 @@ function patternsCard({ limit = 6 } = {}) {
     }).join('')}
     <p class="tiny muted" style="margin:8px 0 0">Herstel de ochtend erna, vergeleken met dagen zonder. Verbanden uit je eigen data; geen bewijs van oorzaak.</p>
   </div>`;
+}
+
+// ---------------------------------------------------------------- ochtendrapport
+
+/** Eén zin die uitlegt waarom je herstel is wat het is. */
+function recoveryVerdict(m) {
+  const r = m?.recovery;
+  if (!r) return '';
+  const parts = [
+    { k: 'hrv', z: r.z.hrv * r.weights.hrv, txt: r.hrv && r.baseline.hrv ? `je HRV ${Math.abs(Math.round((r.hrv / r.baseline.hrv - 1) * 100))}% ${r.hrv >= r.baseline.hrv ? 'boven' : 'onder'} je normaal ligt` : null },
+    { k: 'rhr', z: r.z.rhr * r.weights.rhr, txt: r.rhr && r.baseline.rhr ? (Math.abs(r.rhr - r.baseline.rhr) < 1 ? 'je rusthartslag normaal is' : `je rusthartslag ${Math.abs(Math.round(r.rhr - r.baseline.rhr))} ${Math.abs(Math.round(r.rhr - r.baseline.rhr)) === 1 ? 'slag' : 'slagen'} ${r.rhr > r.baseline.rhr ? 'hoger' : 'lager'} is dan normaal`) : null },
+    { k: 'sleep', z: r.z.sleep * r.weights.sleep, txt: m.sleep ? `je ${fmtHM(m.sleep.asleep)} sliep van de ${fmtHM(m.sleep.need)} die je nodig had` : null },
+  ].filter((x) => x.txt).sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+  if (!parts.length) return '';
+  const a = parts[0];
+  const counter = parts.slice(1).find((x) => Math.sign(x.z) !== Math.sign(a.z) && Math.abs(x.z) > 0.15);
+  const along = parts.slice(1).find((x) => Math.sign(x.z) === Math.sign(a.z) && Math.abs(x.z) > 0.1);
+  if (counter) return `Vooral omdat ${a.txt}, ook al ${counter.txt}.`;
+  return `Vooral omdat ${a.txt}${along ? ` en ${along.txt}` : ''}.`;
+}
+
+/** Kenmerken van gisteren die volgens jouw patronen je herstel van vandaag raken. */
+function yesterdayEffects(date) {
+  const d = M(date), p = M(addDays(date, -1));
+  if (!d || !p) return [];
+  return patterns().list.filter((f) => f.enough && f.strength !== 'onzeker' && Math.abs(f.diff) >= 3).filter((f) => { try { return f.test(p, d, { medBed: null }) === true; } catch { return false; } }).slice(0, 2);
+}
+
+function morningSheet(date = today()) {
+  const m = M(date);
+  const r = m?.recovery, sl = m?.sleep;
+  const zone = recoveryZone(r?.score);
+  const color = recoveryColor(r?.score);
+  const hour = new Date().getHours();
+  const hello = hour < 6 ? 'Vroeg op' : hour < 12 ? 'Goedemorgen' : hour < 18 ? 'Goedemiddag' : 'Goedenavond';
+  const tpls = activeTemplates(S.strength);
+  const rec = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: r?.score ?? null, today: date, settings: SS(), doneToday: (m?.strain?.sessions?.length || 0) > 0, flag: m?.flag });
+  const adv = bedtimeAdvice(m, toMin(S.settings.wake));
+  const eff = yesterdayEffects(date);
+  const y = M(addDays(date, -1));
+  const zoneTxt = { green: 'Klaar om te presteren', yellow: 'Redelijk hersteld', red: 'Rust gaat voor' }[zone] || 'Nog geen herstel';
+  const row = (label, val, sub, delta) => `<div class="mr-row"><div><div class="mr-l">${label}</div>${sub ? `<div class="mr-s">${sub}</div>` : ''}</div><div class="mr-v">${val}${delta || ''}</div></div>`;
+  const dlt = (v, base, higher, unit = '', digits = 0) => {
+    if (v == null || base == null) return '';
+    const d = v - base;
+    if (Math.abs(d) < Math.pow(10, -digits) / 2) return '<span class="mr-d">=</span>';
+    const good = higher ? d > 0 : d < 0;
+    return `<span class="mr-d ${good ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'}${num(Math.abs(d), digits)}${unit}</span>`;
+  };
+  return `<div class="morning">
+    <div class="mr-hero" style="--zc:${color}">
+      <div class="eyebrow">${hello} · ${esc(fmtDateLong(date))}</div>
+      <div class="mr-big">${r ? r.score : '–'}<small>%</small></div>
+      <div class="mr-zone"><span class="zshape z-${zone}"></span>${zoneTxt}</div>
+      ${r ? `<p class="mr-why">${esc(recoveryVerdict(m))}</p>` : '<p class="mr-why">Zodra je Fitbit je slaap heeft doorgestuurd, verschijnt hier je herstel.</p>'}
+    </div>
+    ${m?.flag === 'sick' ? '<div class="mr-note">Ziek-modus staat aan. Beterschap!</div>' : ''}
+    ${r ? `<div class="mr-sec">Hersteldata</div><div class="card flat mr-card">
+      ${row('HRV', `${num(r.hrv)} <small>ms</small>`, `normaal ${num(r.baseline.hrv)} ms`, dlt(r.hrv, r.baseline.hrv, true))}
+      ${row('Rusthartslag', `${num(r.rhr)} <small>bpm</small>`, `normaal ${num(r.baseline.rhr)} bpm`, dlt(r.rhr, r.baseline.rhr, false))}
+      ${r.resp != null ? row('Ademhaling', `${num(r.resp, 1)} <small>/min</small>`, `normaal ${num(r.baseline.resp, 1)}`, dlt(r.resp, r.baseline.resp, false, '', 1)) : ''}
+      ${r.tempDev != null ? row('Huidtemperatuur', `${r.tempDev >= 0 ? '+' : ''}${num(r.tempDev, 1)} <small>°C</small>`, 't.o.v. normaal', '') : ''}
+    </div>` : ''}
+    ${sl ? `<div class="mr-sec">Vannacht</div><div class="card flat mr-card">
+      <div class="mr-sleep"><div><b>${fmtHM(sl.asleep)}</b><span>geslapen</span></div><div><b>${clockTxt(clockMin(sl.start))}–${clockTxt(clockMin(sl.end))}</b><span>in bed</span></div><div><b>${Math.round((sl.perf || 0) * 100)}%</b><span>van je behoefte</span></div></div>
+      ${stackBar([{ value: sl.deep || 0, color: 'var(--st-deep)', label: 'diep' }, { value: sl.rem || 0, color: 'var(--st-rem)', label: 'REM' }, { value: Math.max(0, sl.asleep - (sl.deep || 0) - (sl.rem || 0)), color: 'var(--st-light)', label: 'licht' }, { value: sl.awake || 0, color: 'var(--st-awake)', label: 'wakker' }], { height: 12 })}
+      <div class="legend"><span><i style="background:var(--st-deep)"></i>diep ${fmtHM(sl.deep || 0)}</span><span><i style="background:var(--st-rem)"></i>REM ${fmtHM(sl.rem || 0)}</span>${sl.need - sl.asleep > 15 ? `<span>tekort ${fmtHM(sl.need - sl.asleep)}</span>` : ''}</div>
+    </div>` : ''}
+    ${eff.length || y?.strain?.score ? `<div class="mr-sec">Gisteren</div><div class="card flat mr-card">
+      ${y?.strain ? row('Strain', fmtStrain(y.strain.score), [(y.strain.sessions || []).map((x) => x.name).join(', '), (y.strain.manual || []).map((a) => typeById(a.typeId).name.toLowerCase()).join(', ')].filter(Boolean).join(' · ') || (y.raw?.steps ? `${num(y.raw.steps)} stappen` : ''), '') : ''}
+      ${eff.map((f) => `<div class="mr-eff"><span class="${f.diff > 0 ? 'up' : 'down'}">${f.diff > 0 ? '▲' : '▼'} ${num(Math.abs(f.diff), 0)}%</span> ${esc(f.label)} — bij jou gemiddeld ${f.diff > 0 ? 'hoger' : 'lager'} herstel de dag erna</div>`).join('')}
+    </div>` : ''}
+    <div class="mr-sec">Plan voor vandaag</div><div class="card flat mr-card">
+      ${rec ? `<div class="mr-plan"><b>${esc(rec.title)}</b>${rec.intensity ? ` <span class="pill">${rec.intensity}</span>` : ''}<div class="small muted">${esc(rec.reason)}</div></div>` : ''}
+      <div class="mr-chips">${m?.target ? `<div><span>Strain-doel</span><b>${fmtStrain(m.target[0])}–${fmtStrain(m.target[1])}</b></div>` : ''}${adv ? `<div><span>Vanavond naar bed</span><b>${fmtHM(adv.bed)}</b></div>` : ''}</div>
+      ${rec?.kind === 'template' ? `<button class="btn mt" data-act="start-template" data-id="${rec.template.id}">Start ${esc(rec.template.name)}</button>` : ''}
+    </div>
+    <button class="btn secondary mt" data-act="close-sheet">Begin je dag</button>
+  </div>`;
+}
+
+/** Toon het ochtendrapport één keer per dag, zodra er herstel is (vóór 14:00). */
+function maybeMorning() {
+  try {
+    if (S.settings.morning === false || isSheetOpen() || parseRoute().name !== 'today' || (parseRoute().a && parseRoute().a !== today())) return;
+    if (new Date().getHours() >= 14 || !M(today())?.recovery) return;
+    if (localStorage.getItem('pulse.morning') === today()) return;
+    localStorage.setItem('pulse.morning', today());
+    openSheet(morningSheet());
+  } catch { /* */ }
 }
 
 function patternsAboutSheet() {
@@ -1999,7 +2092,7 @@ function render() {
   // Achtergrondgloed in de kleur van je herstel van vandaag.
   document.documentElement.dataset.zone = recoveryZone(M(today())?.recovery?.score) || 'none';
   if (!same) { window.scrollTo(0, 0); lastRoute = key; lastDepth = depth; lastName = r.name; }
-  titleUpdate();
+  titleUpdate();  if (r.name === 'today' || !r.name) setTimeout(maybeMorning, 700);
 }
 
 // ---------------------------------------------------------------- events
@@ -2173,6 +2266,7 @@ const actions = {
   },
   range(el) { trendRange = +el.dataset.v; render(); },
   'whats-new'() { whatsNewSheet(); },
+  morning(el) { openSheet(morningSheet(el.dataset.v || today())); },
   'close-sheet'() { closeSheet(); },
   async flag(el) {
     const [date, kind] = el.dataset.v.split(':');
@@ -2413,6 +2507,7 @@ document.addEventListener('change', async (ev) => {
     const k = el.dataset.set;
     let v = el.value;
     if (k === 'sleepNeedH') { await saveSettings({ sleepNeed: Math.round(clamp(Number(v) || 7.5, 4, 12) * 60) }); return; }
+    if (k === 'morning') { await saveSettings({ morning: el.checked }); return; }
     if (k === 'badge') {
       v = el.checked;
       if (v && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* */ } }
