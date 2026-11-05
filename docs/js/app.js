@@ -848,10 +848,10 @@ function viewSleep(date) {
   const days14 = lastDays(S.computed.byDate, date, 14);
   const advice = date === today() ? bedtimeAdvice(m, toMin(S.settings.wake)) : null;
   const parts = s && !s.classic ? [
-    { label: 'Wakker', value: s.awake, color: 'var(--st-awake)' },
-    { label: 'Licht', value: s.light, color: 'var(--st-light)' },
-    { label: 'Diep (SWS)', value: s.deep, color: 'var(--st-deep)' },
-    { label: 'REM', value: s.rem, color: 'var(--st-rem)' },
+    { label: 'Wakker', value: s.awake, color: 'var(--st-awake)', norm: [0, 10], of: 'bed' },
+    { label: 'Licht', value: s.light, color: 'var(--st-light)', norm: [45, 60] },
+    { label: 'Diep (SWS)', value: s.deep, color: 'var(--st-deep)', norm: [13, 23] },
+    { label: 'REM', value: s.rem, color: 'var(--st-rem)', norm: [20, 25] },
   ] : s ? [{ label: 'Wakker', value: s.awake, color: 'var(--st-awake)' }, { label: 'Slaap', value: s.asleep, color: 'var(--st-light)' }] : [];
   return `${navbar('Slaap', `#/today/${date}`)}
   <div class="content" data-swipe data-base="#/sleep" data-date="${date}">
@@ -868,7 +868,8 @@ function viewSleep(date) {
   </div>
   <div class="section-title">Slaapfasen</div>
   <div class="card">${hypnogram(s)}<div class="mt">${stackBar(parts, { height: 10 })}</div>
-    <div class="kv mt">${parts.map((p) => `<div><span class="dot" style="background:${p.color}"></span>&nbsp; ${p.label}</div><div>${fmtDur(p.value)} · ${s.inBed ? Math.round((p.value / s.inBed) * 100) : 0}%</div>`).join('')}</div></div>
+    <div class="kv mt">${parts.map((p) => `<div><span class="dot" style="background:${p.color}"></span>&nbsp; ${p.label}</div><div>${fmtDur(p.value)} · ${(() => { const den = p.of === 'bed' || !p.norm ? s.inBed : s.asleep; const v = den ? Math.round((p.value / den) * 100) : 0; if (!p.norm) return `${v}%`; const ok = v >= p.norm[0] && v <= p.norm[1]; return `<span class="${ok ? '' : v < p.norm[0] ? (p.of === 'bed' ? '' : 'lo') : (p.of === 'bed' ? 'lo' : '')}">${v}%</span> <small class="muted">${p.of === 'bed' ? `&lt;${p.norm[1]}` : `${p.norm[0]}–${p.norm[1]}`}%</small>`; })()}</div>`).join('')}</div>
+    ${s.classic ? '' : '<p class="tiny muted" style="margin:8px 0 0">Kleine getallen: gangbaar bereik voor volwassenen (diep en REM als deel van je slaap, wakker als deel van je tijd in bed). Polsmeting van slaapfasen is een schatting.</p>'}</div>
   <div class="section-title">Slaapbehoefte</div>
   <div class="card"><div class="kv">
     <div>Basisbehoefte</div><div>${fmtDur(s.needParts.base)}</div>
