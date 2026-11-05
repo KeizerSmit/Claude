@@ -35,6 +35,8 @@ const CHANGELOG = [
   ['Krachtindex', 'Op Training: één getal voor je krachtvooruitgang over al je oefeningen samen, per week.'],
   ['Slaapschuld', 'Het slaapscherm toont je netto tekort over 7 nachten, met een plan om het in te halen, en je slaapschema met adviestijden.'],
   ['Draagtijd', 'Onder Alle data zie je hoeveel van de dag je Fitbit hartslag mat en waar de gaten zitten. Droeg je hem weinig, dan waarschuwt Vandaag dat je strain te laag kan zijn.'],
+  ['Slaapfasen met normaalwaarden', 'Op het slaapscherm staat bij diep, REM en wakker wat gangbaar is, zodat je ziet of een nacht afwijkt.'],
+  ['CSV-export', 'Profiel → Data: al je dagen en topsets als CSV voor Numbers of Excel.'],
   ['—'],
   ['Weekoverzicht', 'Elke week in één scherm: gemiddeld herstel, strain, slaap en je PR\'s, vergeleken met de week ervoor. Op maandag staat hij op Vandaag.'],
   ['Records', 'Je persoonlijke records: hoogste herstel en HRV, langste slaap, en je beste topset per oefening.'],
