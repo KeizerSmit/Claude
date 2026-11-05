@@ -727,3 +727,14 @@ body { font-family: var(--font); font-size: 17px; letter-spacing: -0.43px; font-
 .tip-reps { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .tip-hold { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 15%, transparent); }
 .tip-pr { color: var(--muscle); background: color-mix(in srgb, var(--muscle) 15%, transparent); }
+/* Patronen */
+.pat-row { padding: 9px 0; }
+.pat-row + .pat-row { border-top: .5px solid var(--sep); }
+.pat-row.weak { opacity: .55; }
+.pat-top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+.pat-v { font-weight: 700; font-family: var(--font-round); font-variant-numeric: tabular-nums; }
+.pat-bar { position: relative; height: 6px; background: var(--track); border-radius: 99px; margin: 7px 0 4px; }
+.pat-mid { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1.5px; background: var(--text3); }
+.pat-fill { position: absolute; top: 0; bottom: 0; border-radius: 99px; }
+.pat-fill.good { background: var(--green); } .pat-fill.bad { background: var(--red); }
+.pat-sub { font-size: 12px; color: var(--text2); }

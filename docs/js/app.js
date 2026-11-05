@@ -14,6 +14,7 @@ import { computeHealthspan, healthspanHistory, INPUTS, vo2Ref } from './healthsp
 import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js';
 import { buildShare } from './share.js';
 import { recommendTraining, progressionTip } from './coach.js';
+import { recoveryPatterns } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00' };
@@ -494,6 +495,10 @@ function viewToday(date) {
   const sleep = m?.sleep;
   const raw = m?.raw || S.days.find((d) => d.date === date);
   const ins = insights(m);
+  if (date === today()) {
+    const top = patterns().list.find((x) => x.enough && x.strength === 'duidelijk');
+    if (top) ins.splice(1, 0, { icon: top.diff > 0 ? 'up' : 'down', text: `Jouw patroon: na “${top.label.toLowerCase()}” is je herstel gemiddeld ${num(Math.abs(top.diff), 0)}% ${top.diff > 0 ? 'hoger' : 'lager'}.` });
+  }
   const recColor = recoveryColor(rec?.score);
   const zoneTxt = { green: 'Goed hersteld', yellow: 'Redelijk hersteld', red: 'Rust nodig' }[recoveryZone(rec?.score)] || '';
 
@@ -605,6 +610,7 @@ function openSheetFor(spec) {
   else if (kind === 'activity') openSheet(activitySheet(rest[0], rest.slice(1).join(':')));
   else if (kind === 'hs') openSheet(rest[0] === 'about' ? hsAboutSheet() : hsInputSheet(rest[0]));
   else if (kind === 'muscle') openSheet(muscleSheet(rest[0]));
+  else if (kind === 'patterns') openSheet(patternsAboutSheet());
   else if (kind === 'manual') openActivityLog({ id: rest[0] });
 }
 
@@ -729,6 +735,7 @@ function viewRecovery(date) {
   ${weekStrip(date, '#/recovery')}
   <div class="card hero">${ring({ frac: (r?.score || 0) / 100, color, label: r ? `${r.score}%` : '–', sub: r?.calibrating ? 'kalibreren' : '', size: 190, stroke: 16 })}<div class="big">${esc(zoneText)}</div></div>
   ${r ? `<div class="card"><h2>Wat bepaalt je herstel</h2>${contrib}<p class="tiny muted" style="margin:8px 0 0">Balk naar rechts = beter dan je persoonlijke 30-daagse baseline. HRV weegt het zwaarst (50%), dan rusthartslag en slaap (20% elk).</p></div>` : ''}
+  ${patternsCard()}
   <div class="section-title">Herstel · 30 dagen</div>
   <div class="card">${bars(days30.map((d) => ({ date: d.date, go: `#/recovery/${d.date}`, value: d.recovery?.score ?? null, color: recoveryColor(d.recovery?.score) })), { max: 100, labelEvery: 5, fmt: (v) => `${v}` })}
   <div class="legend"><span><i style="background:var(--green)"></i>67–100</span><span><i style="background:var(--yellow)"></i>34–66</span><span><i style="background:var(--red)"></i>0–33</span><span>gem. ${num(mean(days30.map((d) => d.recovery?.score)))}%</span></div></div>
@@ -922,6 +929,7 @@ function viewTrends() {
     line(ds.map((d) => ({ date: d.date, go: g(d), value: rhr(d) })), { color: 'var(--hr)', fmt: (v) => Math.round(v), unit: ' bpm', dots: n <= 30 }), '', `metric:rhr:${end}:${n}`)}
   ${trendCard('Ademhaling', `${num(avgOf(ds, resp), 1)}<small>/min gem.</small>`, cmp(resp, 1, false, (v) => num(v, 1)),
     line(ds.map((d) => ({ date: d.date, go: g(d), value: resp(d) })), { color: 'var(--z1)', fmt: (v) => num(v, 1), unit: ' /min', dots: n <= 30 }), '', `metric:resp:${end}:${n}`)}
+  ${patternsCard({ limit: 4 })}
   ${trendCard('Spierbelasting', `${num(weeks.reduce((a, w) => a + w.value, 0) / Math.max(1, weeks.length), 0)}<small>per week</small>`, 'uit je krachtlog',
     bars(weeks, { fmt: (v) => num(v, 0), unit: '' }), '#/strength')}
   ${trendCard('Stappen', `${num(avgOf(ds, steps))}<small>gem.</small>`, cmp(steps, 0, true),
@@ -1396,6 +1404,40 @@ function loadBandCard(end = today()) {
     <div class="legend"><span><i style="background:var(--band-strong)"></i>duurzaam bereik</span><span><i style="background:var(--strain)"></i>7-daags gemiddelde</span><span><i style="background:var(--track)"></i>per dag</span></div>
     <p class="small muted" style="margin:8px 0 0">${st.text}</p>
   </div>`;
+}
+
+let PAT_CACHE = null;
+function patterns() {
+  if (PAT_CACHE?.c === S.computed) return PAT_CACHE.v;
+  PAT_CACHE = { c: S.computed, v: recoveryPatterns(S.computed.byDate, today()) };
+  return PAT_CACHE.v;
+}
+
+function patternsCard({ limit = 6 } = {}) {
+  const { list, pairs } = patterns();
+  const ok = list.filter((x) => x.enough);
+  if (!ok.length) return `<div class="card"><div class="card-head"><span class="t">Wat beïnvloedt jouw herstel</span></div><p class="small muted" style="margin:0">Na ±3 weken data zie je hier automatisch wat jouw herstel omhoog of omlaag duwt — zonder dagboek. Nu: ${pairs} dagen.</p></div>`;
+  const max = Math.max(5, ...ok.map((x) => Math.abs(x.diff)));
+  return `<div class="card pat">
+    <div class="card-head"><span class="t">Wat beïnvloedt jouw herstel</span><button class="link-btn small" data-sheet="patterns:about">Hoe?</button></div>
+    ${ok.slice(0, limit).map((x) => {
+      const up = x.diff > 0;
+      const w = Math.min(50, (Math.abs(x.diff) / max) * 50);
+      return `<div class="pat-row ${x.strength === 'onzeker' ? 'weak' : ''}">
+        <div class="pat-top"><span class="pat-l">${esc(x.label)}</span><span class="pat-v ${up ? 'up' : 'down'}">${up ? '+' : '−'}${num(Math.abs(x.diff), 0)}%</span></div>
+        <div class="pat-bar"><span class="pat-mid"></span><span class="pat-fill ${up ? 'good' : 'bad'}" style="${up ? `left:50%;width:${w}%` : `left:${50 - w}%;width:${w}%`}"></span></div>
+        <div class="pat-sub">${esc(x.strength)} · ${x.nYes}× wel, ${x.nNo}× niet${x.hrvPct != null ? ` · HRV ${x.hrvPct > 0 ? '+' : '−'}${num(Math.abs(x.hrvPct), 0)}%` : ''}</div>
+      </div>`;
+    }).join('')}
+    <p class="tiny muted" style="margin:8px 0 0">Herstel de ochtend erna, vergeleken met dagen zonder. Verbanden uit je eigen data; geen bewijs van oorzaak.</p>
+  </div>`;
+}
+
+function patternsAboutSheet() {
+  return `<div class="sh-head"><div class="eyebrow">Uitleg</div><h2>Jouw patronen</h2></div>
+  <div class="card flat mt small"><p style="margin-top:0">Voor elk kenmerk (bijv. "minder dan 7 uur geslapen" of "benen getraind") vergelijkt de app je herstel op de ochtend erna met de ochtenden waarop dat niet zo was, over de laatste 4 maanden.</p>
+  <p>Het percentage is het verschil in herstelpunten. <b>Duidelijk</b> = statistisch sterk (t ≥ 2,5), <b>waarschijnlijk</b> = redelijk, <b>onzeker</b> = kan toeval zijn. Een kenmerk verschijnt pas als het minstens 4× wel en 4× niet voorkwam.</p>
+  <p style="margin-bottom:0">Let op: dingen hangen samen. Op gymdagen slaap je misschien ook korter. Gebruik het als aanwijzing, niet als harde regel.</p></div>`;
 }
 
 function currentFatigue() {
