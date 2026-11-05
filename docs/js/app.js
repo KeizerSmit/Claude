@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Vergelijk met vorige keer', 'In een training zie je per oefening je vorige topset en of je vooruit ging, en hoeveel zwaarder de hele training was dan de vorige keer.'],
   ['Slimmer notities plakken', 'Plak je bijgewerkte notitie: de app laat per schema zien wat er verbeterd is (bijv. 87 → 89,5 kg) en logt het meteen als training van vandaag.'],
   ['Weekdoelen', 'Vier doelen per week (kracht, beweging, slaap, stappen) met reeksen: hoeveel weken op rij je ze haalt. Tik om je doelen aan te passen.'],
   ['Strain-coach', 'Het plan op Vandaag zegt hoeveel minuten wandelen of zone 2 je nog nodig hebt voor je strain-doel.'],
@@ -1305,6 +1306,15 @@ function viewExercises() {
   return `${navbar('Oefeningen', '#/strength')}<div class="content fade-in"><div class="list">${exs.map((e) => `<button class="row tap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${esc(e.lib.name)} · ${e.count}×</div></div><span class="chev">${I.chev}</span></button>`).join('')}</div></div>`;
 }
 
+/** Dezelfde oefening in de vorige training (vóór deze sessie). */
+function prevExercise(key, sess) {
+  const loads = S.computed.loads;
+  const prev = S.strength.sessions.filter((x) => !x.deleted && x.date && x.id !== sess.id && (x.date < sess.date || (x.date === sess.date && (x.createdAt || 0) < (sess.createdAt || 0))))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
+  for (const x of prev) { const e = loads[x.id]?.exercises.find((y) => y.key === key); if (e) return { ...e, date: x.date }; }
+  return null;
+}
+
 function viewSession(id) {
   const s = S.strength.sessions.find((x) => x.id === id);
   if (!s) return `${navbar('Training', '#/strength')}<div class="content card muted">Niet gevonden.</div>`;
@@ -1317,7 +1327,7 @@ function viewSession(id) {
   <div class="content fade-in">
   ${largeTitle(s.name || 'Training', s.date ? fmtDateLong(s.date) : 'Geen datum')}
   <div class="stats">
-    ${stat('Spierbelasting', num(r.load, 1), '', `+${num(r.load * 3.2)} strain-punten`)}
+    ${(() => { const pv = S.strength.sessions.filter((x) => !x.deleted && x.id !== s.id && x.date && x.date < (s.date || '9') && (x.name || '').toLowerCase() === (s.name || '').toLowerCase()).sort((a, b) => (a.date < b.date ? 1 : -1))[0]; const pl = pv ? S.computed.loads[pv.id]?.load : null; return stat('Spierbelasting', num(r.load, 1), '', pl ? `${r.load >= pl ? '▲' : '▼'} ${num(Math.abs((r.load / pl - 1) * 100), 0)}% vs ${fmtDateShort(pv.date)}` : `+${num(r.load * 3.2)} strain-punten`); })()}
     ${stat('Dag-strain', m ? fmtStrain(m.strain.score) : '–', '', sess?.activity ? `cardio tijdens training ${fmtStrain(sess.activity.strain)}` : '')}
   </div>
   ${(() => {
@@ -1330,7 +1340,7 @@ function viewSession(id) {
     </div>`;
   })()}
   <div class="section-title">Topsets</div>
-  <div class="list">${r.exercises.map((e) => `<button class="row tap wrap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)} ${e.isPR ? '<span class="pill pr">PR</span>' : ''}</div><div class="sub">${esc(e.libName)}${e.e1rm ? ` · e1RM ${num(e.e1rm, 1)} kg` : ''} · belasting ${num(e.load, 1)}${e.note ? ` · ${esc(e.note)}` : ''}</div></div><div class="val"><b style="color:var(--text)">${esc(setText(e))}</b></div></button>`).join('')}</div>
+  <div class="list">${r.exercises.map((e) => `<button class="row tap wrap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)} ${e.isPR ? '<span class="pill pr">PR</span>' : ''}</div><div class="sub">${esc(e.libName)}${e.e1rm ? ` · e1RM ${num(e.e1rm, 1)} kg` : ''} · belasting ${num(e.load, 1)}${e.note ? ` · ${esc(e.note)}` : ''}</div></div><div class="val"><b style="color:var(--text)">${esc(setText(e))}</b>${(() => { const pv = prevExercise(e.key, s); if (!pv) return '<small class="vs new">eerste keer</small>'; const d = (e.e1rm || 0) - (pv.e1rm || 0); return `<small class="vs ${d > 0.05 ? 'up' : d < -0.05 ? 'down' : ''}">${d > 0.05 ? '▲' : d < -0.05 ? '▼' : '='} vorige: ${esc(setText({ ...pv, sets: null }))}</small>`; })()}</div></button>`).join('')}</div>
   <div class="section-title">Spiergroepen</div>
   <div class="card">${groups.map(([g, v]) => `<div class="mg"><span>${GROUPS[g] || g}</span><div class="meter"><span style="width:${(v / maxG) * 100}%;background:var(--muscle)"></span></div><span class="n">${num(v, 1)}</span></div>`).join('')}</div>
   <button class="btn secondary" data-go="#/log/${id}">Bewerken</button>
