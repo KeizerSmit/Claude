@@ -16,14 +16,19 @@ async function request(url, { method = 'GET', body, headers = {}, raw = false } 
   const t = getToken(kind);
   if (!t) throw new AuthError('Niet ingelogd of sessie verlopen.', kind);
   let res;
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 30000) : null;
   try {
     res = await fetch(url, {
+    signal: ctrl?.signal,
     method,
     headers: { Authorization: `Bearer ${t.access_token}`, ...(body && typeof body === 'object' && !(body instanceof Blob) && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...headers },
     body: body && typeof body === 'object' && !(body instanceof Blob) && !(body instanceof FormData) ? JSON.stringify(body) : body,
     });
   } catch (e) {
-    throw new ApiError(`Netwerkfout (${e.message}) bij ${url.replace(/\?.*/, '').replace('https://', '')}`, 0, '');
+    throw new ApiError(`Netwerkfout (${e.name === 'AbortError' ? 'time-out' : e.message}) bij ${url.replace(/\?.*/, '').replace('https://', '')}`, 0, '');
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   if (res.status === 401) throw new AuthError('Sessie verlopen.', kind);
   if (!res.ok) {

@@ -94,19 +94,75 @@ export function convertHr(points, dayStartMs) {
   const arr = new Array(1500).fill(0);
   let max = 0, n = 0;
   for (const p of points) {
-    const t = ms(p.startTime);
-    const v = p.heartRate?.beatsPerMinuteAvg;
+    const t = p.t ?? ms(p.startTime);
+    const v = p.avg ?? p.heartRate?.beatsPerMinuteAvg;
     if (t == null || v == null) continue;
     const i = Math.floor((t - dayStartMs) / 60000);
     if (i < 0 || i >= arr.length) continue;
     arr[i] = Math.round(v);
     n++;
-    const mx = p.heartRate.beatsPerMinuteMax ?? v;
+    const mx = p.max ?? p.heartRate?.beatsPerMinuteMax ?? v;
     if (mx > max) max = mx;
   }
   let last = arr.length;
   while (last > 0 && !arr[last - 1]) last--;
   return n ? { hr: arr.slice(0, Math.max(last, 1)), hrMax: Math.round(max), hrCount: n } : { hr: null, hrMax: null, hrCount: 0 };
+}
+
+// ---------------------------------------------------------------- hartslag per minuut
+
+let hrMethod = null; // 'rollup' | 'list' — onthoudt wat werkt
+
+/** Minuutgemiddelden [{t, avg, max}] via de rollUp-methode. */
+async function hrViaRollup(a, b) {
+  const pts = await rollUp('heart-rate', new Date(a).toISOString(), new Date(b).toISOString(), '60s');
+  return pts.map((p) => ({ t: ms(p.startTime), avg: p.heartRate?.beatsPerMinuteAvg, max: p.heartRate?.beatsPerMinuteMax })).filter((p) => p.t && p.avg != null);
+}
+
+/** Minuutgemiddelden zelf berekenen uit losse metingen (terugval). */
+async function hrViaList(a, b) {
+  const f = `heart_rate.sample_time.physical_time >= "${new Date(a).toISOString()}" AND heart_rate.sample_time.physical_time < "${new Date(b).toISOString()}"`;
+  const pts = await listDataPoints('heart-rate', f, 10000, 8);
+  const bucket = new Map();
+  for (const dp of pts) {
+    const t = ms(dp.heartRate?.sampleTime?.physicalTime);
+    const v = toNum(dp.heartRate?.beatsPerMinute);
+    if (!t || !v) continue;
+    const k = Math.floor(t / 60000) * 60000;
+    const x = bucket.get(k) || { t: k, sum: 0, n: 0, max: 0 };
+    x.sum += v; x.n++; if (v > x.max) x.max = v;
+    bucket.set(k, x);
+  }
+  return [...bucket.values()].map((x) => ({ t: x.t, avg: x.sum / x.n, max: x.max })).sort((p, q) => p.t - q.t);
+}
+
+/**
+ * Hartslag per minuut over [a, b) in blokken van max. 6 uur, met een herhaalpoging
+ * en terugval naar losse metingen als de rollUp faalt (bijv. "Load failed" op iPhone).
+ */
+export async function fetchHrMinutes(a, b) {
+  const out = [];
+  const CHUNK = 6 * 3600000;
+  for (let s = a; s < b; s += CHUNK) {
+    const e = Math.min(b, s + CHUNK);
+    const order = hrMethod === 'list' ? [hrViaList, hrViaRollup] : [hrViaRollup, hrViaRollup, hrViaList];
+    let lastErr = null;
+    let done = false;
+    for (const fn of order) {
+      try {
+        out.push(...(await fn(s, e)));
+        hrMethod = fn === hrViaList ? 'list' : 'rollup';
+        done = true;
+        break;
+      } catch (err) {
+        if (err instanceof AuthError) throw err;
+        lastErr = err;
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
+    if (!done) throw lastErr;
+  }
+  return out;
 }
 
 /** dailyRollUp mag max. 90 dagen per aanvraag: in stukken ophalen. */
@@ -273,11 +329,12 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
 
   let done = 0;
   let hrOk = 0, hrErr = null;
-  await pool(hrDates, 4, async (d) => {
+  hrMethod = hrMethod || (await kv.get('hrMethod')) || null;
+  await pool(hrDates, 2, async (d) => {
     const startMs = parseYmd(d).getTime();
     const endMs = parseYmd(addDays(d, 1)).getTime();
     try {
-      const pts = await rollUp('heart-rate', new Date(startMs).toISOString(), new Date(Math.min(endMs, Date.now() + 60000)).toISOString(), '60s');
+      const pts = await fetchHrMinutes(startMs, Math.min(endMs, Date.now() + 60000));
       const r = convertHr(pts, startMs);
       out[d].hr = r.hr; out[d].hrMax = r.hrMax; out[d].hrComplete = d < end && r.hrCount > 0;
       hrOk++;
@@ -288,7 +345,8 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
     done++;
     onProgress(`Hartslag ${done}/${hrDates.length}…`, 0.35 + 0.6 * (done / hrDates.length));
   });
-  log.push(hrErr ? { label: 'Hartslag', ok: hrOk > 0, count: hrOk, error: hrErr.message, status: hrErr.status, detail: hrErr.raw || String(hrErr.body || '').slice(0, 400) } : { label: 'Hartslag', ok: true, count: hrOk });
+  if (hrMethod) await kv.set('hrMethod', hrMethod);
+  log.push(hrErr && !hrOk ? { label: 'Hartslag', ok: hrOk > 0, count: hrOk, error: hrErr.message, status: hrErr.status, detail: hrErr.raw || String(hrErr.body || '').slice(0, 400) } : { label: 'Hartslag', ok: true, count: hrOk });
 
   for (const d of Object.values(out)) d.synced = Date.now();
   await daysStore.putMany(Object.values(out));
@@ -301,6 +359,7 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
 
 /** Elke minuut: alleen de hartslag van vandaag bijwerken (licht, 1 aanvraag). */
 export async function syncHeartNow() {
+  hrMethod = hrMethod || (await kv.get('hrMethod')) || null;
   const d = today();
   const startMs = parseYmd(d).getTime();
   const day = (await daysStore.get(d)) || blankDay(d);
@@ -310,18 +369,15 @@ export async function syncHeartNow() {
     while (last > 0 && !day.hr[last]) last--;
     from = Math.max(startMs, startMs + (last - 20) * 60000);
   }
-  const pts = await rollUp('heart-rate', new Date(from).toISOString(), new Date(Date.now() + 60000).toISOString(), '60s');
+  const pts = await fetchHrMinutes(from, Date.now() + 60000);
   const arr = day.hr ? [...day.hr] : [];
   let mx = day.hrMax || 0;
   for (const p of pts) {
-    const t = Date.parse(p.startTime);
-    const v = p.heartRate?.beatsPerMinuteAvg;
-    if (!t || v == null) continue;
-    const i = Math.floor((t - startMs) / 60000);
+    const i = Math.floor((p.t - startMs) / 60000);
     if (i < 0 || i > 1500) continue;
     while (arr.length <= i) arr.push(0);
-    arr[i] = Math.round(v);
-    const m = p.heartRate.beatsPerMinuteMax ?? v;
+    arr[i] = Math.round(p.avg);
+    const m = p.max ?? p.avg;
     if (m > mx) mx = m;
   }
   day.hr = arr; day.hrMax = Math.round(mx) || null; day.hrStart = startMs; day.date = d; day.synced = Date.now();
