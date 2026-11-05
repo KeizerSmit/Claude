@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v36';
 const CHANGELOG = [
+  ['Krachtindex', 'Op Training: één getal voor je krachtvooruitgang over al je oefeningen samen, per week.'],
   ['Rusttimer', 'Vink je tijdens een training een oefening af, dan loopt er een rusttimer met een piepje als je weer kunt. Tik voor +30 s; instellen in Profiel.'],
   ['Hartslag per training', 'In een training zie je je hartslag tijdens de sessie en hoeveel minuten je in elke zone zat.'],
   ['Verwachting morgen', 'Vanaf 17:00 op Vandaag (en altijd op het slaapscherm): je verwachte herstel van morgen bij verschillende bedtijden, geleerd uit je eigen data.'],
@@ -1147,6 +1148,48 @@ function setsPerGroup(from, to) {
   return out;
 }
 
+/** Krachtindex: mediane verhouding (beste e1RM tot dan / eerste e1RM) over al je oefeningen, per week. */
+function strengthIndex(weeks = 16) {
+  const sess = S.strength.sessions.filter((x) => !x.deleted && x.date).sort((a, b) => (a.date < b.date ? -1 : 1));
+  const first = {}, best = {}, count = {};
+  for (const x of sess) for (const e of S.computed.loads[x.id]?.exercises || []) if (e.e1rm) count[e.key] = (count[e.key] || 0) + 1;
+  const keys = new Set(Object.keys(count).filter((k) => count[k] >= 3));
+  if (keys.size < 3) return null;
+  const pts = [];
+  let i = 0;
+  const end = weekStartOf(today());
+  for (let w = weeks - 1; w >= 0; w--) {
+    const wEnd = addDays(end, -7 * w + 6);
+    while (i < sess.length && sess[i].date <= wEnd) {
+      for (const e of S.computed.loads[sess[i].id]?.exercises || []) {
+        if (!e.e1rm || !keys.has(e.key)) continue;
+        first[e.key] ??= e.e1rm;
+        best[e.key] = Math.max(best[e.key] || 0, e.e1rm);
+      }
+      i++;
+    }
+    const r = [...keys].filter((k) => first[k]).map((k) => best[k] / first[k]);
+    pts.push({ date: addDays(end, -7 * w), value: r.length >= 3 ? Math.round(median(r) * 1000) / 10 : null, label: `wk ${isoWeek(addDays(end, -7 * w))}` });
+  }
+  const f = pts.findIndex((p) => p.value != null);
+  return { pts: f > 0 ? pts.slice(f) : pts, n: keys.size };
+}
+
+function strengthIndexCard() {
+  const si = strengthIndex();
+  if (!si) return '';
+  const vals = si.pts.filter((p) => p.value != null);
+  if (vals.length < 2) return '';
+  const cur = vals[vals.length - 1].value;
+  const ago = vals.length > 8 ? vals[vals.length - 9].value : vals[0].value;
+  const d = cur - ago;
+  return `<div class="card trend">
+    <div class="trend-head"><div><div class="trend-t">Krachtindex</div><div class="trend-v">${num(cur, 1)}<small>%</small></div><div class="trend-s">${d >= 0 ? '<span class="up">▲' : '<span class="down">▼'} ${num(Math.abs(d), 1)}%</span> in ${Math.min(8, vals.length - 1)} weken · ${si.n} oefeningen</div></div></div>
+    ${line(si.pts.map((p) => ({ ...p, go: '#/records' })), { color: 'var(--muscle)', fmt: (v) => `${num(v, 1)}%`, unit: '', dots: true })}
+    <p class="tiny muted" style="margin:6px 0 0">100% = je eerste gelogde topset per oefening. Telt je beste geschatte 1RM tot dan; de mediaan over al je oefeningen, zodat één uitschieter niet alles bepaalt.</p>
+  </div>`;
+}
+
 function volumeCard() {
   const end = today();
   const cur = setsPerGroup(addDays(end, -6), end);
@@ -1230,6 +1273,7 @@ function viewStrength() {
   ${loadBandCard()}
   ${muscleCard()}
   ${volumeCard()}
+  ${strengthIndexCard()}
   <div class="btn-row"><button class="btn secondary" data-go="#/records">${I.flame} Records</button><button class="btn secondary" data-act="share-claude">${I.doc} Deel met Claude</button></div>
   <div class="section-title">Recent <button data-act="plus-activity" data-v="${today()}">+ Activiteit</button></div>
   ${recentActivitiesList(14)}
