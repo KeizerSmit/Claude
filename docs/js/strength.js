@@ -326,6 +326,7 @@ export function computeLoads(sessions, settings) {
     let load = 0;
     const groups = {};
     const hardSets = {};
+    const fracSets = {};
     const exs = [];
     // Hoe zwaar voelde de training (0–10)? 5 = normaal; zwaarder/lichter schaalt de spierbelasting.
     const rpeF = s.rpe != null ? clamp(0.6 + 0.08 * s.rpe, 0.6, 1.4) : 1;
@@ -346,10 +347,12 @@ export function computeLoads(sessions, settings) {
       for (const [g, w] of Object.entries(lib.g)) {
         groups[g] = (groups[g] || 0) + l * w;
         hardSets[g] = (hardSets[g] || 0) + sets * w;
+        // Gangbare telling: hoofdspier telt 1 set, meewerkende spier ½ (w ≥ .5 → 1).
+        fracSets[g] = (fracSets[g] || 0) + sets * Math.min(1, 2 * w);
       }
       exs.push({ ...e, key, lib: lib.id, libName: lib.name, e1rm: est, ri, load: l, isPR: isPR && prevBest != null, firstTime: prevBest == null, sets });
     }
-    result[s.id] = { load, groups, hardSets, exercises: exs, rpe: s.rpe ?? null, rpeFactor: rpeF };
+    result[s.id] = { load, groups, hardSets, fracSets, exercises: exs, rpe: s.rpe ?? null, rpeFactor: rpeF };
   }
   return result;
 }

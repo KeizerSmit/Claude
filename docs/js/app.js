@@ -15,11 +15,13 @@ import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js
 import { buildShare } from './share.js';
 import { recommendTraining, progressionTip } from './coach.js';
 import { recoveryPatterns } from './patterns.js';
-import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap } from './util.js';
+import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Volume per spiergroep', 'Op Training: hoeveel zware sets elke spier deze week kreeg, naast de richtlijn van 10–20 sets.'],
+  ['Voortgang per oefening', 'Per oefening: winst sinds je begon, tempo in kg per maand en wat je de volgende keer probeert.'],
   ['Ochtendrapport', 'Bij de eerste keer openen in de ochtend: je herstel in één zin uitgelegd, je nacht, wat gisteren deed en je plan voor vandaag.'],
   ['Weekoverzicht', 'Elke week in één scherm: gemiddeld herstel, strain, slaap en je PR\'s, vergeleken met de week ervoor. Op maandag staat hij op Vandaag.'],
   ['Records', 'Je persoonlijke records: hoogste herstel en HRV, langste slaap, en je beste topset per oefening.'],
@@ -645,6 +647,7 @@ function openSheetFor(spec) {
   else if (kind === 'hs') openSheet(rest[0] === 'about' ? hsAboutSheet() : hsInputSheet(rest[0]));
   else if (kind === 'muscle') openSheet(muscleSheet(rest[0]));
   else if (kind === 'patterns') openSheet(patternsAboutSheet());
+  else if (kind === 'volume') openSheet(volumeAboutSheet());
   else if (kind === 'manual') openActivityLog({ id: rest[0] });
 }
 
@@ -1044,6 +1047,49 @@ function weekGroups(endDate) {
   return { sets, load, count };
 }
 
+/** Zware sets per spiergroep in een venster (hoofdspier 1, meewerkend ½). */
+function setsPerGroup(from, to) {
+  const out = {};
+  for (const s of S.strength.sessions) {
+    if (s.deleted || !s.date || s.date < from || s.date > to) continue;
+    const r = S.computed.loads[s.id];
+    if (r?.fracSets) for (const [g, v] of Object.entries(r.fracSets)) out[g] = (out[g] || 0) + v;
+  }
+  return out;
+}
+
+function volumeCard() {
+  const end = today();
+  const cur = setsPerGroup(addDays(end, -6), end);
+  const prev4 = setsPerGroup(addDays(end, -34), addDays(end, -7));
+  const order = ['borst', 'rug', 'schouders', 'biceps', 'triceps', 'quads', 'hamstrings', 'billen', 'kuiten', 'core'];
+  const rows = order.filter((g) => (cur[g] || 0) + (prev4[g] || 0) > 0);
+  if (!rows.length) return '';
+  const MAX = 24;
+  const x = (v) => `${Math.min(100, (v / MAX) * 100)}%`;
+  const status = (v) => (v >= 20 ? ['veel', 'var(--muscle)'] : v >= 10 ? ['optimaal', 'var(--green)'] : v >= 5 ? ['onderhoud', 'var(--yellow)'] : ['weinig', 'var(--text3)']);
+  const low = rows.filter((g) => (cur[g] || 0) < 5).map((g) => GROUPS[g].toLowerCase());
+  return `<div class="card vol">
+    <div class="card-head"><span class="t">Volume per spiergroep</span><button class="link-btn small" data-sheet="volume:about">Hoe?</button></div>
+    <div class="vol-sub">Zware sets in de laatste 7 dagen · streepje = je gemiddelde van de 4 weken ervoor</div>
+    <div class="vol-scale"><span style="left:${x(10)}">10</span><span style="left:${x(20)}">20</span></div>
+    ${rows.map((g) => {
+      const v = cur[g] || 0, p = (prev4[g] || 0) / 4;
+      const [lbl, col] = status(v);
+      return `<button class="vol-row" data-sheet="muscle:${g}"><span class="vol-g">${GROUPS[g]}</span><span class="vol-bar"><i class="vol-band" style="left:${x(10)};width:calc(${x(20)} - ${x(10)})"></i><i class="vol-fill" style="width:${x(v)};background:${col}"></i>${p > 0 ? `<i class="vol-prev" style="left:${x(p)}"></i>` : ''}</span><span class="vol-n">${num(v, v % 1 && v < 10 ? 1 : 0)}</span><span class="vol-s" style="color:${col}">${lbl}</span></button>`;
+    }).join('')}
+    ${low.length && low.length < rows.length ? `<p class="small muted" style="margin:10px 0 0">Weinig deze week: ${esc(low.join(', '))}. Voor groei is ±10 sets per week een goed doel; minder houdt vooral vast wat je hebt.</p>` : ''}
+  </div>`;
+}
+
+function volumeAboutSheet() {
+  return `<div class="sh-head"><div class="eyebrow">Uitleg</div><h2>Volume per spiergroep</h2></div>
+  <div class="card flat mt small"><p style="margin-top:0">Telt je <b>zware sets</b> per spiergroep over de laatste 7 dagen. Een oefening telt volledig voor de spier die het meeste werk doet en half voor meewerkende spieren (bijv. chest press: borst 1, triceps en schouders ½).</p>
+  <p>Omdat je alleen je topset noteert, gebruiken we het aantal sets uit je notitie (bijv. "2 sets"), anders ${S.settings.defaultSets} per oefening — aan te passen in Profiel.</p>
+  <p><b>Richtlijn</b>: onderzoek (o.a. meta-analyses van Schoenfeld en Pelland) laat zien dat spiergroei toeneemt tot ongeveer <b>10–20 zware sets per spier per week</b>, met afnemende meerwaarde daarboven. Rond 5 sets per week behoud je vooral wat je hebt.</p>
+  <p style="margin-bottom:0">Het blijft een schatting: tempo, rust tussen sets en hoe dicht je bij falen zit tellen ook mee.</p></div>`;
+}
+
 let showAllSessions = false;
 const SS = () => ({ ...S.settings, exerciseMap: S.strength.exerciseMap, baselines: templateBaselines(S.strength, S.settings.bodyweight) });
 
@@ -1094,6 +1140,7 @@ function viewStrength() {
   <div class="fade-in">
   ${loadBandCard()}
   ${muscleCard()}
+  ${volumeCard()}
   <div class="btn-row"><button class="btn secondary" data-go="#/records">${I.flame} Records</button><button class="btn secondary" data-act="share-claude">${I.doc} Deel met Claude</button></div>
   <div class="section-title">Recent <button data-act="plus-activity" data-v="${today()}">+ Activiteit</button></div>
   ${recentActivitiesList(14)}
@@ -1226,8 +1273,30 @@ function viewExercise(key) {
     ${stat('Beste e1RM', num(best?.e1rm, 1), 'kg', best ? `${esc(setText(best))} · ${fmtDateShort(best.date)}` : '')}
     ${stat('Huidige topset', lastE ? esc(setText({ ...lastE, sets: null })) : '–', '', lastE?.date ? fmtDateShort(lastE.date) : lastE ? 'uit notitie' : '')}
   </div>
+  ${(() => {
+    const pts = h.filter((e) => e.e1rm && e.date);
+    if (pts.length < 2) return '';
+    const first = pts[0], last = pts[pts.length - 1];
+    const gain = last.e1rm - first.e1rm;
+    // Trend: lineaire regressie over de laatste 90 dagen (kg per maand).
+    const rec = pts.filter((e) => e.date >= addDays(today(), -90));
+    let slope = null;
+    if (rec.length >= 3) {
+      const xs = rec.map((e) => daysBetween(rec[0].date, e.date)), ys = rec.map((e) => e.e1rm);
+      const mx = mean(xs), my = mean(ys);
+      const den = xs.reduce((a, x) => a + (x - mx) ** 2, 0);
+      if (den > 0) slope = (xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / den) * 30;
+    }
+    const tplEx = activeTemplates(S.strength).flatMap((t) => t.exercises).find((x) => exKey(x.name) === key);
+    const tip = progressionTip(h, tplEx?.reps);
+    return `<div class="stats three">
+      ${stat('Sinds start', `${gain >= 0 ? '+' : ''}${num(gain, 1)}`, 'kg', `${gain >= 0 ? '+' : ''}${num((gain / first.e1rm) * 100, 0)}% · ${fmtDateShort(first.date)}`)}
+      ${stat('Tempo', slope == null ? '–' : `${slope >= 0 ? '+' : ''}${num(slope, 1)}`, slope == null ? '' : 'kg', slope == null ? 'na 3 sessies' : `per maand · ${slope > 0.3 ? 'stijgend' : slope < -0.3 ? 'dalend' : 'stabiel'}`)}
+      ${stat('Volgende keer', tip ? esc(tip.text.replace(/^Probeer /, '')) : 'zelfde', '', tip?.kind === 'up' ? 'zwaarder' : tip?.kind === 'reps' ? 'meer reps' : tip?.kind === 'hold' ? 'vasthouden' : 'herhaal topset')}
+    </div>`;
+  })()}
   <div class="section-title">Geschatte 1RM</div>
-  <div class="card">${line(h.map((e) => ({ date: e.date, value: e.e1rm ? Math.round(e.e1rm * 10) / 10 : null })), { color: 'var(--muscle)', fmt: (v) => `${num(v, 1)} kg` })}</div>
+  <div class="card">${line(h.map((e) => ({ date: e.date, go: e.sessionId ? `#/session/${e.sessionId}` : '', value: e.e1rm ? Math.round(e.e1rm * 10) / 10 : null, color: e.isPR ? 'var(--yellow)' : null })), { color: 'var(--muscle)', fmt: (v) => `${num(v, 1)} kg`, unit: '' })}<div class="legend"><span><i style="background:var(--yellow)"></i>PR</span><span>tik op een punt voor die training</span></div></div>
   <div class="list-header">Spiergroep-indeling</div>
   <div class="list"><div class="row"><div class="grow">Type oefening</div><select data-act="map-ex" data-key="${esc(key)}">${[...LIBRARY.filter((l) => l.id !== 'press'), { id: 'other', name: 'Overig' }].map((l) => `<option value="${l.id}" ${l.id === lib.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div></div>
   <div class="list-footer">Bepaalt welke spieren meetellen: ${Object.entries(lib.g).map(([g, w]) => `${GROUPS[g]} ${Math.round(w * 100)}%`).join(', ')}.</div>

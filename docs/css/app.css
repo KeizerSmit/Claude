@@ -843,3 +843,17 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .mr-chips span { display: block; font-size: 12px; color: var(--text2); }
 .mr-chips b { font-family: var(--font-round); font-size: 17px; }
 .mr-card .btn.mt { margin-bottom: 12px; }
+
+/* ---------- volume per spiergroep ---------- */
+.vol-sub { font-size: 13px; color: var(--text2); margin: -2px 0 10px; }
+.vol-scale { position: relative; height: 14px; margin-left: 92px; margin-right: 108px; font-size: 11px; color: var(--text3); }
+.vol-scale span { position: absolute; transform: translateX(-50%); }
+.vol-row { display: grid; grid-template-columns: 84px 1fr 34px 58px; align-items: center; gap: 8px; width: 100%; border: 0; background: none; color: var(--text); font: inherit; padding: 6px 0; cursor: pointer; text-align: left; }
+.vol-g { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vol-bar { position: relative; height: 10px; border-radius: 5px; background: var(--track); }
+.vol-bar i { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+.vol-band { background: color-mix(in srgb, var(--green) 18%, transparent); }
+.vol-fill { left: 0; transition: width .5s cubic-bezier(.3,.7,.4,1); }
+.vol-prev { width: 2px; top: -3px !important; bottom: -3px !important; background: var(--text); opacity: .7; border-radius: 1px; }
+.vol-n { font-family: var(--font-round); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.vol-s { font-size: 12px; font-weight: 600; }
