@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Draagtijd', 'Onder Alle data zie je hoeveel van de dag je Fitbit hartslag mat en waar de gaten zitten. Droeg je hem weinig, dan waarschuwt Vandaag dat je strain te laag kan zijn.'],
   ['Slaapschuld', 'Het slaapscherm toont je netto tekort over 7 nachten, met een plan om het in te halen, en je slaapschema met adviestijden.'],
   ['Volume per spiergroep', 'Op Training: hoeveel zware sets elke spier deze week kreeg, naast de richtlijn van 10–20 sets.'],
   ['Voortgang per oefening', 'Per oefening: winst sinds je begon, tempo in kg per maand en wat je de volgende keer probeert.'],
@@ -562,7 +563,9 @@ function viewToday(date) {
     </div>
   </div>`;
 
-  const insightsCard = ins.length ? `<div class="list">${ins.filter((i) => i.icon !== 'target').slice(0, 3).map((i) => `<button class="row tap insight" data-go="#/${INSIGHT_GO[i.icon] || 'recovery'}/${date}"><div class="ic">${INSIGHT_ICON[i.icon] || I.info}</div><div class="grow"><p>${esc(i.text)}</p></div><span class="chev">${I.chev}</span></button>`).join('')}</div>` : '';
+  const wr = t ? wearOf(date) : null;
+  if (wr && wr.span > 240 && wr.pct < 0.65) ins.unshift({ icon: 'info', go: `day/${date}`, text: `Je droeg je Fitbit ${Math.round(wr.pct * 100)}% van de dag${wr.gap ? ` (gat ${clockTxt(wr.gap.start)}–${clockTxt(wr.gap.start + wr.gap.len)})` : ''}. Je strain is daardoor mogelijk te laag.` });
+  const insightsCard = ins.length ? `<div class="list">${ins.filter((i) => i.icon !== 'target').slice(0, 3).map((i) => `<button class="row tap insight" data-go="#/${i.go || `${INSIGHT_GO[i.icon] || 'recovery'}/${date}`}"><div class="ic">${INSIGHT_ICON[i.icon] || I.info}</div><div class="grow"><p>${esc(i.text)}</p></div><span class="chev">${I.chev}</span></button>`).join('')}</div>` : '';
 
   const acts = m ? activityRows(m) : [];
 
@@ -890,6 +893,44 @@ function sleepDebtCard(date) {
   </div>`;
 }
 
+/** Draagtijd: hoeveel minuten van de dag heeft de Fitbit hartslag gemeten, en waar zitten de gaten? */
+function wearOf(date) {
+  const raw = M(date)?.raw || S.days.find((d) => d.date === date);
+  if (!raw || raw.empty) return null;
+  const hr = raw.hr || [];
+  const isToday = date === today();
+  const now = new Date();
+  const span = isToday ? now.getHours() * 60 + now.getMinutes() : 1440;
+  if (span < 30) return null;
+  let have = 0;
+  for (let i = 0; i < Math.min(span, hr.length); i++) if (hr[i]) have++;
+  // Grootste gat overdag (07–23 u), alleen als je hem niet droeg.
+  let gap = null, run = 0, runStart = 0;
+  const from = 7 * 60, to = Math.min(span, 23 * 60);
+  for (let i = from; i <= to; i++) {
+    if (i < to && !hr[i]) { if (!run) runStart = i; run++; } else { if (run > (gap?.len || 0)) gap = { start: runStart, len: run }; run = 0; }
+  }
+  const segs = [];
+  for (let k = 0; k < 96; k++) {
+    let n = 0, c = 0;
+    for (let i = k * 15; i < k * 15 + 15; i++) { if (i >= span) break; n++; if (hr[i]) c++; }
+    segs.push(n ? c / n : null);
+  }
+  return { minutes: have, span, pct: have / span, gap: gap && gap.len >= 45 ? gap : null, segs };
+}
+
+function wearCard(date) {
+  const w = wearOf(date);
+  if (!w) return '';
+  const col = w.pct >= 0.85 ? 'var(--green)' : w.pct >= 0.65 ? 'var(--yellow)' : 'var(--red)';
+  return `<div class="section-title">Draagtijd</div><div class="card wear">
+    <div class="wear-top"><div><b style="color:${col}">${Math.round(w.pct * 100)}%</b><span>${num(w.minutes / 60, 1)} van ${num(w.span / 60, 1)} uur met hartslag</span></div></div>
+    <div class="wear-strip">${w.segs.map((v) => `<i style="${v == null ? 'opacity:.25;background:var(--track)' : `background:color-mix(in srgb, var(--hr) ${Math.round(15 + v * 85)}%, var(--track))`}"></i>`).join('')}</div>
+    <div class="wear-ax"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+    ${w.gap ? `<p class="small muted" style="margin:8px 0 0">Grootste gat: ${clockTxt(w.gap.start)}–${clockTxt(w.gap.start + w.gap.len)} (${fmtHM(w.gap.len)}). Activiteit in die tijd mist in je strain — log hem via ＋ als je toen iets deed.</p>` : `<p class="small muted" style="margin:8px 0 0">${w.pct >= 0.85 ? 'Goede dekking: je strain en slaap zijn betrouwbaar.' : 'Hoe vaker je hem draagt, hoe betrouwbaarder strain en herstel.'}</p>`}
+  </div>`;
+}
+
 function toMin(hhmm) { const [h, m] = String(hhmm || '07:00').split(':').map(Number); return h * 60 + (m || 0); }
 
 function viewDay(date) {
@@ -933,6 +974,7 @@ function viewDay(date) {
   ${weekStrip(date, '#/day')}
   <div class="section-title">Hartslag per minuut</div>
   <div class="card">${hrDay(raw, { maxHr: S.computed.maxHr, activities: m?.strain?.activities || [] })}</div>
+  ${wearCard(date)}
   <div class="section-title">Gemeten (Fitbit)</div>
   <div class="card">${rows.length ? `<div class="kv">${rows.join('')}</div>` : '<div class="muted">Geen data</div>'}</div>
   <div class="section-title">Berekend</div>
