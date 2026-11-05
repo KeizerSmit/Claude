@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v36';
 const CHANGELOG = [
+  ['Signaal overbelasting', 'Ligt je HRV meerdere dagen op rij onder je normaal (zeker bij hoge belasting), dan waarschuwt Vandaag en adviseert lichte dagen.'],
   ['Ochtendrapport', 'Bij de eerste keer openen in de ochtend: je herstel in één zin uitgelegd, je nacht, wat gisteren deed en je plan voor vandaag.'],
   ['Verwachting morgen', 'Vanaf 17:00 op Vandaag (en altijd op het slaapscherm): je verwachte herstel van morgen bij verschillende bedtijden, geleerd uit je eigen data.'],
   ['Weekdoelen', 'Vier doelen per week (kracht, beweging, slaap, stappen) met reeksen: hoeveel weken op rij je ze haalt. Tik om je doelen aan te passen.'],
@@ -579,6 +580,8 @@ function viewToday(date) {
     </div>
   </div>`;
 
+  const sig = t ? strainSignal(date) : null;
+  if (sig) ins.unshift({ icon: 'down', go: `recovery/${date}`, text: sig.text });
   const wr = t ? wearOf(date) : null;
   if (wr && wr.span > 240 && wr.pct < 0.65) ins.unshift({ icon: 'info', go: `day/${date}`, text: `Je droeg je Fitbit ${Math.round(wr.pct * 100)}% van de dag${wr.gap ? ` (gat ${clockTxt(wr.gap.start)}–${clockTxt(wr.gap.start + wr.gap.len)})` : ''}. Je strain is daardoor mogelijk te laag.` });
   const insightsCard = ins.length ? `<div class="list">${ins.filter((i) => i.icon !== 'target').slice(0, 3).map((i) => `<button class="row tap insight" data-go="#/${i.go || `${INSIGHT_GO[i.icon] || 'recovery'}/${date}`}"><div class="ic">${INSIGHT_ICON[i.icon] || I.info}</div><div class="grow"><p>${esc(i.text)}</p></div><span class="chev">${I.chev}</span></button>`).join('')}</div>` : '';
@@ -1824,6 +1827,31 @@ function loadStatus(p) {
   return { r, label: 'Te veel', text: 'Je belasting ligt ver boven je normaal: grotere kans op blessures en slecht herstel. Bouw rustiger op.', color: 'var(--red)' };
 }
 
+/**
+ * Vroeg signaal van overbelasting: HRV ligt meerdere dagen op rij duidelijk onder je normaal
+ * (en/of rusthartslag erboven), vaak samen met een hoge belasting.
+ */
+function strainSignal(date = today()) {
+  const ds = lastDays(S.computed.byDate, date, 7).filter((d) => d.recovery && d.flag !== 'sick');
+  if (ds.length < 4) return null;
+  let streak = 0;
+  for (let i = ds.length - 1; i >= 0; i--) {
+    const r = ds[i].recovery;
+    const low = (r.hrv && r.baseline.hrv && r.hrv < r.baseline.hrv * 0.93) || (r.rhr && r.baseline.rhr && r.rhr > r.baseline.rhr + 3);
+    if (low) streak++; else break;
+  }
+  if (streak < 3) return null;
+  const pts = loadSeries(date, 1);
+  const st = loadStatus(pts[pts.length - 1]);
+  const high = st.r != null && st.r > 1.15;
+  const hrvs = ds.slice(-streak).map((d) => d.recovery.hrv / d.recovery.baseline.hrv).filter((x) => x);
+  const pct = hrvs.length ? Math.round((1 - mean(hrvs)) * 100) : null;
+  return {
+    streak, high,
+    text: `${streak} dagen op rij ${pct > 0 ? `HRV gemiddeld ${pct}% onder je normaal` : 'verhoogde rusthartslag'}${high ? ' terwijl je belasting hoger is dan normaal' : ''}. ${high ? 'Signaal van overbelasting: plan 1–2 lichte dagen en slaap extra.' : 'Kan wijzen op stress, slecht slapen of beginnende ziekte. Doe het rustiger aan.'}`,
+  };
+}
+
 function loadBandCard(end = today()) {
   const pts = loadSeries(end);
   const last = pts[pts.length - 1];
@@ -2105,6 +2133,8 @@ function coachCard(date) {
   const tpls = activeTemplates(S.strength);
   const doneToday = (m?.strain?.sessions?.length || 0) > 0;
   const rec = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: today(), settings: SS(), doneToday, flag: m?.flag });
+  const sig = strainSignal(date);
+  if (sig?.high && rec?.kind === 'template') { rec.intensity = 'licht'; rec.reason += ' · houd het licht: je HRV zit al een paar dagen onder normaal'; }
   const adv = bedtimeAdvice(m, toMin(S.settings.wake));
   const tgt = m?.target;
   if (!rec && !tgt) return '';
