@@ -1262,6 +1262,7 @@ function viewStrength() {
   const maxSets = Math.max(10, ...Object.values(wk.sets));
   const exs = allExercises(S.strength.sessions, { exerciseMap: S.strength.exerciseMap }).slice(0, 6);
   const tpls = activeTemplates(S.strength);
+  const recId = (() => { const m = M(today()); const r = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: today(), settings: SS(), doneToday: (m?.strain?.sessions?.length || 0) > 0, flag: m?.flag }); return r?.kind === 'template' ? r.template.id : null; })();
   const byMonth = {};
   for (const s of sessions.slice(0, showAllSessions ? 1000 : 8)) {
     const k = s.date ? s.date.slice(0, 7) : 'zonder datum';
@@ -1270,25 +1271,25 @@ function viewStrength() {
   const monthName = (k) => (k === 'zonder datum' ? 'Zonder datum' : new Date(k + '-01T12:00').toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' }));
   return `${largeTitle('Training', '', avatar())}
   <div class="fade-in">
+  <div class="section-title" style="margin-top:4px">Schema's <button data-go="#/template-edit/new">+ Nieuw</button></div>
+  ${tpls.length ? `<div class="list">${tpls.map((t) => {
+    const last = templateLastDate(t);
+    return `<div class="row tap" data-go="#/template/${t.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(t.name)}${recId === t.id ? ' <span class="pill tip-pill">tip vandaag</span>' : ''}</div><div class="sub">${t.exercises.length} oefeningen · ${last ? `laatst ${weekdayShort(last)} ${fmtDateShort(last)}` : 'nog niet gelogd'}</div></div><button class="btn small" data-act="start-template" data-id="${t.id}">Start</button></div>`;
+  }).join('')}</div>`
+    : `<div class="card"><div class="small muted">Plak je notitie met <b>Upper 6</b>, <b>Upper 7</b>, <b>Lower</b> en je topsets. Daar maakt de app schema's van: per training zie je je huidige topsets, vink je af wat je deed en pas je aan wat je verbeterd hebt.</div><button class="btn mt" data-go="#/import">${I.doc} Notitie plakken</button></div>`}
+  <div class="btn-row mt"><button class="btn secondary" data-go="#/log/new">${I.plus} Losse training</button><button class="btn secondary" data-go="#/import">${I.doc} Notities</button></div>
   ${loadBandCard()}
   ${muscleCard()}
   ${volumeCard()}
   ${strengthIndexCard()}
   <div class="btn-row"><button class="btn secondary" data-go="#/records">${I.flame} Records</button><button class="btn secondary" data-act="share-claude">${I.doc} Deel met Claude</button></div>
   <div class="section-title">Recent <button data-act="plus-activity" data-v="${today()}">+ Activiteit</button></div>
-  ${recentActivitiesList(14)}
+  ${recentActivitiesList(6)}
   <div class="stats three mt">
-    ${stat('Kracht deze week', wk.count, wk.count === 1 ? 'sessie' : 'sessies')}
+    ${stat('Deze week', wk.count, wk.count === 1 ? 'training' : 'trainingen')}
     ${stat('Spierbelasting', num(wk.load, 0))}
     ${stat('Zware sets', num(Object.values(wk.sets).reduce((a, b) => a + b, 0), 0), '', 'geschat')}
   </div>
-  <div class="section-title">Schema's <button data-go="#/template-edit/new">+ Nieuw</button></div>
-  ${tpls.length ? `<div class="list">${tpls.map((t) => {
-    const last = templateLastDate(t);
-    return `<div class="row tap" data-go="#/template/${t.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(t.name)}</div><div class="sub">${t.exercises.length} oefeningen · ${last ? `laatst ${weekdayShort(last)} ${fmtDateShort(last)}` : 'nog niet gelogd'}</div></div><button class="btn small" data-act="start-template" data-id="${t.id}">Start</button></div>`;
-  }).join('')}</div>`
-    : `<div class="card"><div class="small muted">Plak je notitie met <b>Upper 6</b>, <b>Upper 7</b>, <b>Lower</b> en je topsets. Daar maakt de app schema's van: per training zie je je huidige topsets, vink je af wat je deed en pas je aan wat je verbeterd hebt.</div><button class="btn mt" data-go="#/import">${I.doc} Notitie plakken</button></div>`}
-  <div class="btn-row mt"><button class="btn secondary" data-go="#/log/new">${I.plus} Losse training</button><button class="btn secondary" data-go="#/import">${I.doc} Notities</button></div>
   ${sessions.length && !showAllSessions ? `<button class="btn secondary mt" data-act="all-sessions">Alle ${sessions.length} krachttrainingen</button>` : ''}
   ${sessions.length && showAllSessions ? `<div class="section-title">Krachttrainingen</div>` + Object.entries(byMonth).map(([k, list]) => `<div class="list-header">${esc(monthName(k))}</div><div class="list">${list.map((s) => `<button class="row tap" data-go="#/session/${s.id}"><div class="grow"><div class="title">${esc(s.name || 'Training')}</div><div class="sub">${s.date ? `${weekdayShort(s.date)} ${fmtDateShort(s.date)}` : 'geen datum'} · ${s.exercises.length} oefeningen${(loads[s.id]?.exercises || []).some((e) => e.isPR) ? ' · 🏆 PR' : ''}</div></div><div class="val">${num(loads[s.id]?.load, 1)}</div><span class="chev">${I.chev}</span></button>`).join('')}</div>`).join('') + (sessions.length > 8 && !showAllSessions ? `<button class="btn secondary" data-act="all-sessions">Alle ${sessions.length} trainingen</button>` : '') : ''}
   ${exs.length ? `<div class="section-title">Oefeningen</div><div class="list">${exs.map((e) => {
