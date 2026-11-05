@@ -1749,6 +1749,7 @@ function viewSettings() {
   <div class="list">
     <button class="row tap" data-act="share-claude"><div class="badge" style="background:var(--accent)">${I.doc}</div><div class="grow"><div class="title">Deel met Claude</div><div class="sub">Kopieert een anonieme samenvatting van 14 dagen</div></div><span class="chev">${I.chev}</span></button>
     <button class="row tap" data-act="export"><div class="grow">Exporteer back-up (JSON)</div><span class="chev">${I.chev}</span></button>
+    <button class="row tap" data-act="export-csv"><div class="grow">Exporteer als CSV<div class="sub">voor Numbers of Excel: alle dagen en al je topsets</div></div><span class="chev">${I.chev}</span></button>
     <label class="row tap"><div class="grow">Importeer back-up</div><input type="file" accept="application/json,.json" data-act="import-backup" style="display:none"><span class="chev">${I.chev}</span></label>
     <button class="row tap" data-go="#/setup"><div class="grow">Koppeling (Google Client ID)</div><span class="chev">${I.chev}</span></button>
     <button class="row tap" data-go="#/about"><div class="grow">Hoe worden scores berekend?</div><span class="chev">${I.chev}</span></button>
@@ -3035,6 +3036,27 @@ const actions = {
     a.download = `pulse-backup-${today()}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  },  'export-csv'() {
+    const q = (v) => (v == null ? '' : typeof v === 'number' ? String(Math.round(v * 100) / 100).replace('.', ',') : `"${String(v).replace(/"/g, '""')}"`);
+    const rows = [['datum', 'herstel', 'hrv_ms', 'rusthartslag', 'ademhaling', 'temp_afwijking', 'slaap_min', 'slaapbehoefte_min', 'diep_min', 'rem_min', 'bedtijd', 'opstaan', 'strain', 'cardio_trimp', 'spier_trimp', 'stappen', 'vo2max', 'markering']];
+    for (const d of Object.values(S.computed.byDate).sort((a, b) => (a.date < b.date ? -1 : 1))) {
+      const r = d.recovery, sl = d.sleep;
+      rows.push([d.date, r?.score, r?.hrv, r?.rhr, r?.resp, r?.tempDev, sl?.asleep, sl?.need, sl?.deep, sl?.rem, sl ? fmtTime(sl.start) : null, sl ? fmtTime(sl.end) : null, d.strain?.score, d.strain?.cardioTrimp, d.strain?.muscularTrimp, d.raw?.steps, d.raw?.vo2max, d.flag]);
+    }
+    const ex = [['datum', 'training', 'oefening', 'gewicht_kg', 'reps', 'sets', 'bodyweight', 'e1rm', 'pr', 'belasting']];
+    for (const ss of S.strength.sessions.filter((x) => !x.deleted && x.date).sort((a, b) => (a.date < b.date ? -1 : 1))) {
+      for (const e of S.computed.loads[ss.id]?.exercises || []) ex.push([ss.date, ss.name, e.name, e.weight, e.reps, e.sets, e.bw ? 'ja' : '', e.e1rm, e.isPR ? 'ja' : '', e.load]);
+    }
+    const csv = (t) => t.map((r) => r.map((v, i) => (i === 0 && typeof v === 'string' ? v : q(v))).join(';')).join('\n');
+    for (const [name, t] of [['dagen', rows], ['krachttraining', ex]]) {
+      const blob = new Blob(['﻿' + csv(t)], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `pulse-${name}-${today()}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
+    toast('2 CSV-bestanden gemaakt (dagen + krachttraining)');
   },
 };
 
