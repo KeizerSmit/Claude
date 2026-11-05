@@ -756,3 +756,26 @@ body { font-family: var(--font); font-size: 17px; letter-spacing: -0.43px; font-
 .wk-st { width: 60%; border-radius: 6px; background: var(--strain); opacity: .9; }
 .wk-dot { width: 9px; height: 9px; border-radius: 50%; }
 .wk-w { font-size: 11px; font-weight: 600; text-transform: uppercase; }
+
+/* ---------- v5: kalender, slaapschema, normaalband ---------- */
+.cal-card { padding-bottom: 14px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; text-align: center; }
+.cal-head .icon-btn { width: 34px; height: 34px; flex: 0 0 34px; }
+.cal-head .icon-btn[disabled] { opacity: .3; }
+.cal-head .icon-btn svg { width: 16px; height: 16px; }
+.segmented.small button { padding: 5px 0; font-size: 12px; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cal-wd { text-align: center; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .02em; padding-bottom: 2px; }
+.cal-c { aspect-ratio: 1 / 1.08; border: 0; border-radius: 10px; background: var(--track); color: var(--text2); font: inherit; padding: 4px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 1px; cursor: pointer; position: relative; transition: transform .15s; }
+.cal-c:active { transform: scale(.92); }
+.cal-c.empty { background: none; }
+.cal-c.future { opacity: .35; }
+.cal-c[disabled] { cursor: default; }
+.cal-c span { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cal-c small { font-family: var(--font-round); font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.1; margin-top: auto; margin-bottom: 5px; }
+.cal-c.on { background: color-mix(in srgb, var(--cc) var(--ca), transparent); color: rgba(255,255,255,.85); }
+.cal-c.on small { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.cal-c.today { box-shadow: inset 0 0 0 2px var(--text); }
+.band-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); margin: -4px 4px 14px; }
+.band-note i { width: 18px; height: 10px; border-radius: 3px; background: var(--band); box-shadow: inset 0 0 0 1px var(--sep); }
+.cal-c.on.lite, .cal-c.on.lite small { color: var(--text); text-shadow: none; }

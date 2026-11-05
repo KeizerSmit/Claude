@@ -346,3 +346,71 @@ export function scale(value, { min = -1, max = 3, ticks = [-1, 0, 1, 2, 3], fmt 
   return `<div class="scale"><div class="scale-track"><span class="scale-grad"></span><span class="scale-mark" style="left:${p(mark)}%"></span><span class="scale-knob" style="left:${p(Math.max(min, Math.min(max, value)))}%"></span></div>
     <div class="scale-ticks">${ticks.map((t) => `<span style="left:${p(t)}%">${fmt(t)}</span>`).join('')}</div></div>`;
 }
+
+/** Klokminuten (18:00 = 1080 … 14:00 = 2280) zodat nachten doorlopen over middernacht. */
+export function clockMin(ms) { const d = new Date(ms); let m = d.getHours() * 60 + d.getMinutes(); if (m < 720) m += 1440; return m; }
+const clk = (m) => { const v = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
+
+/**
+ * Slaapschema: per nacht een balk van bedtijd tot opstaan (tijd loopt naar beneden, zoals Apple Gezondheid).
+ * nights: [{date, start, end, go, color}] (start/end in ms; null = geen slaap)
+ */
+export function sleepRange(nights, { height = 190, labelEvery = 1, target = null } = {}) {
+  const W = 340, H = height, pt = 10, pb = 22, pl = 34;
+  const n = nights.length || 1;
+  const have = nights.filter((x) => x.start && x.end);
+  if (!have.length) return `<div class="empty-chart">Nog geen slaapdata</div>`;
+  const ss = have.map((x) => clockMin(x.start)), ee = have.map((x) => clockMin(x.end));
+  let lo = Math.floor((Math.min(...ss, target ? target[0] : Infinity) - 30) / 60) * 60;
+  let hi = Math.ceil((Math.max(...ee, target ? target[1] : -Infinity) + 30) / 60) * 60;
+  if (hi - lo < 360) hi = lo + 360;
+  const step = (W - pl) / n;
+  const bw = Math.max(3, Math.min(16, step * 0.56));
+  const y = (m) => pt + (H - pt - pb) * ((m - lo) / (hi - lo));
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
+  const hStep = hi - lo > 720 ? 240 : 120;
+  for (let m = Math.ceil(lo / hStep) * hStep; m <= hi; m += hStep) {
+    s += `<line x1="${pl}" x2="${W}" y1="${y(m)}" y2="${y(m)}" class="gridline dashed"/><text x="2" y="${y(m) + 3.5}" class="ct-lab" text-anchor="start">${clk(m)}</text>`;
+  }
+  if (target) s += `<rect x="${pl}" y="${y(target[0])}" width="${W - pl}" height="${Math.max(1, y(target[1]) - y(target[0]))}" fill="var(--band)" rx="4"/>`;
+  nights.forEach((nt, i) => {
+    const cx = pl + step * (i + 0.5);
+    if (nt.start && nt.end) {
+      const a = y(clockMin(nt.start)), b = y(clockMin(nt.end));
+      s += `<rect class="bar" data-i="${i}" x="${cx - bw / 2}" y="${a}" width="${bw}" height="${Math.max(2, b - a)}" rx="${Math.min(5, bw / 2)}" fill="${nt.color || 'var(--sleep)'}"/>`;
+    }
+    if (i % labelEvery === 0 || i === n - 1) s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" class="ct-lab">${esc(dayLabel(nt.date, n))}</text>`;
+  });
+  s += '</svg>';
+  const id = register({
+    W, H,
+    at(xv) {
+      const i = Math.max(0, Math.min(n - 1, Math.floor((xv - pl) / step)));
+      const nt = nights[i];
+      const ok = nt.start && nt.end;
+      return { x: pl + step * (i + 0.5), y: ok ? y(clockMin(nt.start)) : H - pb, title: dayLabel(nt.date, 30), value: ok ? `${clk(clockMin(nt.start))} – ${clk(clockMin(nt.end))}` : 'geen slaap', color: 'var(--sleep)', go: nt.go, i, bars: true };
+    },
+  });
+  return wrap(id, s);
+}
+
+/**
+ * Maandkalender als heatmap. cells: [{date, color, alpha, label, go}] voor elke dag van de maand.
+ * Gewone HTML (tikbaar), geen SVG.
+ */
+export function calendar(year, month, cellFor, todayStr) {
+  const first = new Date(year, month, 1);
+  const lead = (first.getDay() + 6) % 7;
+  const days = new Date(year, month + 1, 0).getDate();
+  const pad2 = (v) => String(v).padStart(2, '0');
+  let h = '<div class="cal">';
+  for (const w of ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo']) h += `<div class="cal-wd">${w}</div>`;
+  for (let i = 0; i < lead; i++) h += '<div class="cal-c empty"></div>';
+  for (let d = 1; d <= days; d++) {
+    const date = `${year}-${pad2(month + 1)}-${pad2(d)}`;
+    const c = date > todayStr ? null : cellFor(date);
+    const style = c?.color ? `style="--cc:${c.color};--ca:${Math.round((c.alpha ?? 1) * 100)}%"` : '';
+    h += `<button class="cal-c${c?.color ? ' on' : ''}${c?.color && (c.alpha ?? 1) < 0.5 ? ' lite' : ''}${date === todayStr ? ' today' : ''}${date > todayStr ? ' future' : ''}" ${style} ${c && date <= todayStr ? `data-go="#/today/${date}"` : 'disabled'}><span>${d}</span>${c?.label != null ? `<small>${esc(c.label)}</small>` : ''}</button>`;
+  }
+  return h + '</div>';
+}

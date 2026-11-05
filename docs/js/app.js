@@ -4,7 +4,7 @@ import { syncAll, syncHeartNow, syncMinute } from './sync.js';
 import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp } from './metrics.js';
 import { parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
-import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale } from './charts.js';
+import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale, sleepRange, calendar, clockMin } from './charts.js';
 import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle } from './interact.js';
 import { live as liveState, onLive, connect as liveConnect, disconnect as liveDisconnect, current as liveCurrent, liveRmssd, sessionStats as liveSession, bluetoothSupported } from './live.js';
 import { generateDemo } from './demo.js';
@@ -15,7 +15,7 @@ import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js
 import { buildShare } from './share.js';
 import { recommendTraining, progressionTip } from './coach.js';
 import { recoveryPatterns } from './patterns.js';
-import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort } from './util.js';
+import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00' };
 
@@ -877,6 +877,59 @@ function viewDay(date) {
 }
 
 let trendRange = 30;
+let calOffset = 0;
+let calMetric = 'rec';
+const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
+
+/** Persoonlijk normaal bereik (gemiddelde ± 1 SD over 60 dagen) als band voor trendgrafieken. */
+function normBand(f, end = today(), n = 60) {
+  const v = lastDays(S.computed.byDate, end, n).map(f).filter((x) => x != null);
+  if (v.length < 7) return null;
+  const m = mean(v), s = sd(v);
+  return s ? [m - s, m + s] : null;
+}
+
+const clockTxt = (m) => { const v = ((Math.round(m) % 1440) + 1440) % 1440; return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`; };
+
+function sleepScheduleCard(ds, le) {
+  const nights = ds.map((d) => ({ date: d.date, start: d.sleep?.start || null, end: d.sleep?.end || null, go: `#/sleep/${d.date}` }));
+  const have = nights.filter((x) => x.start && x.end);
+  if (!have.length) return '';
+  const bed = have.map((x) => clockMin(x.start)), wake = have.map((x) => clockMin(x.end));
+  const med = (a) => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+  const sdBed = have.length > 2 ? sd(bed) : null;
+  const sdWake = have.length > 2 ? sd(wake) : null;
+  const cons = sdBed == null ? null : (sdBed + sdWake) / 2;
+  const word = cons == null ? '' : cons <= 30 ? 'heel regelmatig' : cons <= 45 ? 'regelmatig' : cons <= 75 ? 'wisselend' : 'onregelmatig';
+  return trendCard('Slaapschema', `${clockTxt(med(bed))} – ${clockTxt(med(wake))}`,
+    cons != null ? `bedtijd wisselt ± ${Math.round(sdBed)} min · opstaan ± ${Math.round(sdWake)} min · <b>${word}</b>` : 'mediane bed- en opstaantijd',
+    `${sleepRange(nights, { labelEvery: le })}<div class="legend"><span>Vaste bed- en opstaantijden hangen in grote studies samen met betere gezondheid, los van hoe lang je slaapt.</span></div>`, '#/sleep');
+}
+
+function calendarCard() {
+  const now = parseYmd(today());
+  const ref = new Date(now.getFullYear(), now.getMonth() + calOffset, 1);
+  const y = ref.getFullYear(), mo = ref.getMonth();
+  const metric = {
+    rec: { label: 'Herstel', cell: (d) => (d.recovery ? { color: recoveryColor(d.recovery.score), alpha: 0.85, label: d.recovery.score } : null) },
+    str: { label: 'Strain', cell: (d) => (d.strain?.score ? { color: 'var(--strain)', alpha: 0.14 + 0.86 * Math.pow(Math.max(0, Math.min(1, (d.strain.score - 3) / 15)), 1.4), label: num(d.strain.score, 0) } : null) },
+    slp: { label: 'Slaap', cell: (d) => (d.sleep ? { color: 'var(--sleep)', alpha: 0.15 + 0.85 * Math.max(0, Math.min(1, (d.sleep.perf || 0))), label: fmtHM(d.sleep.asleep).replace(/u.*$/, '') } : null) },
+    gym: { label: 'Training', cell: (d) => { const k = (d.strain?.sessions || []).length + (d.strain?.manual || []).length; return k ? { color: 'var(--muscle)', alpha: 0.85, label: (d.strain?.sessions || []).length ? '🏋' : '•' } : null; } },
+  }[calMetric];
+  const cal = calendar(y, mo, (date) => { const d = S.computed.byDate[date]; return d ? metric.cell(d) : null; }, today());
+  const days = new Date(y, mo + 1, 0).getDate();
+  const md = [];
+  for (let i = 1; i <= days; i++) { const d = S.computed.byDate[`${y}-${pad(mo + 1)}-${pad(i)}`]; if (d) md.push(d); }
+  const recs = md.map((d) => d.recovery?.score).filter((v) => v != null);
+  const sess = md.reduce((a, d) => a + (d.strain?.sessions || []).length, 0);
+  return `<div class="card trend cal-card">
+    <div class="cal-head"><button class="icon-btn glass" data-act="cal" data-v="-1" aria-label="Vorige maand">${I.back}</button>
+      <div><div class="trend-t">${cap(MONTHS[mo])} ${y}</div><div class="trend-s">${recs.length ? `gem. herstel ${Math.round(mean(recs))}% · ` : ''}${sess} krachttraining${sess === 1 ? '' : 'en'}</div></div>
+      <button class="icon-btn glass" data-act="cal" data-v="1" ${calOffset >= 0 ? 'disabled' : ''} aria-label="Volgende maand">${I.chev}</button></div>
+    <div class="segmented small">${[['rec', 'Herstel'], ['str', 'Strain'], ['slp', 'Slaap'], ['gym', 'Training']].map(([k, l]) => `<button class="${k === calMetric ? 'on' : ''}" data-act="calm" data-v="${k}">${l}</button>`).join('')}</div>
+    ${cal}
+  </div>`;
+}
 function trendCard(title, valueHtml, sub, chart, go = '', sheet = '') {
   const attr = sheet ? `data-sheet="${sheet}"` : go ? `data-go="${go}"` : '';
   return `<div class="card trend">
@@ -925,12 +978,15 @@ function viewTrends() {
     bars(ds.map((d) => ({ date: d.date, go: g(d), value: str(d), color: 'var(--strain)' })), { max: 21, labelEvery: le, fmt: fmtStrain, avgLine: true }), '#/strain')}
   ${trendCard('Slaap', `${fmtHM(avgOf(ds, slp))}<small>gem.</small>`, cmp(slp, 0, true, (v) => `${Math.round(v)} min`),
     bars(ds.map((d) => ({ date: d.date, go: g(d), value: slp(d) != null ? slp(d) / 60 : null, color: 'var(--sleep)' })), { labelEvery: le, fmt: (v) => num(v, 1), unit: ' u', avgLine: true }), '#/sleep')}
+  ${sleepScheduleCard(ds, le)}
   ${trendCard('HRV', `${num(avgOf(ds, hrv))}<small>ms gem.</small>`, cmp(hrv),
-    line(ds.map((d) => ({ date: d.date, go: g(d), value: hrv(d) })), { color: 'var(--green)', fmt: (v) => Math.round(v), unit: ' ms', dots: n <= 30 }), '', `metric:hrv:${end}:${n}`)}
+    line(ds.map((d) => ({ date: d.date, go: g(d), value: hrv(d) })), { band: normBand(hrv), color: 'var(--green)', fmt: (v) => Math.round(v), unit: ' ms', dots: n <= 30 }), '', `metric:hrv:${end}:${n}`)}
   ${trendCard('Rusthartslag', `${num(avgOf(ds, rhr))}<small>bpm gem.</small>`, cmp(rhr, 0, false),
-    line(ds.map((d) => ({ date: d.date, go: g(d), value: rhr(d) })), { color: 'var(--hr)', fmt: (v) => Math.round(v), unit: ' bpm', dots: n <= 30 }), '', `metric:rhr:${end}:${n}`)}
+    line(ds.map((d) => ({ date: d.date, go: g(d), value: rhr(d) })), { band: normBand(rhr), color: 'var(--hr)', fmt: (v) => Math.round(v), unit: ' bpm', dots: n <= 30 }), '', `metric:rhr:${end}:${n}`)}
   ${trendCard('Ademhaling', `${num(avgOf(ds, resp), 1)}<small>/min gem.</small>`, cmp(resp, 1, false, (v) => num(v, 1)),
-    line(ds.map((d) => ({ date: d.date, go: g(d), value: resp(d) })), { color: 'var(--z1)', fmt: (v) => num(v, 1), unit: ' /min', dots: n <= 30 }), '', `metric:resp:${end}:${n}`)}
+    line(ds.map((d) => ({ date: d.date, go: g(d), value: resp(d) })), { band: normBand(resp), color: 'var(--z1)', fmt: (v) => num(v, 1), unit: ' /min', dots: n <= 30 }), '', `metric:resp:${end}:${n}`)}
+  <div class="band-note"><i></i>Grijze band = jouw normale bereik (gemiddelde ± 1 SD, 60 dagen)</div>
+  ${calendarCard()}
   ${patternsCard({ limit: 4 })}
   ${trendCard('Spierbelasting', `${num(weeks.reduce((a, w) => a + w.value, 0) / Math.max(1, weeks.length), 0)}<small>per week</small>`, 'uit je krachtlog',
     bars(weeks, { fmt: (v) => num(v, 0), unit: '' }), '#/strength')}
@@ -2060,6 +2116,8 @@ const actions = {
     await store.days.clear(); await store.kv.del('lastSyncDate'); S.days = []; recompute(); render(); toast('Gewist');
   },
   range(el) { trendRange = +el.dataset.v; render(); },
+  cal(el) { calOffset = Math.min(0, calOffset + +el.dataset.v); render(); },
+  calm(el) { calMetric = el.dataset.v; render(); },
   'all-sessions'() { showAllSessions = true; render(); },
   'chip-name'(el) { readDraftFromDom(); S.editDraft.name = el.dataset.v; render(); },
   'use-template'(el) {
