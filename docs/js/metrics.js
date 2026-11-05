@@ -256,6 +256,21 @@ export function computeAll(days, strengthDoc, settings, profile) {
     const daySessions = (sessionsByDate[day.date] || []).map((s) => ({ ...s, ...loads[s.id], muscularTrimp: (loads[s.id]?.load || 0) * MUSCULAR_TO_TRIMP }));
     // Koppel krachtsessie aan een Fitbit-activiteit (krachttraining) op dezelfde dag.
     for (const s of daySessions) {
+      if (s.start && s.duration) {
+        // Expliciete start/duur: hartslag in dat venster + overlappende Fitbit-workout koppelen.
+        const end = s.start + s.duration * 60000;
+        const ov = c.activities.find((a) => !a.linked && Math.min(a.end, end) - Math.max(a.start, s.start) > 0.5 * Math.min(a.end - a.start, end - s.start));
+        let n = 0, sum = 0, mx = 0, tr = 0;
+        if (day.hr?.length) {
+          const i0 = Math.max(0, Math.floor((s.start - day.hrStart) / 60000));
+          const i1 = Math.min(day.hr.length, Math.ceil((end - day.hrStart) / 60000));
+          for (let i = i0; i < i1; i++) { const v = day.hr[i]; if (!v) continue; n++; sum += v; if (v > mx) mx = v; tr += trimpMinute(v, rest, max, female); }
+        }
+        s.hrWindow = { coverage: n / s.duration, avg: n ? Math.round(sum / n) : null, max: mx || null, trimp: tr };
+        if (ov) { ov.linked = s.id; s.activity = ov; }
+        else s.activity = { id: `sess-${s.id}`, name: s.name || 'Krachttraining', type: 'STRENGTH', start: s.start, end, duration: s.duration, avgHr: s.hrWindow.avg, maxHr: s.hrWindow.max, trimp: tr, strain: strainFromTrimp(tr), fromLog: true };
+        continue;
+      }
       const act = c.activities.find((a) => !a.linked && /weight|strength|kracht|gym|lift|training|workout/i.test(`${a.type} ${a.name}`));
       if (act) { act.linked = s.id; s.activity = act; }
     }

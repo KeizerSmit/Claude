@@ -12,6 +12,7 @@ import { I, INSIGHT_ICON, AI } from './icons.js';
 import { TYPES, CATS, typeById, INTENSITY, RPE_LABELS, newActivity, estimateActivity, SOURCE_LABEL } from './activities.js';
 import { computeHealthspan, healthspanHistory, INPUTS, vo2Ref } from './healthspan.js';
 import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js';
+import { buildShare } from './share.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00' };
@@ -111,7 +112,7 @@ async function runSync({ full = false, interactive = true, quiet = false, todayO
     return;
   }
   S.syncing = true; S.syncError = null;
-  if (!quiet) { S.progress = { text: 'Verbinden…', frac: 0.01 }; render(); }
+  if (!quiet) { S.progress = { text: 'Verbinden…', frac: 0.01 }; render(); } else { S.tickState = 'busy'; updateLiveStamp(); }
   try {
     await syncAll({ full, todayOnly, onProgress: quiet ? () => {} : (text, frac) => { S.progress = { text, frac }; updateProgress(); } });
     try { await syncStrength(); } catch (e) { console.warn('Drive', e); }
@@ -129,10 +130,20 @@ async function runSync({ full = false, interactive = true, quiet = false, todayO
     if (!quiet) toast('Synchroniseren mislukt');
   } finally {
     S.syncing = false; S.progress = null; S.diag = null;
+    if (S.tickState === 'busy') S.tickState = S.syncError ? 'error' : 'ok';
     S.lastSyncAt = await store.kv.get('lastSyncAt');
     S.syncLog = await store.kv.get('syncLog');
     softRender(!quiet);
   }
+}
+
+/** Snel openen: eerst vandaag (± 4 aanvragen), daarna de rest stil op de achtergrond. */
+async function quickThenFull({ forceFull = false } = {}) {
+  if (store.isDemo() || !auth.getToken('health')) return;
+  if (S.days.length < 3) { await runSync({ interactive: false }); return; }
+  await minuteTick({ quickOnly: true });
+  const stale = !S.lastSyncAt || Date.now() - S.lastSyncAt > 15 * 60000;
+  if (stale || forceFull) runSync({ quiet: true });
 }
 
 /** Opnieuw tekenen zonder de gebruiker te storen (niet tijdens scrubben, typen of een open sheet). */
@@ -152,7 +163,7 @@ function softRender(force = false) {
 
 let tick = 0;
 let ticking = false;
-async function minuteTick() {
+async function minuteTick({ quickOnly = false } = {}) {
   if (document.visibilityState !== 'visible' || store.isDemo() || S.syncing || ticking) { softRender(); return; }
   if (!auth.getToken('health')) {
     // Sleutel verlopen (na ~1 uur): stil vernieuwen (kort Google-scherm, daarna terug).
@@ -161,11 +172,11 @@ async function minuteTick() {
     return;
   }
   ticking = true;
-  tick++;
+  if (!quickOnly) tick++;
   S.tickState = 'busy';
   updateLiveStamp();
   try {
-    if (tick % 5 === 0) {
+    if (!quickOnly && tick % 5 === 0) {
       // Elke 5 minuten: alles van vandaag (slaap, HRV, rusthartslag, …) + krachtlog uit Drive.
       await runSync({ quiet: true, todayOnly: true });
     } else {
@@ -194,6 +205,8 @@ function liveStampHtml() {
   return `<span class="livestamp ${st}" data-livestamp><i></i>${st === 'busy' ? 'Bijwerken…' : st === 'err' ? 'Offline' : at ? `Bijgewerkt ${fmtTime(at)}` : 'Live'}</span>`;
 }
 function updateLiveStamp() { document.querySelectorAll('[data-livestamp]').forEach((el) => { el.outerHTML = liveStampHtml(); }); }
+
+setInterval(() => { const d = S.editDraft; document.querySelectorAll('[data-elapsed]').forEach((el) => { if (d?.start) el.textContent = elapsedText(d.start); }); }, 15000);
 
 // Precies op de minuutgrens, daarna elke 60 s.
 setTimeout(() => { minuteTick(); setInterval(minuteTick, 60000); }, 60000 - (Date.now() % 60000) + 500);
@@ -979,6 +992,7 @@ function viewStrength() {
   <div class="fade-in">
   ${loadBandCard()}
   ${muscleCard()}
+  <button class="btn secondary" data-act="share-claude">${I.doc} Deel met Claude ter controle</button>
   <div class="section-title">Recent <button data-act="plus-activity" data-v="${today()}">+ Activiteit</button></div>
   ${recentActivitiesList(14)}
   <div class="stats three mt">
@@ -1079,6 +1093,15 @@ function viewSession(id) {
     ${stat('Spierbelasting', num(r.load, 1), '', `+${num(r.load * 3.2)} strain-punten`)}
     ${stat('Dag-strain', m ? fmtStrain(m.strain.score) : '–', '', sess?.activity ? `cardio tijdens training ${fmtStrain(sess.activity.strain)}` : '')}
   </div>
+  ${(() => {
+    const sm = m?.strain?.sessions?.find((x) => x.id === id);
+    const hw = sm?.hrWindow || (sm?.activity ? { avg: sm.activity.avgHr, max: sm.activity.maxHr } : null);
+    return `<div class="stats three mt">
+      ${stat('Tijd', s.start ? fmtTime(s.start) : '–', '', s.duration ? fmtDur(s.duration) : 'duur onbekend')}
+      ${stat('Zwaarte', s.rpe != null ? s.rpe : '–', s.rpe != null ? '/10' : '', s.rpe != null ? `×${num(r.rpeFactor, 2)} op belasting` : 'niet ingevuld')}
+      ${stat('Hartslag', hw?.avg ? num(hw.avg) : '–', hw?.avg ? 'bpm' : '', hw?.max ? `max ${num(hw.max)}` : 'geen meting')}
+    </div>`;
+  })()}
   <div class="section-title">Topsets</div>
   <div class="list">${r.exercises.map((e) => `<button class="row tap wrap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)} ${e.isPR ? '<span class="pill pr">PR</span>' : ''}</div><div class="sub">${esc(e.libName)}${e.e1rm ? ` · e1RM ${num(e.e1rm, 1)} kg` : ''} · belasting ${num(e.load, 1)}${e.note ? ` · ${esc(e.note)}` : ''}</div></div><div class="val"><b style="color:var(--text)">${esc(setText(e))}</b></div></button>`).join('')}</div>
   <div class="section-title">Spiergroepen</div>
@@ -1124,7 +1147,16 @@ function draftFromTemplate(t, date) {
   return d;
 }
 
+function saveDraftLS() { try { if (S.editDraft) localStorage.setItem('pulse.draft', JSON.stringify(S.editDraft)); } catch { /* */ } }
+function loadDraftLS() { try { return JSON.parse(localStorage.getItem('pulse.draft') || 'null'); } catch { return null; } }
+function clearDraftLS() { try { localStorage.removeItem('pulse.draft'); } catch { /* */ } }
+
 function viewLog(id, presetDate) {
+  if (!S.editDraft) {
+    const saved = loadDraftLS();
+    if (saved && saved._for === (id || 'new') && !(saved.start && Date.now() - saved.start > 12 * 3600000)) { S.editDraft = saved; S.draftRestored = true; }
+    else if (saved) clearDraftLS();
+  }
   let d = S.editDraft;
   if (!d || d._for !== (id || 'new')) {
     const src = id && id !== 'new' ? S.strength.sessions.find((s) => s.id === id) : null;
@@ -1147,6 +1179,7 @@ function viewLog(id, presetDate) {
     <div class="row"><div class="grow">Naam</div><input type="text" id="log-name" value="${esc(d.name || '')}" placeholder="bijv. Upper 6"></div>
   </div>
   ${isNew ? `<div class="chips">${tpls.map((t) => `<button class="chip${d.templateId === t.id ? ' on' : ''}" data-act="use-template" data-id="${t.id}">${esc(t.name)}</button>`).join('')}${recentNames.map((c) => `<button class="chip" data-act="chip-name" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
+  ${S.draftRestored ? `<div class="card flat small" style="display:flex;align-items:center;gap:10px">Je onafgemaakte training is teruggezet.<button class="link-btn" data-act="discard-draft" style="margin-left:auto">Weggooien</button></div>` : ''}
   ${fromTpl ? `<p class="small muted" style="margin:0 2px 8px">Vink af wat je gedaan hebt en pas gewicht/reps aan als je verbeterd bent. <span data-done-count>${doneCount} afgevinkt.</span></p>` : ''}
   <div class="list" id="ex-list">
     <div class="ex-head chk"><span></span><span>Oefening</span><span>kg</span><span>reps</span><span></span></div>
@@ -1154,6 +1187,18 @@ function viewLog(id, presetDate) {
   </div>
   <datalist id="ex-names">${exNames.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
   <button class="btn secondary" data-act="add-ex">${I.plus} Oefening</button>
+  <div class="list-header">Tijd</div>
+  <div class="list">
+    ${d.live && d.start ? `<div class="row"><div class="badge" style="background:var(--green)">${I.dumbbell}</div><div class="grow"><div class="title">Training loopt</div><div class="sub">gestart om ${fmtTime(d.start)} · eindtijd wordt bij Bewaar ingevuld</div></div><div class="val"><b data-elapsed style="color:var(--green)">${elapsedText(d.start)}</b></div></div>` : ''}
+    <div class="row"><div class="grow">Begon om</div><input type="time" id="log-start" value="${d.start ? `${pad(new Date(d.start).getHours())}:${pad(new Date(d.start).getMinutes())}` : ''}"></div>
+    <div class="row"><div class="grow">Duur</div><input type="number" inputmode="numeric" id="log-dur" value="${d.duration ?? ''}" placeholder="${d.live ? 'automatisch' : 'min'}" style="width:110px"><span class="muted">&nbsp;min</span></div>
+  </div>
+  <div class="list-header">Hoe zwaar voelde de training?</div>
+  <div class="card flat rpe">
+    <div class="rpe-top"><span class="rpe-v" data-lrpe-v>${d.rpe ?? '–'}</span><span class="rpe-l" data-lrpe-l>${d.rpe != null ? RPE_LABELS[d.rpe] : 'Sleep om in te vullen (5 = normaal)'}</span></div>
+    <input type="range" min="0" max="10" step="1" value="${d.rpe ?? 5}" id="log-rpe" class="slider${d.rpe == null ? ' unset' : ''}">
+    <div class="rpe-scale"><span>0 rust</span><span>5 normaal zwaar</span><span>10 max</span></div>
+  </div>
   <p class="small muted mt">Noteer alleen je topset. Leeg = je vorige topset (grijs). Bodyweight: zet “BW” in de naam; extra gewicht (bijv. dips +20) vul je in als kg.</p>
   <div class="list-header">Snel plakken</div>
   <textarea class="notes" id="quick" style="min-height:90px" placeholder="Chest press 80kg 8 reps&#10;Lat pulldown 87kg 2 sets 8 reps"></textarea>
@@ -1252,6 +1297,7 @@ function viewSettings() {
 
   <div class="list-header">Data</div>
   <div class="list">
+    <button class="row tap" data-act="share-claude"><div class="badge" style="background:var(--accent)">${I.doc}</div><div class="grow"><div class="title">Deel met Claude</div><div class="sub">Kopieert een anonieme samenvatting van 14 dagen</div></div><span class="chev">${I.chev}</span></button>
     <button class="row tap" data-act="export"><div class="grow">Exporteer back-up (JSON)</div><span class="chev">${I.chev}</span></button>
     <label class="row tap"><div class="grow">Importeer back-up</div><input type="file" accept="application/json,.json" data-act="import-backup" style="display:none"><span class="chev">${I.chev}</span></label>
     <button class="row tap" data-go="#/setup"><div class="grow">Koppeling (Google Client ID)</div><span class="chev">${I.chev}</span></button>
@@ -1644,6 +1690,15 @@ function readDraftFromDom() {
   const name = document.getElementById('log-name');
   if (date) d.date = date.value;
   if (name) d.name = name.value.trim();
+  const st = document.getElementById('log-start');
+  if (st?.value && d.date) {
+    const ns = new Date(`${d.date}T${st.value}:00`).getTime();
+    if (!d.start || Math.abs(ns - d.start) >= 60000) { d.start = ns; }
+  }
+  const du = document.getElementById('log-dur');
+  if (du) d.duration = du.value === '' ? null : clamp(Math.round(Number(du.value)), 1, 600);
+  const rp = document.getElementById('log-rpe');
+  if (rp && !rp.classList.contains('unset')) d.rpe = Number(rp.value);
   document.querySelectorAll('.ex-edit').forEach((row) => {
     const i = +row.dataset.i;
     const e = d.exercises[i];
@@ -1655,6 +1710,12 @@ function readDraftFromDom() {
       else e[f] = inp.value === '' ? null : Number(inp.value);
     }
   });
+  saveDraftLS();
+}
+
+function elapsedText(start) {
+  const m = Math.max(0, Math.floor((Date.now() - start) / 60000));
+  return `${Math.floor(m / 60)}:${pad(m % 60)}`;
 }
 
 function readTplFromDom() {
@@ -1797,13 +1858,16 @@ const actions = {
     const t = activeTemplates(S.strength).find((x) => x.id === el.dataset.id);
     if (!t) return;
     const date = S.editDraft?.date;
-    S.editDraft = { ...draftFromTemplate(t, date), _for: 'new' };
+    const live = date === today();
+    S.editDraft = { ...draftFromTemplate(t, date), _for: 'new', ...(live ? { start: S.editDraft?.start || Date.now(), live: true } : {}) };
+    saveDraftLS();
     render();
   },
   'start-template'(el) {
     const t = activeTemplates(S.strength).find((x) => x.id === el.dataset.id);
     if (!t) return;
-    S.editDraft = { ...draftFromTemplate(t, today()), _for: 'new' };
+    S.editDraft = { ...draftFromTemplate(t, today()), _for: 'new', start: Date.now(), live: true };
+    saveDraftLS();
     location.hash = '#/log/new';
   },
   'toggle-done'(el) {
@@ -1814,6 +1878,7 @@ const actions = {
     const ck = row.querySelector('.ck');
     ck.classList.toggle('on', on);
     ck.innerHTML = on ? I.check : '';
+    readDraftFromDom();
     const n = document.querySelectorAll('.ex-edit.chk[data-done="1"]').length;
     const c = document.querySelector('[data-done-count]');
     if (c) c.textContent = `${n} afgevinkt.`;
@@ -1841,7 +1906,11 @@ const actions = {
     }).filter((e) => e.reps || e.sets);
     if (!exercises.length) { toast('Vink minstens één oefening af'); return; }
     if (!d.date) { toast('Kies een datum'); return; }
-    const { _for, ...clean } = d;
+    const { _for, live, ...clean } = d;
+    if (live && clean.start && clean.duration == null && clean.date === today()) clean.duration = clamp(Math.round((Date.now() - clean.start) / 60000), 1, 300);
+    if (clean.start && clean.date && ymd(new Date(clean.start)) !== clean.date) {
+      const t = new Date(clean.start); clean.start = new Date(`${clean.date}T${pad(t.getHours())}:${pad(t.getMinutes())}:00`).getTime();
+    }
     clean.exercises = exercises;
     clean.name = clean.name || 'Training';
     clean.updatedAt = Date.now();
@@ -1857,12 +1926,25 @@ const actions = {
         if (extra.length) { t.exercises.push(...extra.map(({ note, ...e }) => e)); t.updatedAt = Date.now(); }
       }
     });
-    S.editDraft = null;
+    S.editDraft = null; S.draftRestored = false;
+    clearDraftLS();
     toast('Training bewaard');
     location.hash = `#/session/${clean.id}`;
   },
+  async 'share-claude'() {
+    const pts = loadSeries(today());
+    const txt = buildShare({ computed: S.computed, strength: S.strength, settings: S.settings, profile: S.profile, syncLog: S.syncLog, hrMethod: await store.kv.get('hrMethod'), healthspan: userAge() ? healthspan().hs : null, loadPoint: pts[pts.length - 1], version: 'v17' });
+    const msg = `Pulse-data (laatste 14 dagen) — check de belasting:\n${txt}`;
+    try { await navigator.clipboard.writeText(msg); toast('Gekopieerd — plak het in je chat met Claude'); }
+    catch {
+      openSheet(`<div class="sh-head"><h2>Deel met Claude</h2><div class="eyebrow">Selecteer alles en kopieer</div></div><textarea class="notes mt" style="min-height:300px" readonly>${esc(msg)}</textarea>`);
+      setTimeout(() => { const t = document.querySelector('.sheet textarea'); t?.focus(); t?.select(); }, 300);
+    }
+  },
+  'discard-draft'() { clearDraftLS(); S.editDraft = null; S.draftRestored = false; location.hash = '#/strength'; },
   async 'delete-log'() {
     if (!confirm('Deze training verwijderen?')) return;
+    clearDraftLS();
     const id = S.editDraft.id;
     await saveStrength((doc) => {
       const s = doc.sessions.find((x) => x.id === id);
@@ -2048,6 +2130,12 @@ document.addEventListener('input', (ev) => {
     refreshEstimate();
     return;
   }
+  if (el.id === 'log-rpe') {
+    el.classList.remove('unset');
+    const v = document.querySelector('[data-lrpe-v]'); const l = document.querySelector('[data-lrpe-l]');
+    if (v) v.textContent = el.value; if (l) l.textContent = RPE_LABELS[Number(el.value)];
+  }
+  if (S.editDraft && el.closest('.content') && parseRoute().name === 'log') setTimeout(readDraftFromDom, 0);
   if ((el.dataset?.f === 'weight' || el.dataset?.f === 'reps') && el.closest('.ex-edit.chk')) {
     const row = el.closest('.ex-edit.chk');
     if (row.dataset.done !== '1') {
@@ -2099,14 +2187,13 @@ async function boot() {
     if (store.isDemo()) { store.setDemo(false); await loadAll(); }
     // Tweede (stille) sleutel voor Drive-back-up en je naam/foto.
     if (!auth.getToken('drive') && !auth.driveDisabled() && auth.canTrySilent('drive')) { auth.login({ kind: 'drive', silent: true, returnTo: redirect.returnTo }); return; }
-    await runSync({ interactive: false });
+    await quickThenFull();
   } else if (redirect && redirect.kind === 'drive') {
     if (redirect.ok) auth.setDriveDisabled(false);
-    if (auth.getToken('health')) await runSync({ interactive: false });
+    await quickThenFull();
   } else if (!store.isDemo() && auth.hasEverLoggedIn()) {
-    const stale = !S.lastSyncAt || Date.now() - S.lastSyncAt > 15 * 60000;
-    if (stale && auth.getToken('health')) runSync({ interactive: false });
-    else if (stale && auth.getClientId() && auth.canTrySilent('health')) auth.login({ silent: true });
+    if (auth.getToken('health')) quickThenFull();
+    else if (auth.getClientId() && auth.canTrySilent('health')) auth.login({ silent: true });
   }
   S.lastSyncAt = await store.kv.get('lastSyncAt');
   S.syncLog = await store.kv.get('syncLog');
@@ -2118,12 +2205,21 @@ boot().catch((e) => {
 });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then((reg) => reg.update?.()).catch(() => {});
+  // Nieuwe versie actief → één keer herladen (niet midden in een formulier of sheet).
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) return;
+    const tryReload = () => {
+      if (isSheetOpen() || ['log', 'import', 'template-edit'].includes(parseRoute().name)) { setTimeout(tryReload, 5000); return; }
+      location.reload();
+    };
+    tryReload();
+  });
 }
 
 // Bij terugkeren naar de app (bijv. vanuit achtergrond): ververs als data oud is.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || store.isDemo()) return;
-  if (auth.getToken('health') && S.lastSyncAt && Date.now() - S.lastSyncAt > 15 * 60000) runSync({ interactive: false, quiet: true });
-  else minuteTick();
+  if (auth.getToken('health')) quickThenFull(); else minuteTick();
 });

@@ -223,18 +223,18 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
     }
   };
 
-  onProgress('Profiel ophalen…', 0.02);
-  if (getToken('drive')) {
-    try {
-      const u = await getUserInfo();
-      setUser({ name: u.name, email: u.email, picture: u.picture });
-    } catch (e) { console.warn('userinfo', e); }
+  onProgress('Ophalen…', 0.05);
+  const tasks = [];
+  const lastProfile = (await kv.get('profileAt')) || 0;
+  if (full || Date.now() - lastProfile > 12 * 3600000) {
+    if (getToken('drive')) tasks.push(getUserInfo().then((u) => setUser({ name: u.name, email: u.email, picture: u.picture })).catch((e) => console.warn('userinfo', e)));
+    tasks.push(step('Profiel', async () => {
+      const p = await getProfile();
+      await kv.set('profile', { age: p.age ?? null });
+      await kv.set('profileAt', Date.now());
+      return 1;
+    }));
   }
-  await step('Profiel', async () => {
-    const p = await getProfile();
-    await kv.set('profile', { age: p.age ?? null });
-    return 1;
-  });
 
   const dfilter = (field) => `${field}.date >= "${from}" AND ${field}.date < "${toExcl}"`;
   const daily = [
@@ -262,10 +262,8 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
       return v.date;
     }],
   ];
-  let k = 0;
   for (const [label, type, field, apply] of daily) {
-    onProgress(`${label}…`, 0.05 + 0.03 * k++);
-    await step(label, async () => {
+    tasks.push(step(label, async () => {
       const pts = await listDataPoints(type, dfilter(field));
       let n = 0;
       for (const dp of pts) {
@@ -274,11 +272,10 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
         if (date && out[date]) { Object.assign(out[date], tmp); n++; }
       }
       return n;
-    });
+    }));
   }
 
-  onProgress('Slaap…', 0.22);
-  await step('Slaap', async () => {
+  tasks.push(step('Slaap', async () => {
     const pts = await listDataPoints('sleep', `sleep.interval.civil_end_time >= "${from}" AND sleep.interval.civil_end_time < "${toExcl}"`, 25, 20);
     const per = {};
     for (const dp of pts) {
@@ -292,10 +289,9 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
       out[date].naps = rest.filter((n) => n.start !== main.start).map((n) => ({ start: n.start, end: n.end, asleep: n.asleep }));
     }
     return pts.length;
-  });
+  }));
 
-  onProgress('Activiteiten…', 0.28);
-  await step('Activiteiten', async () => {
+  tasks.push(step('Activiteiten', async () => {
     const pts = await listDataPoints('exercise', `exercise.interval.civil_start_time >= "${from}" AND exercise.interval.civil_start_time < "${toExcl}"`, 25, 20);
     for (const dp of pts) {
       const e = convertExercise(dp);
@@ -303,18 +299,17 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
     }
     for (const d of Object.values(out)) d.exercises.sort((a, b) => a.start - b.start);
     return pts.length;
-  });
+  }));
 
-  onProgress('Stappen…', 0.32);
-  await step('Stappen', async () => {
+  tasks.push(step('Stappen', async () => {
     const pts = await rollupChunked('steps', from, toExcl);
     for (const p of pts) {
       const date = dateOf(p.civilStartTime?.date);
       if (date && out[date]) out[date].steps = toNum(p.steps?.countSum);
     }
     return pts.length;
-  });
-  await step('Zoneminuten', async () => {
+  }));
+  tasks.push(step('Zoneminuten', async () => {
     const pts = await rollupChunked('active-zone-minutes', from, toExcl);
     for (const p of pts) {
       const date = dateOf(p.civilStartTime?.date);
@@ -322,7 +317,9 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
       if (date && out[date] && a) out[date].azm = { fatBurn: toNum(a.sumInFatBurnHeartZone) || 0, cardio: (toNum(a.sumInCardioHeartZone) || 0) / 2, peak: (toNum(a.sumInPeakHeartZone) || 0) / 2 };
     }
     return pts.length;
-  });
+  }));
+  // Wacht op alle dagwaarden tegelijk (hartslag loopt hieronder parallel mee).
+  const dailyDone = Promise.all(tasks).then(() => onProgress('Hartslag…', 0.4));
 
   // Hartslag per minuut: alleen dagen die nog geen (complete) data hebben, plus vandaag en gisteren.
   const hrDates = dates.filter((d) => d >= hrFrom && (full || !existing[d]?.hr || d >= addDays(end, -1) || !existing[d]?.hrComplete));
@@ -330,13 +327,23 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
   let done = 0;
   let hrOk = 0, hrErr = null;
   hrMethod = hrMethod || (await kv.get('hrMethod')) || null;
-  await pool(hrDates, 2, async (d) => {
+  const hrWork = pool(hrDates, 3, async (d) => {
     const startMs = parseYmd(d).getTime();
     const endMs = parseYmd(addDays(d, 1)).getTime();
     try {
-      const pts = await fetchHrMinutes(startMs, Math.min(endMs, Date.now() + 60000));
+      // Incrementeel: alleen vanaf de laatst bekende minuut (−20 min marge) ophalen.
+      const prevHr = !full && existing[d]?.hr?.length ? existing[d].hr : null;
+      let last = prevHr ? prevHr.length - 1 : -1;
+      while (last > 0 && !prevHr[last]) last--;
+      const fromMs = prevHr && last > 0 ? startMs + Math.max(0, last - 20) * 60000 : startMs;
+      const pts = await fetchHrMinutes(fromMs, Math.min(endMs, Date.now() + 60000));
       const r = convertHr(pts, startMs);
-      out[d].hr = r.hr; out[d].hrMax = r.hrMax; out[d].hrComplete = d < end && r.hrCount > 0;
+      if (prevHr && last > 0) {
+        const merged = [...prevHr];
+        (r.hr || []).forEach((v, i) => { if (v) { while (merged.length <= i) merged.push(0); merged[i] = v; } });
+        out[d].hr = merged; out[d].hrMax = Math.max(existing[d].hrMax || 0, r.hrMax || 0) || null;
+      } else { out[d].hr = r.hr; out[d].hrMax = r.hrMax; }
+      out[d].hrComplete = d < end && !!out[d].hr && Date.now() > endMs + 2 * 3600000;
       hrOk++;
     } catch (e) {
       if (e instanceof AuthError && e.kind === 'health') throw e;
@@ -345,6 +352,7 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
     done++;
     onProgress(`Hartslag ${done}/${hrDates.length}…`, 0.35 + 0.6 * (done / hrDates.length));
   });
+  await Promise.all([dailyDone, hrWork]);
   if (hrMethod) await kv.set('hrMethod', hrMethod);
   log.push(hrErr && !hrOk ? { label: 'Hartslag', ok: hrOk > 0, count: hrOk, error: hrErr.message, status: hrErr.status, detail: hrErr.raw || String(hrErr.body || '').slice(0, 400) } : { label: 'Hartslag', ok: true, count: hrOk });
 

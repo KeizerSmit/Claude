@@ -15,12 +15,12 @@ export const LOWER = ['quads', 'hamstrings', 'billen', 'heupen', 'kuiten'];
 export const LIBRARY = [
   { id: 'incline-press', name: 'Incline press', re: /(incline|schuin)(?!.*curl)/, g: { borst: .55, schouders: .25, triceps: .2 }, mass: 1.0 },
   { id: 'decline-press', name: 'Decline press', re: /decline/, g: { borst: .7, triceps: .3 }, mass: 1.0 },
-  { id: 'reverse-fly', name: 'Reverse fly', re: /(reverse|rear|achter).*(fly|pec|delt|butterfly|schouder)|rear ?delt/, g: { schouders: .8, rug: .2 }, mass: 0.4 },
+  { id: 'reverse-fly', name: 'Reverse fly', re: /(reverse|rear|achter).*(fly|pec|delt|butterfly|schouder)|rear ?delt/, g: { schouders: .8, rug: .2 }, mass: 0.35 },
   { id: 'pec-deck', name: 'Pec deck / fly', re: /pec ?deck|butterfly|\bfly(es|s)?\b|flies|cable ?cross|crossover|chest ?fly/, g: { borst: 1 }, mass: 0.6 },
   { id: 'dips', name: 'Dips', re: /\bdips?\b/, g: { triceps: .5, borst: .4, schouders: .1 }, mass: 0.8 },
   { id: 'push-up', name: 'Push-up', re: /push.?ups?|opdruk/, g: { borst: .6, triceps: .25, schouders: .15 }, mass: 0.7 },
   { id: 'shoulder-press', name: 'Shoulder press', re: /shoulder ?press|schouder ?(press|druk)|overhead ?press|milit|\bohp\b|arnold/, g: { schouders: .7, triceps: .3 }, mass: 0.9 },
-  { id: 'lateral-raise', name: 'Lateral raise', re: /lateral|lat\.? ?raise|side ?raise|zijwaarts|zij ?raise|y.?raise/, g: { schouders: 1 }, mass: 0.4 },
+  { id: 'lateral-raise', name: 'Lateral raise', re: /lateral|lat\.? ?raise|side ?raise|zijwaarts|zij ?raise|y.?raise/, g: { schouders: 1 }, mass: 0.35 },
   { id: 'front-raise', name: 'Front raise', re: /front ?raise/, g: { schouders: 1 }, mass: 0.35 },
   { id: 'upright-row', name: 'Upright row', re: /upright/, g: { schouders: .7, rug: .3 }, mass: 0.5 },
   { id: 'face-pull', name: 'Face pull', re: /face ?pull/, g: { schouders: .6, rug: .4 }, mass: 0.4 },
@@ -31,20 +31,20 @@ export const LIBRARY = [
   { id: 'pullover', name: 'Pullover', re: /pull ?over/, g: { rug: .8, borst: .2 }, mass: 0.6 },
   { id: 'row', name: 'Row', re: /\brows?\b|roei|t.?bar|rowing/, g: { rug: .7, biceps: .2, schouders: .1 }, mass: 1.0 },
   { id: 'back-extension', name: 'Back extension', re: /back ?ext|hyper ?ext|rugstrek|lower ?back/, g: { rug: .4, billen: .3, hamstrings: .3 }, mass: 0.6 },
-  { id: 'leg-curl', name: 'Leg curl', re: /leg ?curl|hamstring ?curl|(lying|seated|liggend|zittend|nordic).*curl|beenbuig|ham ?curl/, g: { hamstrings: 1 }, mass: 0.6 },
-  { id: 'leg-extension', name: 'Leg extension', re: /leg ?ext|beenstrek|quad ?ext/, g: { quads: 1 }, mass: 0.7 },
+  { id: 'leg-curl', name: 'Leg curl', re: /leg ?curl|hamstring ?curl|(lying|seated|liggend|zittend|nordic).*curl|beenbuig|ham ?curl/, g: { hamstrings: 1 }, mass: 0.75 },
+  { id: 'leg-extension', name: 'Leg extension', re: /leg ?ext|beenstrek|quad ?ext/, g: { quads: 1 }, mass: 0.8 },
   { id: 'wrist-curl', name: 'Wrist curl', re: /wrist|pols|forearm|onderarm/, g: { onderarmen: 1 }, mass: 0.25 },
-  { id: 'hammer-curl', name: 'Hammer curl', re: /hammer ?curls?/, g: { biceps: .7, onderarmen: .3 }, mass: 0.4 },
-  { id: 'biceps-curl', name: 'Biceps curl', re: /curl|biceps?/, g: { biceps: 1 }, mass: 0.4 },
-  { id: 'triceps', name: 'Triceps', re: /tri(ceps?)?\b|pushdown|push ?down|pressdown|skull|french|overhead ?ext|tricep/, g: { triceps: 1 }, mass: 0.45 },
+  { id: 'hammer-curl', name: 'Hammer curl', re: /hammer ?curls?/, g: { biceps: .7, onderarmen: .3 }, mass: 0.35 },
+  { id: 'biceps-curl', name: 'Biceps curl', re: /curl|biceps?/, g: { biceps: 1 }, mass: 0.35 },
+  { id: 'triceps', name: 'Triceps', re: /tri(ceps?)?\b|pushdown|push ?down|pressdown|skull|french|overhead ?ext|tricep/, g: { triceps: 1 }, mass: 0.38 },
   { id: 'calf-raise', name: 'Calf raise', re: /calf|calves|kuit/, g: { kuiten: 1 }, mass: 0.4 },
-  { id: 'leg-press', name: 'Leg press', re: /leg ?press|been ?(pers|press)|legpress/, g: { quads: .55, billen: .3, hamstrings: .15 }, mass: 1.4 },
-  { id: 'hack-squat', name: 'Hack squat', re: /hack|pendulum|v.?squat|belt ?squat/, g: { quads: .65, billen: .3, hamstrings: .05 }, mass: 1.4 },
-  { id: 'lunge', name: 'Lunge / split squat', re: /lunge|bulgarian|split ?squat|uitval|step.?ups?/, g: { quads: .5, billen: .4, hamstrings: .1 }, mass: 1.2 },
-  { id: 'squat', name: 'Squat', re: /squat|kniebuig|hurk/, g: { quads: .5, billen: .3, hamstrings: .1, core: .1 }, mass: 1.6 },
-  { id: 'rdl', name: 'Romanian deadlift', re: /\brdl\b|romanian|roemeens|stiff/, g: { hamstrings: .5, billen: .35, rug: .15 }, mass: 1.4 },
-  { id: 'deadlift', name: 'Deadlift', re: /dead ?lift|\bdl\b/, g: { hamstrings: .3, billen: .3, rug: .3, quads: .1 }, mass: 1.8 },
-  { id: 'hip-thrust', name: 'Hip thrust', re: /hip ?thrust|glute ?bridge|bridge/, g: { billen: .8, hamstrings: .2 }, mass: 1.1 },
+  { id: 'leg-press', name: 'Leg press', re: /leg ?press|been ?(pers|press)|legpress/, g: { quads: .55, billen: .3, hamstrings: .15 }, mass: 1.9 },
+  { id: 'hack-squat', name: 'Hack squat', re: /hack|pendulum|v.?squat|belt ?squat/, g: { quads: .65, billen: .3, hamstrings: .05 }, mass: 1.9 },
+  { id: 'lunge', name: 'Lunge / split squat', re: /lunge|bulgarian|split ?squat|uitval|step.?ups?/, g: { quads: .5, billen: .4, hamstrings: .1 }, mass: 1.6 },
+  { id: 'squat', name: 'Squat', re: /squat|kniebuig|hurk/, g: { quads: .5, billen: .3, hamstrings: .1, core: .1 }, mass: 2.1 },
+  { id: 'rdl', name: 'Romanian deadlift', re: /\brdl\b|romanian|roemeens|stiff/, g: { hamstrings: .5, billen: .35, rug: .15 }, mass: 1.8 },
+  { id: 'deadlift', name: 'Deadlift', re: /dead ?lift|\bdl\b/, g: { hamstrings: .3, billen: .3, rug: .3, quads: .1 }, mass: 2.3 },
+  { id: 'hip-thrust', name: 'Hip thrust', re: /hip ?thrust|glute ?bridge|bridge/, g: { billen: .8, hamstrings: .2 }, mass: 1.5 },
   { id: 'abductor', name: 'Abductor', re: /abduct|buitenkant/, g: { heupen: .5, billen: .5 }, mass: 0.5 },
   { id: 'adductor', name: 'Adductor', re: /adduct|binnenkant/, g: { heupen: 1 }, mass: 0.5 },
   { id: 'glute', name: 'Glute machine', re: /glute|kickback|billen/, g: { billen: 1 }, mass: 0.5 },
@@ -327,6 +327,8 @@ export function computeLoads(sessions, settings) {
     const groups = {};
     const hardSets = {};
     const exs = [];
+    // Hoe zwaar voelde de training (0–10)? 5 = normaal; zwaarder/lichter schaalt de spierbelasting.
+    const rpeF = s.rpe != null ? clamp(0.6 + 0.08 * s.rpe, 0.6, 1.4) : 1;
     for (const e of s.exercises || []) {
       const key = exKey(e.name);
       const lib = matchExercise(e.name, overrides);
@@ -339,7 +341,7 @@ export function computeLoads(sessions, settings) {
       const sets = e.sets || base[key]?.sets || defaultSets;
       const repF = clamp(0.75 + (e.reps || 8) * 0.025, 0.8, 1.25);
       const intensity = 0.55 + 0.45 * ri * ri;
-      const l = sets * lib.mass * intensity * repF;
+      const l = sets * lib.mass * intensity * repF * rpeF;
       load += l;
       for (const [g, w] of Object.entries(lib.g)) {
         groups[g] = (groups[g] || 0) + l * w;
@@ -347,7 +349,7 @@ export function computeLoads(sessions, settings) {
       }
       exs.push({ ...e, key, lib: lib.id, libName: lib.name, e1rm: est, ri, load: l, isPR: isPR && prevBest != null, firstTime: prevBest == null, sets });
     }
-    result[s.id] = { load, groups, hardSets, exercises: exs };
+    result[s.id] = { load, groups, hardSets, exercises: exs, rpe: s.rpe ?? null, rpeFactor: rpeF };
   }
   return result;
 }
