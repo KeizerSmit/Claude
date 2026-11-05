@@ -9,7 +9,7 @@ const r1 = (v) => (v == null || isNaN(v) ? null : Math.round(v * 10) / 10);
 const r0 = (v) => (v == null || isNaN(v) ? null : Math.round(v));
 const hm = (ms) => (ms ? new Date(ms).toTimeString().slice(0, 5) : null);
 
-export function buildShare({ computed, strength, settings, profile, syncLog, hrMethod, healthspan, loadPoint, version }) {
+export function buildShare({ computed, strength, settings, profile, syncLog, hrMethod, healthspan, loadPoint, version, extras = {} }) {
   const days = lastDays(computed.byDate, today(), 14).filter((d) => d.raw || d.strain?.sessions?.length || d.strain?.manual?.length);
   const out = {
     app: 'pulse', v: version, generated: new Date().toISOString().slice(0, 16),
@@ -39,6 +39,7 @@ export function buildShare({ computed, strength, settings, profile, syncLog, hrM
       };
     }),
     templates: (strength.templates || []).filter((t) => !t.deleted).map((t) => t.name),
+    ...extras,
   };
   return JSON.stringify(out);
 }

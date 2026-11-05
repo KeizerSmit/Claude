@@ -1321,6 +1321,20 @@ function prevExercise(key, sess) {
 }
 
 /** Samenvatting direct na het opslaan van een training. */
+function shareExtras() {
+  const r1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
+  const fm = forecastModel();
+  const wk = weekGoalValues(weekStartOf(today()));
+  return {
+    volume7d: Object.fromEntries(Object.entries(setsPerGroup(addDays(today(), -6), today())).map(([g, v]) => [g, r1(v)])),
+    goals: { target: goalsOf(), thisWeek: { strength: wk.strength, mvpa: Math.round(wk.mvpa), sleep: wk.sleep && Math.round(wk.sleep), steps: wk.steps && Math.round(wk.steps) } },
+    forecast: fm ? { n: fm.n, perHourSleep: r1(fm.perHourSleep), perStrain: r1(fm.perStrain), rse: r1(fm.rse) } : null,
+    rpeCal: S.computed.rpeCal || null,
+    wear: lastDays(S.computed.byDate, today(), 7).map((d) => { const w = wearOf(d.date); return w ? Math.round(w.pct * 100) : null; }),
+    flags: (S.strength.flags || []).filter((f) => !f.deleted && f.date >= addDays(today(), -30)).map((f) => [f.date, f.kind]),
+  };
+}
+
 function workoutSummarySheet(id) {
   const s = S.strength.sessions.find((x) => x.id === id);
   const r = S.computed.loads[id];
@@ -2709,7 +2723,7 @@ const actions = {
   },
   async 'share-claude'() {
     const pts = loadSeries(today());
-    const txt = buildShare({ computed: S.computed, strength: S.strength, settings: S.settings, profile: S.profile, syncLog: S.syncLog, hrMethod: await store.kv.get('hrMethod'), healthspan: userAge() ? healthspan().hs : null, loadPoint: pts[pts.length - 1], version: APP_VERSION });
+    const txt = buildShare({ computed: S.computed, strength: S.strength, settings: S.settings, profile: S.profile, syncLog: S.syncLog, hrMethod: await store.kv.get('hrMethod'), healthspan: userAge() ? healthspan().hs : null, loadPoint: pts[pts.length - 1], version: APP_VERSION, extras: shareExtras() });
     const msg = `Pulse-data (laatste 14 dagen) — check de belasting:\n${txt}`;
     try { await navigator.clipboard.writeText(msg); toast('Gekopieerd — plak het in je chat met Claude'); }
     catch {
