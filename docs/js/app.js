@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Hartslag per training', 'In een training zie je je hartslag tijdens de sessie en hoeveel minuten je in elke zone zat.'],
   ['Verwachting morgen', 'Vanaf 17:00 op Vandaag (en altijd op het slaapscherm): je verwachte herstel van morgen bij verschillende bedtijden, geleerd uit je eigen data.'],
   ['Samenvatting na je training', 'Na het opslaan: je records, hoeveel oefeningen beter gingen dan vorige keer en je spierbelasting.'],
   ['Vergelijk met vorige keer', 'In een training zie je per oefening je vorige topset en of je vooruit ging, en hoeveel zwaarder de hele training was dan de vorige keer.'],
@@ -1363,6 +1364,28 @@ function workoutSummarySheet(id) {
   </div>`;
 }
 
+/** Hartslag tijdens de training, met tijd per zone (% van je max). */
+function sessionHrCard(s, m) {
+  const sm = m?.strain?.sessions?.find((x) => x.id === s.id);
+  const act = sm?.activity;
+  const raw = m?.raw;
+  if (!act?.start || !act?.end || !raw?.hr?.length) return '';
+  const from = Math.max(0, Math.floor((act.start - raw.hrStart) / 60000) - 10);
+  const to = Math.min(raw.hr.length, Math.ceil((act.end - raw.hrStart) / 60000) + 10);
+  if (to - from < 10) return '';
+  const max = S.computed.maxHr;
+  const zones = [0, 0, 0, 0, 0];
+  const i0 = Math.floor((act.start - raw.hrStart) / 60000), i1 = Math.ceil((act.end - raw.hrStart) / 60000);
+  for (let i = i0; i < i1; i++) { const v = raw.hr[i]; if (!v) continue; const f = v / max; if (f >= 0.9) zones[4]++; else if (f >= 0.8) zones[3]++; else if (f >= 0.7) zones[2]++; else if (f >= 0.6) zones[1]++; else if (f >= 0.5) zones[0]++; }
+  const tot = zones.reduce((a, b) => a + b, 0);
+  return `<div class="section-title">Hartslag tijdens training</div>
+  <div class="card">${hrDay(raw, { maxHr: max, activities: [act], fromMin: from, toMin: to })}
+    ${tot ? `<div class="mt">${stackBar(zones.map((v, i) => ({ value: v, color: `var(--z${i + 1})`, label: `zone ${i + 1}` })), { height: 10 })}</div>
+    <div class="legend">${zones.map((v, i) => (v ? `<span><i style="background:var(--z${i + 1})"></i>Z${i + 1} ${v} min</span>` : '')).join('')}</div>` : ''}
+    ${act.fromLog ? '' : `<p class="tiny muted" style="margin:8px 0 0">Gekoppeld aan Fitbit-workout “${esc(act.name || '')}”.</p>`}
+  </div>`;
+}
+
 function viewSession(id) {
   const s = S.strength.sessions.find((x) => x.id === id);
   if (!s) return `${navbar('Training', '#/strength')}<div class="content card muted">Niet gevonden.</div>`;
@@ -1387,6 +1410,7 @@ function viewSession(id) {
       ${stat('Hartslag', hw?.avg ? num(hw.avg) : '–', hw?.avg ? 'bpm' : '', hw?.max ? `max ${num(hw.max)}` : 'geen meting')}
     </div>`;
   })()}
+  ${sessionHrCard(s, m)}
   <div class="section-title">Topsets</div>
   <div class="list">${r.exercises.map((e) => `<button class="row tap wrap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)} ${e.isPR ? '<span class="pill pr">PR</span>' : ''}</div><div class="sub">${esc(e.libName)}${e.e1rm ? ` · e1RM ${num(e.e1rm, 1)} kg` : ''} · belasting ${num(e.load, 1)}${e.note ? ` · ${esc(e.note)}` : ''}</div></div><div class="val"><b style="color:var(--text)">${esc(setText(e))}</b>${(() => { const pv = prevExercise(e.key, s); if (!pv) return '<small class="vs new">eerste keer</small>'; const d = (e.e1rm || 0) - (pv.e1rm || 0); return `<small class="vs ${d > 0.05 ? 'up' : d < -0.05 ? 'down' : ''}">${d > 0.05 ? '▲' : d < -0.05 ? '▼' : '='} vorige: ${esc(setText({ ...pv, sets: null }))}</small>`; })()}</div></button>`).join('')}</div>
   <div class="section-title">Spiergroepen</div>
