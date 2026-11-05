@@ -907,3 +907,14 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .wo-sum h2 { font-size: 28px; margin: 4px 0 0; }
 .center { text-align: center; }
 @keyframes wo-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* ---------- verwachting morgen ---------- */
+.fc .card-head .t svg { width: 16px; height: 16px; vertical-align: -2px; margin-right: 4px; color: var(--sleep); }
+.fc-top { display: flex; align-items: center; gap: 14px; }
+.fc-big { font-family: var(--font-round); font-size: 44px; font-weight: 700; line-height: 1; white-space: nowrap; }
+.fc-big small { font-size: 20px; color: var(--text2); }
+.fc-opts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.fc-opts > div { background: var(--track); border-radius: 12px; padding: 8px 6px; text-align: center; }
+.fc-opts > div.on { box-shadow: inset 0 0 0 1.5px var(--sleep); }
+.fc-opts span { display: block; font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-opts b { font-family: var(--font-round); font-size: 18px; }

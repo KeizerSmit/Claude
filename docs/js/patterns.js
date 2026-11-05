@@ -57,3 +57,51 @@ export function recoveryPatterns(byDate, end, days = 120) {
   }
   return { list: res.sort((a, b) => (b.enough - a.enough) || Math.abs(b.diff || 0) - Math.abs(a.diff || 0)), pairs: pairs.length };
 }
+
+/** Kleinste-kwadraten (normaalvergelijkingen) met ridge-regularisatie. X: rijen met features, y: doel. */
+function ols(X, y, lambda = 1) {
+  const k = X[0].length;
+  const A = Array.from({ length: k }, () => new Array(k).fill(0));
+  const b = new Array(k).fill(0);
+  for (let r = 0; r < X.length; r++) for (let i = 0; i < k; i++) { b[i] += X[r][i] * y[r]; for (let j = 0; j < k; j++) A[i][j] += X[r][i] * X[r][j]; }
+  for (let i = 1; i < k; i++) A[i][i] += lambda; // intercept niet straffen
+  // Gauss-eliminatie
+  for (let i = 0; i < k; i++) {
+    let p = i; for (let r = i + 1; r < k; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+    [A[i], A[p]] = [A[p], A[i]]; [b[i], b[p]] = [b[p], b[i]];
+    if (Math.abs(A[i][i]) < 1e-9) return null;
+    for (let r = i + 1; r < k; r++) { const f = A[r][i] / A[i][i]; for (let j = i; j < k; j++) A[r][j] -= f * A[i][j]; b[r] -= f * b[i]; }
+  }
+  const w = new Array(k).fill(0);
+  for (let i = k - 1; i >= 0; i--) { let s = b[i]; for (let j = i + 1; j < k; j++) s -= A[i][j] * w[j]; w[i] = s / A[i][i]; }
+  return w;
+}
+
+/**
+ * Persoonlijk voorspelmodel voor het herstel van morgen:
+ * herstel(morgen) ≈ a + b·herstel(vandaag) + c·strain(vandaag) + d·slaapuren(komende nacht).
+ * Geeft null als er te weinig data is (< 30 paren).
+ */
+export function recoveryForecastModel(byDate, end, days = 150) {
+  const X = [], y = [];
+  for (let i = days; i >= 1; i--) {
+    const d0 = byDate[addDays(end, -i - 1)], d1 = byDate[addDays(end, -i)];
+    if (!d0?.recovery || !d1?.recovery || !d1.sleep || d0.flag === 'sick' || d1.flag === 'sick') continue;
+    X.push([1, d0.recovery.score / 10, (d0.strain?.score || 0), d1.sleep.asleep / 60]);
+    y.push(d1.recovery.score);
+  }
+  if (X.length < 30) return null;
+  const w = ols(X, y, 2);
+  if (!w) return null;
+  const pred = X.map((r) => r.reduce((a, v, i) => a + v * w[i], 0));
+  const res = y.map((v, i) => v - pred[i]);
+  const rse = sd(res) || 15;
+  return {
+    n: X.length, w, rse,
+    perHourSleep: w[3], perStrain: w[2],
+    predict(recToday, strainToday, sleepHours) {
+      const v = w[0] + w[1] * (recToday / 10) + w[2] * strainToday + w[3] * sleepHours;
+      return Math.max(1, Math.min(99, v));
+    },
+  };
+}

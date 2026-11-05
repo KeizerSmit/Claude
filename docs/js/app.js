@@ -14,12 +14,13 @@ import { computeHealthspan, healthspanHistory, INPUTS, vo2Ref } from './healthsp
 import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js';
 import { buildShare } from './share.js';
 import { recommendTraining, progressionTip } from './coach.js';
-import { recoveryPatterns } from './patterns.js';
+import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Verwachting morgen', 'Vanaf 17:00 op Vandaag (en altijd op het slaapscherm): je verwachte herstel van morgen bij verschillende bedtijden, geleerd uit je eigen data.'],
   ['Samenvatting na je training', 'Na het opslaan: je records, hoeveel oefeningen beter gingen dan vorige keer en je spierbelasting.'],
   ['Vergelijk met vorige keer', 'In een training zie je per oefening je vorige topset en of je vooruit ging, en hoeveel zwaarder de hele training was dan de vorige keer.'],
   ['Slimmer notities plakken', 'Plak je bijgewerkte notitie: de app laat per schema zien wat er verbeterd is (bijv. 87 → 89,5 kg) en logt het meteen als training van vandaag.'],
@@ -587,6 +588,7 @@ function viewToday(date) {
   ${t && parseYmd(date).getDay() === 1 ? `<button class="wk-entry glass" data-go="#/week/${addDays(date, -7)}"><span>${I.chart}</span><div><b>Je vorige week</b><small>Week ${isoWeek(addDays(date, -7))} in één oogopslag</small></div><span class="chev">${I.chev}</span></button>` : ''}
   ${m?.flag ? `<div class="card flag-card flag-${m.flag}"><div class="badge" style="background:${m.flag === 'sick' ? 'var(--red)' : 'var(--sleep)'}">${m.flag === 'sick' ? AI.health || I.heart : I.bed}</div><div class="grow"><div class="title">${m.flag === 'sick' ? 'Ziek-modus' : 'Rustdag'}</div><div class="sub">${m.flag === 'sick' ? 'Telt niet mee in je baseline · strain-doel max 6' : 'Strain-doel max 9 · herstel heeft voorrang'}</div></div><button class="btn small ghost" data-act="flag" data-v="${date}:">Uit</button></div>` : ''}
   ${coachCard(date)}
+  ${t ? forecastCard(date) : ''}
   ${t ? goalsCard() : ''}
   ${insightsCard}
   <div class="section-title">Activiteiten <button data-act="plus-activity" data-v="${date}">+ Toevoegen</button></div>
@@ -659,6 +661,7 @@ function openSheetFor(spec) {
   else if (kind === 'patterns') openSheet(patternsAboutSheet());
   else if (kind === 'volume') openSheet(volumeAboutSheet());
   else if (kind === 'goals') openSheet(goalsSheet());
+  else if (kind === 'forecast') openSheet(forecastAboutSheet());
   else if (kind === 'manual') openActivityLog({ id: rest[0] });
 }
 
@@ -864,6 +867,7 @@ function viewSleep(date) {
   ${advice ? `<div class="card"><div class="card-head"><span class="t">${I.bed} Vanavond</span></div>
     <div style="font-size:28px;font-weight:700">${fmtHM(advice.bed)}</div>
     <div class="small muted">Ga rond deze tijd naar bed om om ${esc(S.settings.wake)} op te staan met ${fmtHM(advice.need)} slaap (strain van vandaag meegerekend).</div></div>` : ''}
+  ${forecastCard(date, { force: true })}
   ${sleepDebtCard(date)}
   ${(() => {
     const nights = days14.map((d) => ({ date: d.date, start: d.sleep?.start || null, end: d.sleep?.end || null, go: `#/sleep/${d.date}`, color: d.date === date ? 'var(--sleep)' : 'color-mix(in srgb, var(--sleep) 60%, transparent)' }));
@@ -1938,6 +1942,43 @@ function goalsSheet() {
     <div class="row"><div class="grow"><div class="title">Stappen</div><div class="sub">gemiddeld per dag</div></div>${inp('steps', g.steps, 500, '')}</div>
   </div>
   <p class="small muted">Beweging telt alleen je hartslag-minuten boven 40% van je hartslagreserve (intensief dubbel) — klussen telt hier bewust niet mee, wel in je strain.</p>`;
+}
+
+let FC_CACHE = null;
+function forecastModel() {
+  if (FC_CACHE?.c === S.computed) return FC_CACHE.v;
+  FC_CACHE = { c: S.computed, v: recoveryForecastModel(S.computed.byDate, today()) };
+  return FC_CACHE.v;
+}
+
+/** Verwachting voor morgen bij verschillende bedtijden. */
+function forecastCard(date, { force = false } = {}) {
+  if (date !== today() || (!force && new Date().getHours() < 17)) return '';
+  const m = M(date);
+  const fm = forecastModel();
+  const adv = bedtimeAdvice(m, toMin(S.settings.wake));
+  if (!fm || !m?.recovery || !adv) return '';
+  const st = m.strain?.score || 0;
+  const eff = m.sleep?.efficiency || 0.9;
+  const sleepAt = (bedShift) => Math.max(3, (adv.inBed - bedShift) * eff / 60);
+  const opts = [[-60, '1 uur eerder'], [0, `om ${fmtHM(adv.bed)}`], [60, '1 uur later'], [120, '2 uur later']];
+  const vals = opts.map(([sh]) => fm.predict(m.recovery.score, st, sleepAt(sh)));
+  const main = Math.round(vals[1]);
+  const zc = recoveryColor(main);
+  return `<div class="card fc">
+    <div class="card-head"><span class="t">${I.bed} Verwachting morgen</span><button class="link-btn small" data-sheet="forecast">Hoe?</button></div>
+    <div class="fc-top"><div class="fc-big" style="color:${zc}">±${main}<small>%</small></div><div class="small muted">herstel als je <b>om ${fmtHM(adv.bed)}</b> gaat slapen (±${fmtHM(Math.round(sleepAt(0) * 60))} slaap). Marge ±${Math.round(fm.rse)}.</div></div>
+    <div class="fc-opts">${opts.map(([sh, l], i) => `<div class="${sh === 0 ? 'on' : ''}"><span>${l}</span><b style="color:${recoveryColor(vals[i])}">${Math.round(vals[i])}%</b></div>`).join('')}</div>
+    ${fm.perHourSleep > 1 ? `<p class="small muted" style="margin:10px 0 0">Bij jou is elk uur slaap gemiddeld <b>${num(fm.perHourSleep, 0)}%</b> herstel waard.</p>` : ''}
+  </div>`;
+}
+
+function forecastAboutSheet() {
+  const fm = forecastModel();
+  return `<div class="sh-head"><div class="eyebrow">Uitleg</div><h2>Verwachting morgen</h2></div>
+  <div class="card flat mt small"><p style="margin-top:0">Een eigen rekenmodel, geleerd uit <b>jouw</b> laatste ${fm?.n || 0} dagen: hoe hangt je herstel samen met je herstel van de dag ervoor, je strain en hoeveel je de nacht ervoor sliep?</p>
+  ${fm ? `<p>Bij jou: elk uur extra slaap ≈ <b>${fm.perHourSleep >= 0 ? '+' : ''}${num(fm.perHourSleep, 1)}%</b>, elk strainpunt ≈ <b>${fm.perStrain >= 0 ? '+' : ''}${num(fm.perStrain, 1)}%</b>.</p>` : ''}
+  <p style="margin-bottom:0">De marge (±${fm ? Math.round(fm.rse) : '–'}%) is groot: HRV schommelt ook door stress, alcohol, eten en toeval. Gebruik het als richting — vooral om te zien wat een uur eerder slapen oplevert.</p></div>`;
 }
 
 function coachCard(date) {

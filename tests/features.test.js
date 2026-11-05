@@ -86,3 +86,14 @@ test('strain-coach: TRIMP ↔ strain is omkeerbaar', async () => {
   const s30 = strainFromTrimp(30 * trimpPerMinute(0.62));
   assert.ok(s30 > 5 && s30 < 9, `strain ${s30}`);
 });
+
+test('verwachting morgen: meer slaap → hoger voorspeld herstel', async () => {
+  const { recoveryForecastModel } = await import('../docs/js/patterns.js');
+  const { days, strength } = generateDemo(150);
+  const { byDate } = computeAll(days, strength, SET, { age: 30 });
+  const fm = recoveryForecastModel(byDate, today());
+  assert.ok(fm && fm.n >= 30);
+  assert.ok(fm.predict(50, 12, 8) > fm.predict(50, 12, 6));
+  for (const v of [fm.predict(99, 0, 12), fm.predict(1, 21, 2)]) assert.ok(v >= 1 && v <= 99);
+  assert.equal(recoveryForecastModel({}, today()), null);
+});
