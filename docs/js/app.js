@@ -1,6 +1,6 @@
 import * as store from './store.js';
 import * as auth from './auth.js';
-import { syncAll, syncHeartNow } from './sync.js';
+import { syncAll, syncHeartNow, syncMinute } from './sync.js';
 import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp } from './metrics.js';
 import { parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
@@ -138,7 +138,9 @@ async function runSync({ full = false, interactive = true, quiet = false, todayO
 /** Opnieuw tekenen zonder de gebruiker te storen (niet tijdens scrubben, typen of een open sheet). */
 function softRender(force = false) {
   if (force) { render(); return; }
-  if (isSheetOpen() || document.querySelector('.chartwrap.scrub')) return;
+  // Niet tijdens invullen (formulieren), een open sheet of het scrubben van een grafiek.
+  if (['log', 'import', 'template-edit', 'setup', 'welcome'].includes(parseRoute().name)) { updateLiveStamp(); return; }
+  if (isSheetOpen() || document.querySelector('.chartwrap.scrub')) { updateLiveStamp(); return; }
   const ae = document.activeElement;
   if (ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName)) return;
   const y = window.scrollY;
@@ -149,28 +151,52 @@ function softRender(force = false) {
 // ---------------------------------------------------------------- elke minuut verversen
 
 let tick = 0;
+let ticking = false;
 async function minuteTick() {
-  if (document.visibilityState !== 'visible' || store.isDemo() || S.syncing) return;
+  if (document.visibilityState !== 'visible' || store.isDemo() || S.syncing || ticking) { softRender(); return; }
   if (!auth.getToken('health')) {
-    // Sleutel verlopen (na ~1 uur): stil vernieuwen.
-    if (auth.hasEverLoggedIn() && auth.getClientId() && auth.canTrySilent('health') && !isSheetOpen()) auth.login({ silent: true });
+    // Sleutel verlopen (na ~1 uur): stil vernieuwen (kort Google-scherm, daarna terug).
+    if (auth.hasEverLoggedIn() && auth.getClientId() && auth.canTrySilent('health') && !isSheetOpen() && !document.activeElement?.matches?.('input,textarea,select')) auth.login({ silent: true });
+    softRender();
     return;
   }
+  ticking = true;
   tick++;
+  S.tickState = 'busy';
+  updateLiveStamp();
   try {
-    if (tick % 5 === 0) { await runSync({ quiet: true, todayOnly: true }); }
-    else {
-      const { day } = await syncHeartNow();
+    if (tick % 5 === 0) {
+      // Elke 5 minuten: alles van vandaag (slaap, HRV, rusthartslag, …) + krachtlog uit Drive.
+      await runSync({ quiet: true, todayOnly: true });
+    } else {
+      const day = await syncMinute();
       const i = S.days.findIndex((d) => d.date === day.date);
       if (i >= 0) S.days[i] = { ...S.days[i], ...day }; else S.days.push(day);
       recompute();
     }
     S.liveTickAt = Date.now();
-    const r = parseRoute();
-    if (['today', 'live', 'strain', ''].includes(r.name) || !r.name) softRender();
-  } catch (e) { console.warn('minuut-sync', e); }
+    S.tickState = 'ok';
+  } catch (e) {
+    console.warn('minuut-sync', e);
+    S.tickState = 'error';
+    if (e instanceof AuthError && auth.canTrySilent('health') && !isSheetOpen()) { auth.login({ silent: true }); return; }
+  } finally {
+    ticking = false;
+  }
+  softRender();
 }
-setInterval(minuteTick, 60000);
+
+/** Klein statuslabel 'Live · 14:32' bovenaan; los bij te werken zonder hele render. */
+function liveStampHtml() {
+  if (store.isDemo() || !auth.hasEverLoggedIn()) return '';
+  const at = S.liveTickAt || S.lastSyncAt;
+  const st = S.tickState === 'busy' ? 'busy' : S.tickState === 'error' ? 'err' : auth.getToken('health') ? 'ok' : 'idle';
+  return `<span class="livestamp ${st}" data-livestamp><i></i>${st === 'busy' ? 'Bijwerken…' : st === 'err' ? 'Offline' : at ? `Bijgewerkt ${fmtTime(at)}` : 'Live'}</span>`;
+}
+function updateLiveStamp() { document.querySelectorAll('[data-livestamp]').forEach((el) => { el.outerHTML = liveStampHtml(); }); }
+
+// Precies op de minuutgrens, daarna elke 60 s.
+setTimeout(() => { minuteTick(); setInterval(minuteTick, 60000); }, 60000 - (Date.now() % 60000) + 500);
 
 // Realtime (Bluetooth): elke seconde alleen de live-onderdelen bijwerken.
 let liveFrame = 0;
@@ -230,7 +256,7 @@ function navbar(title, back = '#/today', right = '') {
 }
 
 function largeTitle(title, eyebrow = '', right = '') {
-  return `<div class="large-title"><div>${eyebrow ? `<div class="eyebrow">${esc(eyebrow)}</div>` : ''}<h1>${esc(title)}</h1></div><div style="display:flex;gap:8px;align-items:center">${right}</div></div>`;
+  return `<div class="large-title"><div>${eyebrow || liveStampHtml() ? `<div class="eyebrow">${eyebrow ? esc(eyebrow) : ''}${eyebrow && liveStampHtml() ? ' · ' : ''}${liveStampHtml()}</div>` : ''}<h1>${esc(title)}</h1></div><div style="display:flex;gap:8px;align-items:center">${right}</div></div>`;
 }
 
 function stat(label, value, unit = '', delta = '', icon = '', go = '') {
@@ -504,7 +530,7 @@ function viewToday(date) {
     ${t ? liveTile() : ''}
     ${['hrv', 'rhr', 'resp', 'spo2', 'temp', 'steps'].map((k) => metricTile(k, date)).join('')}
   </div>
-  <p class="center tiny muted mt">${S.lastSyncAt ? `Bijgewerkt ${esc(fmtRel(S.lastSyncAt))}` : ''}${S.liveTickAt && t ? ` · hartslag ${esc(fmtRel(S.liveTickAt))}` : ''}</p>
+  <p class="center tiny muted mt">${S.liveTickAt || S.lastSyncAt ? `Ververst elke minuut · laatst ${esc(fmtTime(S.liveTickAt || S.lastSyncAt))}` : ''}</p>
   </div>`;
 }
 

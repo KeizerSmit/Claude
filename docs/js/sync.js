@@ -328,3 +328,31 @@ export async function syncHeartNow() {
   await daysStore.put(day);
   return { day, newPoints: pts.length };
 }
+
+/**
+ * Minuut-update: hartslag (incrementeel), stappen, zoneminuten en workouts van vandaag.
+ * Licht genoeg om elke minuut te draaien (± 4 aanvragen).
+ */
+export async function syncMinute() {
+  const { day } = await syncHeartNow();
+  const d = day.date;
+  const toExcl = addDays(d, 1);
+  const tasks = [
+    dailyRollUp('steps', d, toExcl).then((pts) => { for (const p of pts) if (dateOf(p.civilStartTime?.date) === d) day.steps = toNum(p.steps?.countSum); }),
+    dailyRollUp('active-zone-minutes', d, toExcl).then((pts) => {
+      for (const p of pts) {
+        const a = p.activeZoneMinutes;
+        if (dateOf(p.civilStartTime?.date) === d && a) day.azm = { fatBurn: toNum(a.sumInFatBurnHeartZone) || 0, cardio: (toNum(a.sumInCardioHeartZone) || 0) / 2, peak: (toNum(a.sumInPeakHeartZone) || 0) / 2 };
+      }
+    }),
+    listDataPoints('exercise', `exercise.interval.civil_start_time >= "${d}" AND exercise.interval.civil_start_time < "${toExcl}"`, 25, 2).then((pts) => {
+      day.exercises = pts.map(convertExercise).filter((e) => e && e.date === d).sort((a, b) => a.start - b.start);
+    }),
+  ];
+  const res = await Promise.allSettled(tasks);
+  const authErr = res.find((r) => r.status === 'rejected' && r.reason instanceof AuthError);
+  if (authErr) throw authErr.reason;
+  day.synced = Date.now();
+  await daysStore.put(day);
+  return day;
+}
