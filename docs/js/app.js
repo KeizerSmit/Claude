@@ -586,7 +586,7 @@ function viewToday(date) {
   <div data-swipe data-base="#/today" data-date="${date}">
   ${rings}
   ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Trek omlaag om te synchroniseren.'}</div>` : ''}
-  ${t && rec && new Date().getHours() < 14 ? `<button class="wk-entry glass" data-act="morning" data-v="${date}"><span>${I.sun}</span><div><b>Ochtendrapport</b><small>${esc(recoveryVerdict(m)).slice(0, 80)}${recoveryVerdict(m).length > 80 ? '…' : ''}</small></div><span class="chev">${I.chev}</span></button>` : ''}
+  ${t && rec && new Date().getHours() < 14 ? `<button class="wk-entry glass" data-act="morning" data-v="${date}"><span>${I.sun}</span><div><b>Ochtendrapport</b><small>${(() => { const v = recoveryVerdict(m); return esc(v.length > 80 ? `${v.slice(0, 79)}…` : v); })()}</small></div><span class="chev">${I.chev}</span></button>` : ''}
   ${t && parseYmd(date).getDay() === 1 ? `<button class="wk-entry glass" data-go="#/week/${addDays(date, -7)}"><span>${I.chart}</span><div><b>Je vorige week</b><small>Week ${isoWeek(addDays(date, -7))} in één oogopslag</small></div><span class="chev">${I.chev}</span></button>` : ''}
   ${m?.flag ? `<div class="card flag-card flag-${m.flag}"><div class="badge" style="background:${m.flag === 'sick' ? 'var(--red)' : 'var(--sleep)'}">${m.flag === 'sick' ? AI.health || I.heart : I.bed}</div><div class="grow"><div class="title">${m.flag === 'sick' ? 'Ziek-modus' : 'Rustdag'}</div><div class="sub">${m.flag === 'sick' ? 'Telt niet mee in je baseline · strain-doel max 6' : 'Strain-doel max 9 · herstel heeft voorrang'}</div></div><button class="btn small ghost" data-act="flag" data-v="${date}:">Uit</button></div>` : ''}
   ${coachCard(date)}
@@ -913,7 +913,9 @@ function wearOf(date) {
   const hr = raw.hr || [];
   const isToday = date === today();
   const now = new Date();
-  const span = isToday ? now.getHours() * 60 + now.getMinutes() : 1440;
+  let span = isToday ? now.getHours() * 60 + now.getMinutes() : 1440;
+  // Vandaag: tel alleen tot de laatst gesynchroniseerde minuut (Fitbit loopt vaak wat achter).
+  if (isToday) { let last = Math.min(span, hr.length) - 1; while (last > 0 && !hr[last]) last--; span = Math.min(span, last + 1); }
   if (span < 30) return null;
   let have = 0;
   for (let i = 0; i < Math.min(span, hr.length); i++) if (hr[i]) have++;
@@ -1170,7 +1172,7 @@ function volumeCard() {
 
 function volumeAboutSheet() {
   return `<div class="sh-head"><div class="eyebrow">Uitleg</div><h2>Volume per spiergroep</h2></div>
-  <div class="card flat mt small"><p style="margin-top:0">Telt je <b>zware sets</b> per spiergroep over de laatste 7 dagen. Een oefening telt volledig voor de spier die het meeste werk doet en half voor meewerkende spieren (bijv. chest press: borst 1, triceps en schouders ½).</p>
+  <div class="card flat mt small"><p style="margin-top:0">Telt je <b>zware sets</b> per spiergroep over de laatste 7 dagen. Een oefening telt volledig voor de spier die het meeste werk doet en half voor meewerkende spieren (bijv. chest press: borst 1, triceps ½; een kleine bijrol telt niet).</p>
   <p>Omdat je alleen je topset noteert, gebruiken we het aantal sets uit je notitie (bijv. "2 sets"), anders ${S.settings.defaultSets} per oefening — aan te passen in Profiel.</p>
   <p><b>Richtlijn</b>: onderzoek (o.a. meta-analyses van Schoenfeld en Pelland) laat zien dat spiergroei toeneemt tot ongeveer <b>10–20 zware sets per spier per week</b>, met afnemende meerwaarde daarboven. Rond 5 sets per week behoud je vooral wat je hebt.</p>
   <p style="margin-bottom:0">Het blijft een schatting: tempo, rust tussen sets en hoe dicht je bij falen zit tellen ook mee.</p></div>`;
@@ -1313,13 +1315,28 @@ function viewExercises() {
   return `${navbar('Oefeningen', '#/strength')}<div class="content fade-in"><div class="list">${exs.map((e) => `<button class="row tap" data-go="#/exercise/${encodeURIComponent(e.key)}"><div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${esc(e.lib.name)} · ${e.count}×</div></div><span class="chev">${I.chev}</span></button>`).join('')}</div></div>`;
 }
 
+/** Alle trainingen vóór deze sessie, nieuwste eerst (zelfde dag: eerder aangemaakt telt als vorige). Per render gecachet. */
+let PREV_CACHE = null;
+function sessionsBefore(sess) {
+  const k = `${sess.id}|${S.strength.updatedAt}`;
+  if (PREV_CACHE?.k === k) return PREV_CACHE.v;
+  const v = S.strength.sessions.filter((x) => !x.deleted && x.date && x.id !== sess.id && (x.date < sess.date || (x.date === sess.date && (x.createdAt || 0) < (sess.createdAt || 0))))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
+  PREV_CACHE = { k, v };
+  return v;
+}
+
 /** Dezelfde oefening in de vorige training (vóór deze sessie). */
 function prevExercise(key, sess) {
   const loads = S.computed.loads;
-  const prev = S.strength.sessions.filter((x) => !x.deleted && x.date && x.id !== sess.id && (x.date < sess.date || (x.date === sess.date && (x.createdAt || 0) < (sess.createdAt || 0))))
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
-  for (const x of prev) { const e = loads[x.id]?.exercises.find((y) => y.key === key); if (e) return { ...e, date: x.date }; }
+  for (const x of sessionsBefore(sess)) { const e = loads[x.id]?.exercises.find((y) => y.key === key); if (e) return { ...e, date: x.date }; }
   return null;
+}
+
+/** De vorige training met dezelfde naam (bijv. vorige Upper 6). */
+function prevSameSession(sess) {
+  const n = (sess.name || '').trim().toLowerCase();
+  return sessionsBefore(sess).find((x) => (x.name || '').trim().toLowerCase() === n) || null;
 }
 
 /** Samenvatting direct na het opslaan van een training. */
@@ -1344,7 +1361,7 @@ function workoutSummarySheet(id) {
   const prs = r.exercises.filter((e) => e.isPR);
   let up = 0, same = 0, down = 0;
   for (const e of r.exercises) { const pv = prevExercise(e.key, s); if (!pv) continue; const d = (e.e1rm || 0) - (pv.e1rm || 0); if (d > 0.05) up++; else if (d < -0.05) down++; else same++; }
-  const pv = S.strength.sessions.filter((x) => !x.deleted && x.id !== s.id && x.date && x.date <= s.date && (x.name || '').toLowerCase() === (s.name || '').toLowerCase()).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  const pv = prevSameSession(s);
   const pl = pv ? S.computed.loads[pv.id]?.load : null;
   const top = Object.entries(r.groups).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([g]) => GROUPS[g]);
   const m = M(s.date);
@@ -1377,7 +1394,7 @@ function sessionHrCard(s, m) {
   const max = S.computed.maxHr;
   const zones = [0, 0, 0, 0, 0];
   const i0 = Math.floor((act.start - raw.hrStart) / 60000), i1 = Math.ceil((act.end - raw.hrStart) / 60000);
-  for (let i = i0; i < i1; i++) { const v = raw.hr[i]; if (!v) continue; const f = v / max; if (f >= 0.9) zones[4]++; else if (f >= 0.8) zones[3]++; else if (f >= 0.7) zones[2]++; else if (f >= 0.6) zones[1]++; else if (f >= 0.5) zones[0]++; }
+  for (let i = i0; i < i1; i++) { const v = raw.hr[i]; if (!v) continue; const z = ZONES.findIndex((q) => v / max >= q.lo && v / max < q.hi); if (z >= 0) zones[z]++; }
   const tot = zones.reduce((a, b) => a + b, 0);
   return `<div class="section-title">Hartslag tijdens training</div>
   <div class="card">${hrDay(raw, { maxHr: max, activities: [act], fromMin: from, toMin: to })}
@@ -1399,7 +1416,7 @@ function viewSession(id) {
   <div class="content fade-in">
   ${largeTitle(s.name || 'Training', s.date ? fmtDateLong(s.date) : 'Geen datum')}
   <div class="stats">
-    ${(() => { const pv = S.strength.sessions.filter((x) => !x.deleted && x.id !== s.id && x.date && x.date < (s.date || '9') && (x.name || '').toLowerCase() === (s.name || '').toLowerCase()).sort((a, b) => (a.date < b.date ? 1 : -1))[0]; const pl = pv ? S.computed.loads[pv.id]?.load : null; return stat('Spierbelasting', num(r.load, 1), '', pl ? `${r.load >= pl ? '▲' : '▼'} ${num(Math.abs((r.load / pl - 1) * 100), 0)}% vs ${fmtDateShort(pv.date)}` : `+${num(r.load * 3.2)} strain-punten`); })()}
+    ${(() => { const pv = s.date ? prevSameSession(s) : null; const pl = pv ? S.computed.loads[pv.id]?.load : null; return stat('Spierbelasting', num(r.load, 1), '', pl ? `${r.load >= pl ? '▲' : '▼'} ${num(Math.abs((r.load / pl - 1) * 100), 0)}% vs ${fmtDateShort(pv.date)}` : `+${num(r.load * 3.2)} strain-punten`); })()}
     ${stat('Dag-strain', m ? fmtStrain(m.strain.score) : '–', '', sess?.activity ? `cardio tijdens training ${fmtStrain(sess.activity.strain)}` : '')}
   </div>
   ${(() => {
@@ -1925,7 +1942,16 @@ const GOALS = [
 
 function goalsOf() { return { ...DEFAULTS.goals, ...(S.settings.goals || {}) }; }
 
+let WGV_CACHE = { c: null, m: new Map() };
 function weekGoalValues(start) {
+  if (WGV_CACHE.c !== S.computed) WGV_CACHE = { c: S.computed, m: new Map() };
+  if (WGV_CACHE.m.has(start)) return WGV_CACHE.m.get(start);
+  const v = weekGoalValuesRaw(start);
+  WGV_CACHE.m.set(start, v);
+  return v;
+}
+
+function weekGoalValuesRaw(start) {
   const end = addDays(start, 6) > today() ? today() : addDays(start, 6);
   const days = [];
   for (let d = start; d <= end; d = addDays(d, 1)) days.push(M(d) || { date: d });
@@ -2745,7 +2771,7 @@ const actions = {
     if (c) c.textContent = `${n} afgevinkt.`;
     if (on && S.editDraft?.live && S.settings.restTimer !== false) startRest();
   },
-  'rest-tap'() { REST.target += 30; REST.beeped = false; restTick(); },
+  'rest-tap'() { if (!REST.t0) return; REST.target = Math.max(REST.target, Math.floor((Date.now() - REST.t0) / 1000)) + 30; REST.beeped = false; restTick(); },
   'rest-stop'() { REST.t0 = null; restTick(); },
   'add-ex'() { readDraftFromDom(); S.editDraft.exercises.push({ name: '', weight: null, reps: null, done: true }); render(); const rows = document.querySelectorAll('.ex-edit input[data-f="name"]'); rows[rows.length - 1]?.focus(); },
   'del-ex'(el) { readDraftFromDom(); S.editDraft.exercises.splice(+el.dataset.i, 1); render(); },
@@ -2776,6 +2802,7 @@ const actions = {
       const t = new Date(clean.start); clean.start = new Date(`${clean.date}T${pad(t.getHours())}:${pad(t.getMinutes())}:00`).getTime();
     }
     clean.exercises = exercises;
+    const wasNew = !S.strength.sessions.some((x) => x.id === clean.id);
     clean.name = clean.name || 'Training';
     clean.updatedAt = Date.now();
     clean.createdAt = clean.createdAt || Date.now();
@@ -2790,7 +2817,6 @@ const actions = {
         if (extra.length) { t.exercises.push(...extra.map(({ note, ...e }) => e)); t.updatedAt = Date.now(); }
       }
     });
-    const wasNew = !S.strength.sessions.some((x) => x.id === clean.id && x.createdAt && x.createdAt < clean.updatedAt - 1000);
     S.editDraft = null; S.draftRestored = false;
     clearDraftLS();
     location.hash = `#/session/${clean.id}`;

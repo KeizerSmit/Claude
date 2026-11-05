@@ -84,7 +84,7 @@ function ols(X, y, lambda = 1) {
  */
 export function recoveryForecastModel(byDate, end, days = 150) {
   const X = [], y = [];
-  for (let i = days; i >= 1; i--) {
+  for (let i = days; i >= 0; i--) {
     const d0 = byDate[addDays(end, -i - 1)], d1 = byDate[addDays(end, -i)];
     if (!d0?.recovery || !d1?.recovery || !d1.sleep || d0.flag === 'sick' || d1.flag === 'sick') continue;
     X.push([1, d0.recovery.score / 10, (d0.strain?.score || 0), d1.sleep.asleep / 60]);

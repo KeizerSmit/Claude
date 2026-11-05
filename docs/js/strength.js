@@ -333,6 +333,7 @@ export function computeLoads(sessions, settings) {
     for (const e of s.exercises || []) {
       const key = exKey(e.name);
       const lib = matchExercise(e.name, overrides);
+      const wMax = Math.max(...Object.values(lib.g));
       const effW = e.bw ? bodyweight + (e.weight || 0) : e.weight;
       const est = e1rm(effW, e.reps);
       const prevBest = best[key] || null;
@@ -347,8 +348,8 @@ export function computeLoads(sessions, settings) {
       for (const [g, w] of Object.entries(lib.g)) {
         groups[g] = (groups[g] || 0) + l * w;
         hardSets[g] = (hardSets[g] || 0) + sets * w;
-        // Gangbare telling: hoofdspier telt 1 set, meewerkende spier ½ (w ≥ .5 → 1).
-        fracSets[g] = (fracSets[g] || 0) + sets * Math.min(1, 2 * w);
+        // Gangbare telling: hoofdspier 1 set, meewerkende spier (≥ 20%) ½, kleine bijrol telt niet.
+        fracSets[g] = (fracSets[g] || 0) + sets * (w === wMax ? 1 : w >= 0.2 ? 0.5 : 0);
       }
       exs.push({ ...e, key, lib: lib.id, libName: lib.name, e1rm: est, ri, load: l, isPR: isPR && prevBest != null, firstTime: prevBest == null, sets });
     }

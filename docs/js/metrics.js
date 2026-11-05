@@ -79,8 +79,7 @@ export function maxHr(settings, profile, days) {
 function trimpMinute(hr, rest, max, female) {
   const hrr = (hr - rest) / (max - rest);
   if (hrr < 0.2) return 0;
-  const h = Math.min(hrr, 1.05);
-  return female ? h * 0.86 * Math.exp(1.67 * h) : h * 0.64 * Math.exp(1.92 * h);
+  return trimpPerMinute(hrr, female);
 }
 
 function inSleep(t, day) {
