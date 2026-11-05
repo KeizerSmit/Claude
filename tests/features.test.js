@@ -97,3 +97,20 @@ test('verwachting morgen: meer slaap → hoger voorspeld herstel', async () => {
   for (const v of [fm.predict(99, 0, 12), fm.predict(1, 21, 2)]) assert.ok(v >= 1 && v <= 99);
   assert.equal(recoveryForecastModel({}, today()), null);
 });
+
+test('ziek-modus werkt ook op een dag zonder data', () => {
+  const { days, strength } = generateDemo(20);
+  const last = days[days.length - 1].date;
+  const empty = addDays(last, 1);
+  const { byDate } = computeAll(days, { ...strength, flags: [{ id: 'f', date: empty, kind: 'sick', updatedAt: 1 }] }, SET, { age: 30 });
+  assert.equal(byDate[empty]?.flag, 'sick');
+  assert.deepEqual(byDate[empty].target, [0, 6]);
+});
+
+test('slaapschema: opstaan na 12:00 blijft na de bedtijd', async () => {
+  const { sleepSpan } = await import('../docs/js/charts.js');
+  const start = new Date(2026, 10, 7, 23, 30).getTime(), end = new Date(2026, 10, 8, 12, 30).getTime();
+  const [a, b] = sleepSpan(start, end);
+  assert.equal(a, 23 * 60 + 30);
+  assert.equal(b - a, 13 * 60);
+});

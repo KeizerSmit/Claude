@@ -245,6 +245,7 @@ export function computeAll(days, strengthDoc, settings, profile) {
 
   // Zorg dat ook dagen met alleen een krachtlog (zonder Fitbit-data) meetellen.
   const known = new Set(sorted.map((d) => d.date));
+  for (const f of strengthDoc?.flags || []) if (!f.deleted && f.date && f.date <= addDays(sorted[sorted.length - 1]?.date || f.date, 1)) actsByDate[f.date] ||= [];
   for (const date of [...Object.keys(sessionsByDate), ...Object.keys(actsByDate)]) if (!known.has(date)) { known.add(date); sorted.push({ date, empty: true }); }
   sorted.sort((a, b) => (a.date < b.date ? -1 : 1));
 
@@ -337,7 +338,7 @@ export function insights(m) {
       if (d >= 3) out.push({ icon: 'heart', text: `Rusthartslag ${Math.round(d)} slagen hoger dan normaal. Kan wijzen op vermoeidheid, alcohol, stress of beginnende ziekte.` });
       else if (d <= -3) out.push({ icon: 'heart', text: `Rusthartslag ${Math.round(-d)} slagen lager dan normaal — een goed teken.` });
     }
-    if (r.tempDev != null && r.tempDev >= 0.5) out.push({ icon: 'temp', text: `Huidtemperatuur ${r.tempDev.toFixed(1).replace('.', ',')} °C boven je baseline.` });
+    if (m.flag !== 'sick' && r.tempDev != null && r.tempDev >= 0.5) out.push({ icon: 'temp', text: `Huidtemperatuur ${r.tempDev.toFixed(1).replace('.', ',')} °C boven je baseline.` });
   }
   const s = m?.sleep;
   if (s) {

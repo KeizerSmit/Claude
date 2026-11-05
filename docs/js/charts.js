@@ -347,9 +347,11 @@ export function scale(value, { min = -1, max = 3, ticks = [-1, 0, 1, 2, 3], fmt 
     <div class="scale-ticks">${ticks.map((t) => `<span style="left:${p(t)}%">${fmt(t)}</span>`).join('')}</div></div>`;
 }
 
-/** Klokminuten (18:00 = 1080 … 14:00 = 2280) zodat nachten doorlopen over middernacht. */
+/** Klokminuten vanaf 12:00 (12:00 = 720 … 11:59 = 2159) zodat nachten doorlopen over middernacht. */
 export function clockMin(ms) { const d = new Date(ms); let m = d.getHours() * 60 + d.getMinutes(); if (m < 720) m += 1440; return m; }
-const clk = (m) => { const v = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
+/** Begin en eind van een slaapperiode als klokminuten; het eind volgt uit de duur (werkt ook bij opstaan na 12:00). */
+export function sleepSpan(start, end) { const a = clockMin(start); return [a, a + (end - start) / 60000]; }
+export const clk = (m) => { const v = ((Math.round(m) % 1440) + 1440) % 1440; return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`; };
 
 /**
  * Slaapschema: per nacht een balk van bedtijd tot opstaan (tijd loopt naar beneden, zoals Apple Gezondheid).
@@ -360,7 +362,8 @@ export function sleepRange(nights, { height = 190, labelEvery = 1, target = null
   const n = nights.length || 1;
   const have = nights.filter((x) => x.start && x.end);
   if (!have.length) return `<div class="empty-chart">Nog geen slaapdata</div>`;
-  const ss = have.map((x) => clockMin(x.start)), ee = have.map((x) => clockMin(x.end));
+  const spans = have.map((x) => sleepSpan(x.start, x.end));
+  const ss = spans.map((v) => v[0]), ee = spans.map((v) => v[1]);
   let lo = Math.floor((Math.min(...ss, target ? target[0] : Infinity) - 30) / 60) * 60;
   let hi = Math.ceil((Math.max(...ee, target ? target[1] : -Infinity) + 30) / 60) * 60;
   if (hi - lo < 360) hi = lo + 360;
@@ -376,7 +379,8 @@ export function sleepRange(nights, { height = 190, labelEvery = 1, target = null
   nights.forEach((nt, i) => {
     const cx = pl + step * (i + 0.5);
     if (nt.start && nt.end) {
-      const a = y(clockMin(nt.start)), b = y(clockMin(nt.end));
+      const [sa, sb] = sleepSpan(nt.start, nt.end);
+      const a = y(sa), b = y(Math.min(sb, hi));
       s += `<rect class="bar" data-i="${i}" x="${cx - bw / 2}" y="${a}" width="${bw}" height="${Math.max(2, b - a)}" rx="${Math.min(5, bw / 2)}" fill="${nt.color || 'var(--sleep)'}"/>`;
     }
     if ((n - 1 - i) % labelEvery === 0) s += `<text x="${cx}" y="${H - 6}" text-anchor="middle" class="ct-lab">${esc(dayLabel(nt.date, n))}</text>`;
@@ -388,7 +392,7 @@ export function sleepRange(nights, { height = 190, labelEvery = 1, target = null
       const i = Math.max(0, Math.min(n - 1, Math.floor((xv - pl) / step)));
       const nt = nights[i];
       const ok = nt.start && nt.end;
-      return { x: pl + step * (i + 0.5), y: ok ? y(clockMin(nt.start)) : H - pb, title: dayLabel(nt.date, 30), value: ok ? `${clk(clockMin(nt.start))} – ${clk(clockMin(nt.end))}` : 'geen slaap', color: 'var(--sleep)', go: nt.go, i, bars: true };
+      return { x: pl + step * (i + 0.5), y: ok ? y(clockMin(nt.start)) : H - pb, title: dayLabel(nt.date, 30), value: ok ? `${clk(sleepSpan(nt.start, nt.end)[0])} – ${clk(sleepSpan(nt.start, nt.end)[1])}` : 'geen slaap', color: 'var(--sleep)', go: nt.go, i, bars: true };
     },
   });
   return wrap(id, s);

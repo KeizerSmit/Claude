@@ -4,7 +4,7 @@ import { syncAll, syncHeartNow, syncMinute } from './sync.js';
 import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp, trimpForStrain, trimpPerMinute } from './metrics.js';
 import { e1rm, parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
-import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale, sleepRange, calendar, clockMin } from './charts.js';
+import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale, sleepRange, calendar, clockMin, sleepSpan, clk } from './charts.js';
 import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle } from './interact.js';
 import { live as liveState, onLive, connect as liveConnect, disconnect as liveDisconnect, current as liveCurrent, liveRmssd, sessionStats as liveSession, bluetoothSupported } from './live.js';
 import { generateDemo } from './demo.js';
@@ -15,10 +15,10 @@ import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js
 import { buildShare } from './share.js';
 import { recommendTraining, progressionTip } from './coach.js';
 import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
-import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween } from './util.js';
+import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
-const APP_VERSION = 'v22';
+const APP_VERSION = 'v36';
 const CHANGELOG = [
   ['Rusttimer', 'Vink je tijdens een training een oefening af, dan loopt er een rusttimer met een piepje als je weer kunt. Tik voor +30 s; instellen in Profiel.'],
   ['Hartslag per training', 'In een training zie je je hartslag tijdens de sessie en hoeveel minuten je in elke zone zat.'],
@@ -93,8 +93,9 @@ function recompute() {
 function updateBadge() {
   try {
     if (!('setAppBadge' in navigator)) return;
-    const r = S.settings.badge ? S.computed?.byDate?.[today()]?.recovery?.score : null;
-    (r ? navigator.setAppBadge(r) : navigator.clearAppBadge()).catch(() => {});
+    if (!S.settings.badge) return;
+    const r = S.computed?.byDate?.[today()]?.recovery?.score;
+    if (r) navigator.setAppBadge(r).catch(() => {});
   } catch { /* niet ondersteund */ }
 }
 
@@ -1008,20 +1009,20 @@ const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 
 
 /** Persoonlijk normaal bereik (gemiddelde ± 1 SD over 60 dagen) als band voor trendgrafieken. */
 function normBand(f, end = today(), n = 60) {
-  const v = lastDays(S.computed.byDate, end, n).map(f).filter((x) => x != null);
+  const v = lastDays(S.computed.byDate, end, n).filter((d) => d.flag !== 'sick').map(f).filter((x) => x != null);
   if (v.length < 7) return null;
   const m = mean(v), s = sd(v);
   return s ? [m - s, m + s] : null;
 }
 
-const clockTxt = (m) => { const v = ((Math.round(m) % 1440) + 1440) % 1440; return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`; };
+const clockTxt = clk;
 
 function sleepScheduleCard(ds, le) {
   const nights = ds.map((d) => ({ date: d.date, start: d.sleep?.start || null, end: d.sleep?.end || null, go: `#/sleep/${d.date}` }));
   const have = nights.filter((x) => x.start && x.end);
   if (!have.length) return '';
-  const bed = have.map((x) => clockMin(x.start)), wake = have.map((x) => clockMin(x.end));
-  const med = (a) => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+  const bed = have.map((x) => sleepSpan(x.start, x.end)[0]), wake = have.map((x) => sleepSpan(x.start, x.end)[1]);
+  const med = median;
   const sdBed = have.length > 2 ? sd(bed) : null;
   const sdWake = have.length > 2 ? sd(wake) : null;
   const cons = sdBed == null ? null : (sdBed + sdWake) / 2;
@@ -1038,7 +1039,7 @@ function calendarCard() {
   const metric = {
     rec: { label: 'Herstel', cell: (d) => (d.recovery ? { color: recoveryColor(d.recovery.score), alpha: 0.85, label: d.recovery.score } : null) },
     str: { label: 'Strain', cell: (d) => (d.strain?.score ? { color: 'var(--strain)', alpha: 0.14 + 0.86 * Math.pow(Math.max(0, Math.min(1, (d.strain.score - 3) / 15)), 1.4), label: num(d.strain.score, 0) } : null) },
-    slp: { label: 'Slaap', cell: (d) => (d.sleep ? { color: 'var(--sleep)', alpha: 0.15 + 0.85 * Math.max(0, Math.min(1, (d.sleep.perf || 0))), label: fmtHM(d.sleep.asleep).replace(/u.*$/, '') } : null) },
+    slp: { label: 'Slaap', cell: (d) => (d.sleep ? { color: 'var(--sleep)', alpha: 0.15 + 0.85 * Math.max(0, Math.min(1, (d.sleep.perf || 0))), label: num(d.sleep.asleep / 60, 1) } : null) },
     gym: { label: 'Training', cell: (d) => { const k = (d.strain?.sessions || []).length + (d.strain?.manual || []).length; return k ? { color: 'var(--muscle)', alpha: 0.85, label: (d.strain?.sessions || []).length ? '🏋' : '•' } : null; } },
   }[calMetric];
   const cal = calendar(y, mo, (date) => { const d = S.computed.byDate[date]; return d ? metric.cell(d) : null; }, today());
@@ -1876,7 +1877,7 @@ function morningSheet(date = today()) {
       ${r.tempDev != null ? row('Huidtemperatuur', `${r.tempDev >= 0 ? '+' : ''}${num(r.tempDev, 1)} <small>°C</small>`, 't.o.v. normaal', '') : ''}
     </div>` : ''}
     ${sl ? `<div class="mr-sec">Vannacht</div><div class="card flat mr-card">
-      <div class="mr-sleep"><div><b>${fmtHM(sl.asleep)}</b><span>geslapen</span></div><div><b>${clockTxt(clockMin(sl.start))}–${clockTxt(clockMin(sl.end))}</b><span>in bed</span></div><div><b>${Math.round((sl.perf || 0) * 100)}%</b><span>van je behoefte</span></div></div>
+      <div class="mr-sleep"><div><b>${fmtHM(sl.asleep)}</b><span>geslapen</span></div><div><b>${clockTxt(sleepSpan(sl.start, sl.end)[0])}–${clockTxt(sleepSpan(sl.start, sl.end)[1])}</b><span>in bed</span></div><div><b>${Math.round((sl.perf || 0) * 100)}%</b><span>van je behoefte</span></div></div>
       ${stackBar([{ value: sl.deep || 0, color: 'var(--st-deep)', label: 'diep' }, { value: sl.rem || 0, color: 'var(--st-rem)', label: 'REM' }, { value: Math.max(0, sl.asleep - (sl.deep || 0) - (sl.rem || 0)), color: 'var(--st-light)', label: 'licht' }, { value: sl.awake || 0, color: 'var(--st-awake)', label: 'wakker' }], { height: 12 })}
       <div class="legend"><span><i style="background:var(--st-deep)"></i>diep ${fmtHM(sl.deep || 0)}</span><span><i style="background:var(--st-rem)"></i>REM ${fmtHM(sl.rem || 0)}</span>${sl.need - sl.asleep > 15 ? `<span>tekort ${fmtHM(sl.need - sl.asleep)}</span>` : ''}</div>
     </div>` : ''}
@@ -2177,7 +2178,7 @@ function actEstimateHtml() {
   const raw = m?.raw && !m.raw.empty ? m.raw : S.days.find((x) => x.date === d.date) || null;
   const rest = raw?.rhr || m?.recovery?.baseline?.rhr || 60;
   const vo2 = raw?.vo2max || healthspan().hs?.inputs?.find((i) => i.key === 'vo2')?.value || null;
-  const e = estimateActivity(d, raw, { rest, max: S.computed.maxHr, female: S.settings.sex === 'v', vo2max: vo2, kg: latestWeight()?.kg || S.settings.bodyweight || 80 });
+  const e = estimateActivity(d, raw, { rest, max: S.computed.maxHr, female: S.settings.sex === 'v', vo2max: vo2, kg: latestWeight()?.kg || S.settings.bodyweight || 80, rpeScale: Object.fromEntries(Object.entries(S.computed.rpeCal || {}).map(([k, v]) => [k, v.scale])) });
   const isWork = typeById(d.typeId).cat !== 'sport';
   const icon = e.source === 'hr' ? '●' : e.source === 'mix' ? '◐' : '○';
   return `<div class="est-row"><div><div class="est-k">Belasting</div><div class="est-v" style="color:var(--strain)">${fmtStrain(strainFromTrimp(e.trimp))}<small>strain</small></div></div>
@@ -2405,8 +2406,13 @@ function viewWeek(start) {
 
 function viewRecords() {
   const exs = allExercises(S.strength.sessions, { exerciseMap: S.strength.exerciseMap });
+  // Eén keer door alle (al berekende) sessies in plaats van per oefening alles opnieuw te rekenen.
+  const hist = {};
+  for (const ss of S.strength.sessions.filter((x) => !x.deleted && x.date).sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : (x.createdAt || 0) - (y.createdAt || 0)))) {
+    for (const ex of S.computed.loads[ss.id]?.exercises || []) (hist[ex.key] ||= []).push({ ...ex, date: ss.date, sessionId: ss.id });
+  }
   const rows = exs.map((e) => {
-    const h = exerciseHistory(S.strength.sessions, e.key, SS());
+    const h = hist[e.key] || [];
     const best = h.reduce((a, x) => ((x.e1rm || 0) > (a?.e1rm || 0) ? x : a), null);
     const first = h.find((x) => x.e1rm);
     return { e, best, gain: best && first && first.e1rm ? (best.e1rm / first.e1rm - 1) * 100 : null };
@@ -2992,6 +2998,7 @@ document.addEventListener('change', async (ev) => {
       v = el.checked;
       if (v && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* */ } }
       await saveSettings({ badge: v });
+      if (!v) { try { navigator.clearAppBadge?.().catch(() => {}); } catch { /* */ } }
       updateBadge();
       toast(v ? ('setAppBadge' in navigator ? 'Herstel staat nu op je app-icoon' : 'Je toestel ondersteunt geen badges (zet Pulse op je beginscherm)') : 'Badge uit');
       return;
