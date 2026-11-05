@@ -16,7 +16,9 @@ export function templateProfile(t, settings) {
  * ctx: { templates, sessions, fatigue (groep→0..1), recovery (score|null), today, settings, doneToday }
  */
 export function recommendTraining(ctx) {
-  const { templates, sessions, fatigue, recovery, today, settings, doneToday } = ctx;
+  const { templates, sessions, fatigue, recovery, today, settings, doneToday, flag } = ctx;
+  if (flag === 'sick') return { kind: 'rest', title: 'Beterschap', reason: 'Ziek-modus: geen training vandaag. Slaap extra, drink genoeg en begin pas weer rustig als je 24 uur koortsvrij bent.' };
+  if (flag === 'rest') return { kind: 'rest', title: 'Rustdag', reason: 'Je hebt vandaag als rustdag gemarkeerd. Wandelen of mobiliteit mag; je spieren herstellen nu.' };
   if (doneToday) return { kind: 'done', title: 'Training gedaan', reason: 'Je hebt vandaag al getraind. Herstel nu: eet genoeg eiwit en slaap op tijd.' };
   if (recovery != null && recovery < 34) {
     return { kind: 'rest', title: 'Rust of licht bewegen', reason: `Je herstel is laag (${recovery}%). Kies wandelen, mobiliteit of een rustige fietstocht; zware training kan je herstel verder drukken.` };

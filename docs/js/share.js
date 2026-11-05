@@ -21,7 +21,7 @@ export function buildShare({ computed, strength, settings, profile, syncLog, hrM
       const raw = d.raw && !d.raw.empty ? d.raw : null;
       const hrN = raw?.hr ? raw.hr.filter(Boolean).length : 0;
       return {
-        date: d.date,
+        date: d.date, flag: d.flag || undefined,
         rec: d.recovery ? { score: d.recovery.score, hrv: r1(d.recovery.hrv), rhr: r0(d.recovery.rhr), resp: r1(d.recovery.resp), tempDev: r1(d.recovery.tempDev), z: Object.fromEntries(Object.entries(d.recovery.z).map(([k, v]) => [k, r1(v)])), base: { hrv: r1(d.recovery.baseline.hrv), rhr: r1(d.recovery.baseline.rhr), n: d.recovery.baseline.days }, calibrating: d.recovery.calibrating || undefined } : null,
         sleep: d.sleep ? { in: hm(d.sleep.start), out: hm(d.sleep.end), asleep: r0(d.sleep.asleep), need: r0(d.sleep.need), perf: r1(d.sleep.perf * 100), deep: r0(d.sleep.deep), rem: r0(d.sleep.rem), eff: r1((d.sleep.efficiency || 0) * 100) } : null,
         strain: d.strain ? { score: r1(d.strain.score), target: d.target ? d.target.map(r1) : null, cardioTrimp: r0(d.strain.cardioTrimp), muscTrimp: r0(d.strain.muscularTrimp), manualTrimp: r0(d.strain.estTrimp), mvpa: r0(d.strain.mvpa), zonesMin: d.strain.zones, peakHr: d.strain.peakHr, estimated: d.strain.estimated || undefined } : null,

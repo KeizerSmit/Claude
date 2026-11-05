@@ -8,7 +8,7 @@
 
 import { mean, sd, clamp, normCdf, addDays, median } from './util.js';
 import { computeLoads, MUSCULAR_TO_TRIMP, templateBaselines } from './strength.js';
-import { estimateActivity, nonFitnessWindows, typeById } from './activities.js';
+import { estimateActivity, nonFitnessWindows, typeById, RPE_HRR } from './activities.js';
 
 export const STRAIN_K = 110;
 
@@ -162,7 +162,8 @@ function sleepMetrics(day, prev, settings, history) {
 }
 
 function baselineOf(history, pick, days = 30) {
-  const vals = history.slice(-days).map((h) => pick(h.raw)).filter((v) => v != null && !isNaN(v) && v > 0);
+  // Zieke dagen tellen niet mee: ziekte mag je 'normaal' niet verschuiven.
+  const vals = history.filter((h) => h.flag !== 'sick').slice(-days).map((h) => pick(h.raw)).filter((v) => v != null && !isNaN(v) && v > 0);
   return vals;
 }
 
@@ -225,6 +226,11 @@ export function computeAll(days, strengthDoc, settings, profile) {
   const weights = (strengthDoc?.weights || []).filter((w) => !w.deleted && w.kg).sort((a, b) => (a.date < b.date ? -1 : 1));
   const kgAt = (date) => { let k = settings.bodyweight || 80; for (const w of weights) if (w.date <= date) k = w.kg; return k; };
   let lastVo2 = null;
+  const flags = {};
+  // RPE-ijking: verhouding gemeten %HRR / verwachte %HRR bij activiteiten met goede hartslagdekking.
+  const rpeRatios = { sport: [], werk: [] };
+  const rpeScale = () => Object.fromEntries(Object.entries(rpeRatios).map(([k, v]) => [k, v.length >= 3 ? clamp(median(v.slice(-12)), 0.7, 1.3) : 1]));
+  for (const f of strengthDoc?.flags || []) if (!f.deleted && f.date) flags[f.date] = f.kind;
 
   // Zorg dat ook dagen met alleen een krachtlog (zonder Fitbit-data) meetellen.
   const known = new Set(sorted.map((d) => d.date));
@@ -245,8 +251,14 @@ export function computeAll(days, strengthDoc, settings, profile) {
     const manualActs = actsByDate[day.date] || [];
     const c = day.empty ? { trimp: 0, zones: [0, 0, 0, 0, 0], activities: [], estimated: true, hasHr: false, mvpa: 0 } : cardio(day, rest, max, female, nonFitnessWindows(manualActs));
     if (day.vo2max) lastVo2 = day.vo2max;
-    const ctx = { rest, max, female, vo2max: day.vo2max || lastVo2 || null, kg: kgAt(day.date) };
+    const ctx = { rest, max, female, vo2max: day.vo2max || lastVo2 || null, kg: kgAt(day.date), rpeScale: rpeScale() };
     const manual = manualActs.map((a) => ({ ...a, est: estimateActivity(a, day.empty ? null : day, ctx) })).sort((a, b) => a.start - b.start);
+    for (const a of manual) {
+      if (a.rpe == null || a.est.coverage < 0.8 || !a.est.avgHr) continue;
+      const obs = (a.est.avgHr - rest) / (max - rest) / Math.max(0.3, a.est.active);
+      const exp = RPE_HRR[clamp(Math.round(a.rpe), 0, 10)];
+      if (obs > 0 && exp) rpeRatios[a.est.type.cat === 'sport' ? 'sport' : 'werk'].push(obs / exp);
+    }
     // Fitbit-sessie die samenvalt met een handmatige log: verbergen (de log is leidend, de hartslag telt al).
     for (const a of c.activities) {
       const m = manual.find((x) => Math.min(a.end, x.est.end) - Math.max(a.start, x.start) > 0.5 * Math.min(a.end - a.start, x.est.end - x.start));
@@ -284,11 +296,13 @@ export function computeAll(days, strengthDoc, settings, profile) {
     const entry = { date: day.date, raw: day, strain };
     entry.sleep = day.empty ? null : sleepMetrics(day, prev, settings, history);
     entry.recovery = day.empty ? null : recoveryMetrics(day, entry.sleep, history);
-    entry.target = strainTarget(entry.recovery?.score);
+    entry.flag = flags[day.date] || null;
+    entry.target = entry.flag === 'sick' ? [0, 6] : entry.flag === 'rest' ? [0, 9] : strainTarget(entry.recovery?.score);
     byDate[day.date] = entry;
     if (!day.empty) history.push(entry);
   }
-  return { byDate, loads, maxHr: max };
+  const rpeCal = Object.fromEntries(Object.entries(rpeRatios).map(([k, v]) => [k, { n: v.length, scale: rpeScale()[k] }]));
+  return { byDate, loads, maxHr: max, rpeCal };
 }
 
 /** Korte, WHOOP-achtige inzichten in gewone taal. */
@@ -297,6 +311,8 @@ export function insights(m) {
   const r = m?.recovery;
   if (r) {
     const zone = recoveryZone(r.score);
+    if (m.flag === 'sick') out.push({ icon: 'info', text: 'Ziek-modus staat aan: deze dag telt niet mee in je persoonlijke baseline. Rust, drink genoeg en sla zware training over.' });
+    else if (r.tempDev != null && r.tempDev >= 0.5 && r.rhr && r.baseline.rhr && r.rhr - r.baseline.rhr >= 3) out.push({ icon: 'temp', text: 'Hogere huidtemperatuur én rusthartslag tegelijk: mogelijk word je ziek. Doe het rustig aan; zet zo nodig ziek-modus aan via ＋.' });
     if (r.calibrating) out.push({ icon: 'info', text: `Nog aan het kalibreren: er zijn ${r.baseline.days} van de 4 nachten nodig voor een persoonlijke baseline.` });
     if (zone === 'green') out.push({ icon: 'bolt', text: 'Je lichaam is goed hersteld. Een zware training past vandaag prima.' });
     else if (zone === 'yellow') out.push({ icon: 'gauge', text: 'Gemiddeld hersteld. Train gerust, maar houd het gecontroleerd.' });

@@ -17,7 +17,19 @@ import { recommendTraining, progressionTip } from './coach.js';
 import { recoveryPatterns } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap } from './util.js';
 
-const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00' };
+const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false };
+const APP_VERSION = 'v20';
+const CHANGELOG = [
+  ['Weekoverzicht', 'Elke week in één scherm: gemiddeld herstel, strain, slaap en je PR\'s, vergeleken met de week ervoor. Op maandag staat hij op Vandaag.'],
+  ['Records', 'Je persoonlijke records: hoogste herstel en HRV, langste slaap, en je beste topset per oefening.'],
+  ['Kalender', 'Trends heeft nu een maandkalender met herstel, strain, slaap of trainingen per dag.'],
+  ['Slaapschema', 'Zie hoe regelmatig je naar bed gaat en opstaat.'],
+  ['Normaalband', 'HRV, rusthartslag en ademhaling tonen je persoonlijke normale bereik.'],
+  ['Ziek- en rustdagen', 'Markeer een dag via ＋. Zieke dagen tellen niet mee in je baseline en de coach schakelt naar rust.'],
+  ['Herstel op je app-icoon', 'Zet in Profiel aan dat je herstel als badge op het Pulse-icoon staat.'],
+  ['Kleurenblind-palet', 'In Profiel → Weergave: blauw/geel/oranje in plaats van groen/geel/rood.'],
+  ['Persoonlijke RPE-ijking', 'Als je activiteiten met hartslag logt, leert de app hoe jouw “hoe zwaar voelde het” zich verhoudt tot je hartslag.'],
+];
 
 const S = {
   settings: { ...DEFAULTS },
@@ -61,6 +73,22 @@ async function loadAll() {
 
 function recompute() {
   S.computed = computeAll(S.days.map((d) => ({ ...d })), S.strength, S.settings, S.profile);
+  updateBadge();
+}
+
+/** Herstel als badge op het app-icoon (iOS 16.4+ thuisscherm-app, met meldingstoestemming). */
+function updateBadge() {
+  try {
+    if (!('setAppBadge' in navigator)) return;
+    const r = S.settings.badge ? S.computed?.byDate?.[today()]?.recovery?.score : null;
+    (r ? navigator.setAppBadge(r) : navigator.clearAppBadge()).catch(() => {});
+  } catch { /* niet ondersteund */ }
+}
+
+function whatsNewSheet() {
+  openSheet(`<div class="sh-head"><div class="eyebrow">Pulse ${APP_VERSION}</div><h2>Wat is nieuw</h2></div>
+    <div class="list mt">${CHANGELOG.map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${esc(t)}</div><div class="sub" style="white-space:normal">${esc(d)}</div></div></div>`).join('')}</div>
+    <button class="btn mt" data-act="close-sheet">Oké</button>`);
 }
 
 async function saveSettings(patch) {
@@ -85,7 +113,7 @@ async function syncStrength() {
   if (store.isDemo() || !auth.getToken('drive')) return;
   const remote = await driveLoad();
   const merged = mergeDocs(S.strength, remote);
-  const sig = (d) => JSON.stringify([...(d?.sessions || []), ...(d?.templates || [])].map((s) => [s.id, s.updatedAt]).sort());
+  const sig = (d) => JSON.stringify(['sessions', 'templates', 'activities', 'weights', 'flags'].flatMap((k) => (d?.[k] || []).map((s) => [k, s.id, s.updatedAt])).sort());
   const changedLocal = sig(merged) !== sig(S.strength);
   S.strength = merged;
   await store.kv.set('strength', merged);
@@ -101,6 +129,8 @@ function applyTheme() {
   const t = S.settings.theme;
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
   else delete document.documentElement.dataset.theme;
+  if (S.settings.palette === 'cb') document.documentElement.dataset.palette = 'cb';
+  else delete document.documentElement.dataset.palette;
 }
 
 // ---------------------------------------------------------------- sync
@@ -542,6 +572,7 @@ function viewToday(date) {
   ${rings}
   ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Trek omlaag om te synchroniseren.'}</div>` : ''}
   ${t && parseYmd(date).getDay() === 1 ? `<button class="wk-entry glass" data-go="#/week/${addDays(date, -7)}"><span>${I.chart}</span><div><b>Je vorige week</b><small>Week ${isoWeek(addDays(date, -7))} in één oogopslag</small></div><span class="chev">${I.chev}</span></button>` : ''}
+  ${m?.flag ? `<div class="card flag-card flag-${m.flag}"><div class="badge" style="background:${m.flag === 'sick' ? 'var(--red)' : 'var(--sleep)'}">${m.flag === 'sick' ? AI.health || I.heart : I.bed}</div><div class="grow"><div class="title">${m.flag === 'sick' ? 'Ziek-modus' : 'Rustdag'}</div><div class="sub">${m.flag === 'sick' ? 'Telt niet mee in je baseline · strain-doel max 6' : 'Strain-doel max 9 · herstel heeft voorrang'}</div></div><button class="btn small ghost" data-act="flag" data-v="${date}:">Uit</button></div>` : ''}
   ${coachCard(date)}
   ${insightsCard}
   <div class="section-title">Activiteiten <button data-act="plus-activity" data-v="${date}">+ Toevoegen</button></div>
@@ -871,6 +902,7 @@ function viewDay(date) {
   <div class="section-title">Berekend</div>
   <div class="card">${c.length ? `<div class="kv">${c.join('')}</div>` : '<div class="muted">Geen data</div>'}</div>
   ${m?.sleep ? `<div class="section-title">Slaapfasen</div><div class="card">${hypnogram(m.sleep)}<div class="small muted mt">${(m.sleep.stages || []).length} segmenten · ${fmtTime(m.sleep.start)}–${fmtTime(m.sleep.end)}</div></div>` : ''}
+  <div class="list">${dayFlagRow(date)}</div>
   ${(raw?.exercises || []).length ? `<div class="section-title">Activiteiten (Fitbit)</div><div class="list">${raw.exercises.map((e) => `<div class="row"><div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${esc(e.type)} · ${fmtTime(e.start)}–${fmtTime(e.end)} · ${fmtDur(e.duration)}${e.avgHr ? ` · ${e.avgHr} bpm` : ''}${e.calories ? ` · ${num(e.calories)} kcal` : ''}${e.distanceKm ? ` · ${num(e.distanceKm, 2)} km` : ''}</div></div></div>`).join('')}</div>` : ''}
   ${rawJson ? `<div class="section-title">Ruwe data</div><details class="card"><summary class="small muted">Toon JSON</summary><pre class="raw">${esc(rawJson)}</pre></details>` : ''}
   </div>`;
@@ -1367,7 +1399,10 @@ function viewSettings() {
     ${row('Zware sets per oefening', numIn('defaultSets', st.defaultSets, '3'), 'je noteert alleen je topset; dit schat het totaal')}
   </div>
   <div class="list-header">Weergave</div>
-  <div class="list">${row('Thema', `<select data-set="theme"><option value="auto" ${st.theme === 'auto' ? 'selected' : ''}>Automatisch</option><option value="dark" ${st.theme === 'dark' ? 'selected' : ''}>Donker</option><option value="light" ${st.theme === 'light' ? 'selected' : ''}>Licht</option></select>`)}</div>
+  <div class="list">${row('Thema', `<select data-set="theme"><option value="auto" ${st.theme === 'auto' ? 'selected' : ''}>Automatisch</option><option value="dark" ${st.theme === 'dark' ? 'selected' : ''}>Donker</option><option value="light" ${st.theme === 'light' ? 'selected' : ''}>Licht</option></select>`)}
+    ${row('Kleuren', `<select data-set="palette"><option value="standard" ${st.palette !== 'cb' ? 'selected' : ''}>Standaard</option><option value="cb" ${st.palette === 'cb' ? 'selected' : ''}>Kleurenblind</option></select>`, 'herstel in blauw · geel · oranje')}
+    ${row('Herstel op app-icoon', `<label class="switch"><input type="checkbox" data-set="badge" ${st.badge ? 'checked' : ''}><span></span></label>`, 'navigator' in window && 'setAppBadge' in navigator ? 'vraagt toestemming voor meldingen (nodig voor badges op iPhone)' : 'werkt als Pulse op je beginscherm staat (iOS 16.4+)')}
+    <button class="row tap" data-act="whats-new"><div class="grow">Wat is nieuw</div><span class="muted">${APP_VERSION}</span><span class="chev">${I.chev}</span></button></div>
 
   <div class="list-header">Data</div>
   <div class="list">
@@ -1401,6 +1436,9 @@ function viewAbout() {
   <p class="small"><b>Slaapbehoefte</b> = basisbehoefte (${fmtHM(S.settings.sleepNeed)}) + extra door de strain van gisteren (tot 40 min) + slaapschuld van de afgelopen nachten − dutjes. <b>Slaapprestatie</b> = geslapen ÷ behoefte. Daarnaast: efficiëntie (geslapen ÷ in bed), consistentie (hoe constant je bed- en wektijden zijn) en herstellende slaap (diep + REM).</p></div>
   <div class="card"><h2 style="color:var(--hr)">Live hartslag</h2>
   <p class="small">Zolang de app open is, haalt Pulse <b>elke minuut</b> je nieuwste hartslag op uit Google Health en elke 5 minuten de rest van vandaag. Hoe vers dat is, hangt af van hoe vaak de Google Health-app met je Fitbit Air synchroniseert. Voor <b>echte realtime</b> verbind je de Fitbit Air via Bluetooth (Hartslag delen); dan zie je elke hartslag, je live HRV (RMSSD uit de RR-intervallen) en de strain van je sessie.</p></div>
+  <div class="card"><h2 style="color:var(--muscle)">Activiteiten &amp; RPE-ijking</h2>
+  <p class="small">Een gelogde activiteit telt met <b>gemeten hartslag</b> als die minstens 80% van de tijd beschikbaar is. Anders schatten we de intensiteit uit het type (MET-waarden uit het Compendium) en hoe zwaar het voelde (RPE 0–10). Fysiek werk krijgt daarnaast spierbelasting (sessie-RPE × minuten), omdat hartslag dat mist.</p>
+  <p class="small">${(() => { const c = S.computed?.rpeCal || {}; const f = (k, l) => c[k]?.n >= 3 ? `${l}: ${Math.abs(Math.round((c[k].scale - 1) * 100)) < 3 ? 'je hartslag past precies bij je RPE' : `je hartslag ligt gemiddeld ${Math.abs(Math.round((c[k].scale - 1) * 100))}% ${c[k].scale > 1 ? 'hoger' : 'lager'} dan je RPE doet verwachten`} (${c[k].n} metingen)` : `${l}: nog ${3 - (c[k]?.n || 0)} activiteit${3 - (c[k]?.n || 0) === 1 ? '' : 'en'} met RPE én hartslag nodig`; return `<b>Persoonlijke ijking</b> — ${f('sport', 'sport')}; ${f('werk', 'werk/klussen')}. Daarmee worden schattingen zonder hartslag nauwkeuriger.`; })()}</p></div>
   <p class="tiny muted center">Geïnspireerd op hoe WHOOP data interpreteert; de exacte formules van WHOOP zijn niet openbaar, dit is een eigen benadering.</p>
   </div>`;
 }
@@ -1508,7 +1546,7 @@ function coachCard(date) {
   const m = M(date);
   const tpls = activeTemplates(S.strength);
   const doneToday = (m?.strain?.sessions?.length || 0) > 0;
-  const rec = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: today(), settings: SS(), doneToday });
+  const rec = recommendTraining({ templates: tpls, sessions: S.strength.sessions, fatigue: currentFatigue(), recovery: m?.recovery?.score ?? null, today: today(), settings: SS(), doneToday, flag: m?.flag });
   const adv = bedtimeAdvice(m, toMin(S.settings.wake));
   const tgt = m?.target;
   if (!rec && !tgt) return '';
@@ -1667,8 +1705,26 @@ function openPlusMenu() {
       <button class="row tap" data-act="plus-activity" data-v="${d}"><div class="badge" style="background:var(--muscle)">${AI.hammer}</div><div class="grow"><div class="title">Activiteit of klus</div><div class="sub">Sport, timmerwerk, tuin, verhuizen — ook achteraf</div></div><span class="chev">${I.chev}</span></button>
       <button class="row tap" data-go="#/import"><div class="badge" style="background:var(--strain)">${I.doc}</div><div class="grow"><div class="title">Krachttraining uit notitie</div><div class="sub">Plak je notitie (Upper 6, Upper 7, Lower)</div></div><span class="chev">${I.chev}</span></button>
       <button class="row tap" data-go="#/log/new"><div class="badge" style="background:var(--card2);color:var(--text)">${I.dumbbell}</div><div class="grow"><div class="title">Krachttraining handmatig</div><div class="sub">Vanuit een schema afvinken</div></div><span class="chev">${I.chev}</span></button>
+      ${dayFlagRow(d)}
       <button class="row tap" data-act="plus-weight"><div class="badge" style="background:var(--green)">${AI.scale}</div><div class="grow"><div class="title">Gewicht</div><div class="sub">${latestWeight() ? `laatst ${num(latestWeight().kg, 1)} kg · ${fmtDateShort(latestWeight().date)}` : 'Voor calorieën en je leefstijl-leeftijd'}</div></div><span class="chev">${I.chev}</span></button>
     </div>`);
+}
+
+function dayFlagRow(d) {
+  const cur = M(d)?.flag || null;
+  const lbl = d === today() ? 'vandaag' : fmtDateShort(d);
+  return `<div class="row flag-row"><div class="badge" style="background:var(--red)">${AI.health}</div><div class="grow"><div class="title">Ziek of rustdag</div><div class="sub">${cur ? `${lbl} staat op ${cur === 'sick' ? 'ziek' : 'rust'}` : `Markeer ${lbl}: ziek telt niet mee in je baseline`}</div></div>
+    <div class="flag-btns"><button class="pill-btn${cur === 'sick' ? ' on' : ''}" data-act="flag" data-v="${d}:${cur === 'sick' ? '' : 'sick'}">Ziek</button><button class="pill-btn${cur === 'rest' ? ' on' : ''}" data-act="flag" data-v="${d}:${cur === 'rest' ? '' : 'rest'}">Rust</button></div></div>`;
+}
+
+async function setDayFlag(date, kind) {
+  await saveStrength((doc) => {
+    doc.flags ||= [];
+    const id = `f-${date}`;
+    const ex = doc.flags.find((f) => f.id === id);
+    const rec = { id, date, kind: kind || null, deleted: !kind, updatedAt: Date.now() };
+    if (ex) Object.assign(ex, rec); else doc.flags.push(rec);
+  });
 }
 
 function weightSheetHtml() {
@@ -2116,6 +2172,15 @@ const actions = {
     await store.days.clear(); await store.kv.del('lastSyncDate'); S.days = []; recompute(); render(); toast('Gewist');
   },
   range(el) { trendRange = +el.dataset.v; render(); },
+  'whats-new'() { whatsNewSheet(); },
+  'close-sheet'() { closeSheet(); },
+  async flag(el) {
+    const [date, kind] = el.dataset.v.split(':');
+    await setDayFlag(date, kind || null);
+    closeSheet();
+    render();
+    toast(kind === 'sick' ? 'Ziek-modus aan — beterschap' : kind === 'rest' ? 'Rustdag gemarkeerd' : 'Markering verwijderd');
+  },
   cal(el) { calOffset = Math.min(0, calOffset + +el.dataset.v); render(); },
   calm(el) { calMetric = el.dataset.v; render(); },
   'all-sessions'() { showAllSessions = true; render(); },
@@ -2200,7 +2265,7 @@ const actions = {
   },
   async 'share-claude'() {
     const pts = loadSeries(today());
-    const txt = buildShare({ computed: S.computed, strength: S.strength, settings: S.settings, profile: S.profile, syncLog: S.syncLog, hrMethod: await store.kv.get('hrMethod'), healthspan: userAge() ? healthspan().hs : null, loadPoint: pts[pts.length - 1], version: 'v17' });
+    const txt = buildShare({ computed: S.computed, strength: S.strength, settings: S.settings, profile: S.profile, syncLog: S.syncLog, hrMethod: await store.kv.get('hrMethod'), healthspan: userAge() ? healthspan().hs : null, loadPoint: pts[pts.length - 1], version: APP_VERSION });
     const msg = `Pulse-data (laatste 14 dagen) — check de belasting:\n${txt}`;
     try { await navigator.clipboard.writeText(msg); toast('Gekopieerd — plak het in je chat met Claude'); }
     catch {
@@ -2348,10 +2413,19 @@ document.addEventListener('change', async (ev) => {
     const k = el.dataset.set;
     let v = el.value;
     if (k === 'sleepNeedH') { await saveSettings({ sleepNeed: Math.round(clamp(Number(v) || 7.5, 4, 12) * 60) }); return; }
+    if (k === 'badge') {
+      v = el.checked;
+      if (v && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* */ } }
+      await saveSettings({ badge: v });
+      updateBadge();
+      toast(v ? ('setAppBadge' in navigator ? 'Herstel staat nu op je app-icoon' : 'Je toestel ondersteunt geen badges (zet Pulse op je beginscherm)') : 'Badge uit');
+      return;
+    }
     if (['age', 'bodyweight', 'maxHr', 'defaultSets'].includes(k)) v = v === '' ? null : Number(v);
     if (k === 'defaultSets' && v != null) v = clamp(Math.round(v), 1, 10);
     await saveSettings({ [k]: v });
-    if (k === 'theme' || k === 'maxHr' || k === 'age') render();
+    if (k === 'theme' || k === 'palette') applyTheme();
+    if (k === 'theme' || k === 'palette' || k === 'maxHr' || k === 'age') render();
     return;
   }
   if (el.dataset.act === 'map-ex') {
@@ -2368,7 +2442,7 @@ document.addEventListener('change', async (ev) => {
       if (!confirm(`Back-up van ${data.exportedAt?.slice(0, 10)} importeren? Krachtlogs worden samengevoegd.`)) return;
       if (data.days?.length) { await store.days.putMany(data.days); S.days = await store.days.all(); }
       if (data.settings) await saveSettings(data.settings);
-      if (data.strength) await saveStrength((doc) => { const m = mergeDocs(doc, data.strength); doc.sessions = m.sessions; doc.exerciseMap = m.exerciseMap; });
+      if (data.strength) await saveStrength((doc) => { Object.assign(doc, mergeDocs(doc, data.strength)); });
       recompute(); render(); toast('Back-up geïmporteerd');
     } catch (e) { toast('Importeren mislukt: ' + e.message); }
   }
@@ -2449,6 +2523,13 @@ async function boot() {
     }
   }
   render();
+  try {
+    const seen = localStorage.getItem('pulse.seenVersion');
+    if (seen !== APP_VERSION) {
+      localStorage.setItem('pulse.seenVersion', APP_VERSION);
+      if (seen || auth.hasEverLoggedIn()) setTimeout(whatsNewSheet, 600);
+    }
+  } catch { /* */ }
   if (redirect?.ok && redirect.kind === 'health') {
     if (redirect.missingScopes?.length) toast('Niet alle toestemmingen gegeven — sommige data ontbreekt mogelijk');
     if (store.isDemo()) { store.setDemo(false); await loadAll(); }

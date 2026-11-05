@@ -84,7 +84,7 @@ export const RPE_LABELS = ['Rust', 'Heel erg licht', 'Licht', 'Matig', 'Een beet
 const MUSCLE_K = 0.08;
 
 // Aangenomen RPE → fractie hartslagreserve (volgt de ACSM-indeling; per punt niet gevalideerd).
-const RPE_HRR = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.87, 0.93, 0.98];
+export const RPE_HRR = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.87, 0.93, 0.98];
 
 export function defaultActive(cat) { return cat === 'sport' ? 1 : 0.7; }
 
@@ -127,7 +127,8 @@ export function estimateActivity(act, day, ctx) {
   // 2. Schatting voor de minuten zonder hartslag.
   const vo2Met = (ctx.vo2max || 42) / 3.5;
   const hrrMet = clamp((met - 1) / (vo2Met - 1), 0.05, 1);
-  const hrrRpe = act.rpe != null ? RPE_HRR[clamp(Math.round(act.rpe), 0, 10)] : null;
+  // Persoonlijke ijking: hoe jouw RPE zich verhoudt tot je gemeten hartslag (per categorie).
+  const hrrRpe = act.rpe != null ? clamp(RPE_HRR[clamp(Math.round(act.rpe), 0, 10)] * (ctx.rpeScale?.[t.cat === 'sport' ? 'sport' : 'werk'] || 1), 0.1, 1) : null;
   const hrr = hrrRpe != null ? 0.6 * hrrRpe + 0.4 * hrrMet : hrrMet;
   const missing = coverage >= 0.8 ? 0 : minutes * (1 - coverage);
   const active = act.active ?? defaultActive(t.cat);

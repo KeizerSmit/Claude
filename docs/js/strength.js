@@ -412,6 +412,7 @@ export function mergeDocs(a, b) {
     templates: Object.values(tById),
     activities: mergeList('activities'),
     weights: mergeList('weights'),
+    flags: mergeList('flags'),
     exerciseMap: newer ? { ...eb, ...ea } : { ...ea, ...eb },
     mapUpdatedAt: Math.max(a?.mapUpdatedAt || 0, b?.mapUpdatedAt || 0),
     updatedAt: Math.max(a?.updatedAt || 0, b?.updatedAt || 0),
