@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { strength: 3, sleep: 420, mvpa: 150, steps: 8000 } };
 const APP_VERSION = 'v22';
 const CHANGELOG = [
+  ['Rusttimer', 'Vink je tijdens een training een oefening af, dan loopt er een rusttimer met een piepje als je weer kunt. Tik voor +30 s; instellen in Profiel.'],
   ['Hartslag per training', 'In een training zie je je hartslag tijdens de sessie en hoeveel minuten je in elke zone zat.'],
   ['Verwachting morgen', 'Vanaf 17:00 op Vandaag (en altijd op het slaapscherm): je verwachte herstel van morgen bij verschillende bedtijden, geleerd uit je eigen data.'],
   ['Samenvatting na je training', 'Na het opslaan: je records, hoeveel oefeningen beter gingen dan vorige keer en je spierbelasting.'],
@@ -1662,6 +1663,7 @@ function viewSettings() {
   <div class="list-header">Kracht</div>
   <div class="list">
     ${row('Zware sets per oefening', numIn('defaultSets', st.defaultSets, '3'), 'je noteert alleen je topset; dit schat het totaal')}
+    ${row('Rusttimer', `<select data-set="restSec">${[[0, 'Uit'], [60, '1:00'], [90, '1:30'], [120, '2:00'], [150, '2:30'], [180, '3:00'], [240, '4:00']].map(([v, l]) => `<option value="${v}" ${(st.restTimer === false ? 0 : (st.restSec || 150)) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`, 'start bij afvinken tijdens een training, met piepje')}
   </div>
   <div class="list-header">Weergave</div>
   <div class="list">${row('Thema', `<select data-set="theme"><option value="auto" ${st.theme === 'auto' ? 'selected' : ''}>Automatisch</option><option value="dark" ${st.theme === 'dark' ? 'selected' : ''}>Donker</option><option value="light" ${st.theme === 'light' ? 'selected' : ''}>Licht</option></select>`)}
@@ -2514,6 +2516,52 @@ function readDraftFromDom() {
   saveDraftLS();
 }
 
+// ---------------------------------------------------------------- rusttimer
+
+const REST = { t0: null, target: 150, beeped: false, timer: null };
+let audioCtx = null;
+function beep() {
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+    for (const [i, f] of [[0, 880], [0.18, 1175]]) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = f; o.type = 'sine';
+      g.gain.setValueAtTime(0.0001, now + i); g.gain.exponentialRampToValueAtTime(0.25, now + i + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + i + 0.16);
+      o.connect(g).connect(audioCtx.destination); o.start(now + i); o.stop(now + i + 0.18);
+    }
+    navigator.vibrate?.(200);
+  } catch { /* geen geluid */ }
+}
+function restTick() {
+  const el = document.querySelector('.rest-pill');
+  if (!REST.t0 || !el || parseRoute().name !== 'log') { el?.remove(); clearInterval(REST.timer); REST.timer = null; REST.t0 = null; return; }
+  const sec = Math.floor((Date.now() - REST.t0) / 1000);
+  const left = REST.target - sec;
+  const done = left <= 0;
+  if (done && !REST.beeped) { REST.beeped = true; beep(); }
+  el.classList.toggle('done', done);
+  el.querySelector('b').textContent = done ? `+${Math.floor(-left / 60)}:${pad(-left % 60)}` : `${Math.floor(left / 60)}:${pad(left % 60)}`;
+  el.querySelector('span').textContent = done ? 'Volgende set!' : 'Rust';
+  el.querySelector('i').style.width = `${Math.min(100, (sec / REST.target) * 100)}%`;
+}
+function startRest() {
+  // AudioContext moet door een tik worden aangemaakt (iOS).
+  try { audioCtx ||= new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume?.(); } catch { /* */ }
+  REST.t0 = Date.now(); REST.beeped = false;
+  REST.target = Number(S.settings.restSec) || 150;
+  if (!document.querySelector('.rest-pill')) {
+    const el = document.createElement('button');
+    el.className = 'rest-pill glass';
+    el.dataset.act = 'rest-tap';
+    el.innerHTML = '<i></i><span>Rust</span><b></b><small>tik +30 s</small><em data-act="rest-stop" aria-label="Stop">✕</em>';
+    document.body.appendChild(el);
+  }
+  clearInterval(REST.timer);
+  REST.timer = setInterval(restTick, 500);
+  restTick();
+}
+
 function elapsedText(start) {
   const m = Math.max(0, Math.floor((Date.now() - start) / 60000));
   return `${Math.floor(m / 60)}:${pad(m % 60)}`;
@@ -2695,7 +2743,10 @@ const actions = {
     const n = document.querySelectorAll('.ex-edit.chk[data-done="1"]').length;
     const c = document.querySelector('[data-done-count]');
     if (c) c.textContent = `${n} afgevinkt.`;
+    if (on && S.editDraft?.live && S.settings.restTimer !== false) startRest();
   },
+  'rest-tap'() { REST.target += 30; REST.beeped = false; restTick(); },
+  'rest-stop'() { REST.t0 = null; restTick(); },
   'add-ex'() { readDraftFromDom(); S.editDraft.exercises.push({ name: '', weight: null, reps: null, done: true }); render(); const rows = document.querySelectorAll('.ex-edit input[data-f="name"]'); rows[rows.length - 1]?.focus(); },
   'del-ex'(el) { readDraftFromDom(); S.editDraft.exercises.splice(+el.dataset.i, 1); render(); },
   'quick-add'() {
@@ -2909,6 +2960,7 @@ document.addEventListener('change', async (ev) => {
       render();
       return;
     }
+    if (k === 'restSec') { const n = Number(v); await saveSettings(n ? { restSec: n, restTimer: true } : { restTimer: false }); return; }
     if (k === 'morning') { await saveSettings({ morning: el.checked }); return; }
     if (k === 'badge') {
       v = el.checked;
