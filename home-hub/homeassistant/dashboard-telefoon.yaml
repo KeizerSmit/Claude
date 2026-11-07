@@ -1,0 +1,53 @@
+# Dashboard "Thuis" voor de Home Assistant-app op de telefoon.
+# Plakken via: Instellingen > Dashboards > (dashboard Thuis) > potlood > drie puntjes > Raw configuration editor
+title: Thuis
+views:
+  - title: Thuis
+    path: thuis
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Verwarming
+          - type: thermostat
+            entity: climate.tstat_287065_t6_thermostat
+            name: Thermostaat keuken
+      - type: grid
+        cards:
+          - type: heading
+            heading: Airco's
+          - type: thermostat
+            entity: climate.kamer_julius
+            name: Kamer Julius
+          - type: thermostat
+            entity: climate.kamer_margje
+            name: Kamer Margje
+          - type: thermostat
+            entity: climate.kamer_muriel
+            name: Kamer Muriel
+      - type: grid
+        cards:
+          - type: heading
+            heading: Energie nu
+          - type: tile
+            entity: sensor.p1_meter_vermogen
+            name: Net (positief = afname)
+          - type: tile
+            entity: sensor.zonnepanelen_vermogen
+            name: Zonnepanelen
+          - type: tile
+            entity: sensor.warmtepomp_vermogen
+            name: Warmtepomp
+          - type: tile
+            entity: sensor.airco_vermogen
+            name: Airco's
+      - type: grid
+        cards:
+          - type: heading
+            heading: Weer
+          - type: weather-forecast
+            entity: weather.buienradar
+            show_forecast: true
+            forecast_type: daily

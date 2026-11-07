@@ -13,6 +13,7 @@ Een oude iPad (4e generatie, iOS 10.3.3) als mooi, rustig bedieningspaneel aan d
 | [`docs/02-architectuur.md`](docs/02-architectuur.md) | Hoe alles koppelt via Home Assistant, per apparaat |
 | [`docs/03-upgrades.md`](docs/03-upgrades.md) | Wat je nog meer kunt toevoegen (energie, klimaat, veiligheid) |
 | [`docs/04-stappenplan.md`](docs/04-stappenplan.md) | **Stappenplan zo goedkoop mogelijk**: kosten per onderdeel, jailbreak stap voor stap, Home Assistant, op afstand (Tailscale) |
+| [`docs/05-telefoon-en-op-afstand.md`](docs/05-telefoon-en-op-afstand.md) | Telefoon van jou en je moeder, bediening op afstand via Tailscale (gratis), dashboard voor de app |
 
 ## Het ontwerp in het kort
 - **Links: de woning op maat**, getekend uit het SketchUp-model (verbouwing zolder). Het huis is opengewerkt: de verdiepingen en het dak zweven los, zodat je erin kijkt.

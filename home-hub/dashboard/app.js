@@ -33,8 +33,11 @@
   var LIVE = CFG.mode === 'homeassistant';
   // welke onderdelen leveren echte data? In demo-modus alles; live pas als de entiteit bestaat.
   state.has = { solar: !LIVE, hp: !LIVE, ac: !LIVE, weheat: !LIVE, thermo: !LIVE, vent: !LIVE, screens: !LIVE, today: !LIVE, weather: !LIVE };
-  state.lightsHas = [];
-  for (i = 0; i < CFG.lights.length; i++) state.lightsHas.push(!LIVE);
+  state.lightsHas = []; state.lightsBri = []; state.lightsCt = []; state.lightsCtRange = []; state.lightsHasCt = [];
+  for (i = 0; i < CFG.lights.length; i++) {
+    state.lightsHas.push(!LIVE); state.lightsBri.push(80); state.lightsCt.push(2700);
+    state.lightsCtRange.push([2700, 6500]); state.lightsHasCt.push(!LIVE);
+  }
   if (LIVE) for (i = 0; i < CFG.lights.length; i++) state.lights[i] = false;
   for (i = 0; i < ACS.length; i++) state.acs.push({ temp: LIVE ? NaN : 19 + i * 0.4, set: LIVE ? NaN : 20, mode: (!LIVE && i === 1) ? 'heat' : 'off', modes: null, has: !LIVE });
   if (LIVE) { state.outTemp = NaN; state.weatherText = ''; state.rainText = ''; state.thermo.heating = false; }
@@ -480,6 +483,7 @@
     $('mode-seg').style.visibility = (!LIVE || (th.presets && th.presets.length)) ? 'visible' : 'hidden';
     renderAcs();
     renderScreens();
+    renderSheet();
 
     // ventilatie
     segSelect('vent-seg', 'data-v', H.vent ? s.vent : null);
@@ -489,9 +493,9 @@
     var lampEls = $('lights').children, nOn = 0;
     for (k = 0; k < lampEls.length; k++) {
       lampEls[k].className = 'lamp' + (s.lights[k] ? ' on' : '');
-      lampEls[k].querySelector('.lamp-st').innerHTML = !s.lightsHas[k] ? 'niet gekoppeld' : (s.lights[k] ? 'Aan' : 'Uit');
+      lampEls[k].querySelector('.lamp-st').innerHTML = !s.lightsHas[k] ? 'niet gekoppeld' : (s.lights[k] ? 'Aan &middot; ' + Math.round(s.lightsBri[k]) + '%' : 'Uit');
       if (s.lights[k]) nOn++;
-      if (refs.glows[k]) refs.glows[k].setAttribute('opacity', s.lights[k] ? '1' : '0');
+      if (refs.glows[k]) refs.glows[k].setAttribute('opacity', s.lights[k] ? (0.35 + 0.65 * s.lightsBri[k] / 100).toFixed(2) : '0');
       if (refs.bulbs[k]) refs.bulbs[k].setAttribute('fill', s.lights[k] ? '#ffc94d' : '#3a4660');
     }
 
@@ -601,8 +605,59 @@
       d = document.createElement('div');
       d.className = 'lamp';
       d.setAttribute('data-lamp', k);
-      d.innerHTML = '<div class="lamp-in"><div class="bulb"></div><div><div class="lamp-name">' + CFG.lights[k].name + '</div><div class="lamp-st">Uit</div></div></div>';
+      d.innerHTML = '<div class="lamp-in"><div class="bulb"></div><div class="lamp-txt"><div class="lamp-name">' + CFG.lights[k].name + '</div><div class="lamp-st">Uit</div></div>' +
+        '<button class="lamp-more" data-lampmore="' + k + '">&#9788;</button></div>';
       box.appendChild(d);
+    }
+  }
+
+  // ---- lamp-paneel: aan/uit, helderheid en warmte ----
+  var sheetK = -1, sliding = false;
+  function openSheet(k) { sheetK = k; renderSheet(true); $('lamp-sheet').className = 'sheet'; }
+  function renderSheet(force) {
+    if (sheetK < 0) return;
+    var k = sheetK, r = state.lightsCtRange[k];
+    $('ls-name').innerHTML = CFG.lights[k].name + (state.lightsHas[k] ? '' : ' <small style="color:#7d8aa0">(niet gekoppeld)</small>');
+    segSelect('ls-onoff', 'data-on', state.lights[k] ? '1' : '0');
+    $('ls-bri-v').innerHTML = Math.round(state.lightsBri[k]) + '%';
+    $('ls-ct-v').innerHTML = Math.round(state.lightsCt[k] / 100) * 100 + ' K';
+    $('ls-ct-box').style.display = state.lightsHasCt[k] ? '' : 'none';
+    if (force || !sliding) {
+      $('ls-bri').value = Math.round(state.lightsBri[k]);
+      $('ls-ct').min = r[0]; $('ls-ct').max = r[1]; $('ls-ct').value = state.lightsCt[k];
+    }
+  }
+  function bindSheet() {
+    on($('ls-close'), 'click', function () { sheetK = -1; $('lamp-sheet').className = 'sheet hidden'; });
+    on($('ls-onoff'), 'click', function (e) {
+      var b = closest(e.target, 'data-on'); if (!b || sheetK < 0) return;
+      var k = sheetK; state.lights[k] = b.getAttribute('data-on') === '1';
+      setPend('light' + k, state.lights[k], 10000); backend.setLight(k, state.lights[k]); render(); renderSheet();
+    });
+    function startSlide() { sliding = true; }
+    function slide(key) {
+      return function () {
+        if (sheetK < 0) return;
+        var k = sheetK, v = parseFloat(this.value);
+        if (key === 'bri') state.lightsBri[k] = v; else state.lightsCt[k] = v;
+        renderSheet(); render();
+      };
+    }
+    function commit(key) {
+      return function () {
+        sliding = false;
+        if (sheetK < 0) return;
+        var k = sheetK, v = parseFloat(this.value);
+        state.lights[k] = true; setPend('light' + k, true, 10000);
+        if (key === 'bri') { state.lightsBri[k] = v; setPend('lbri' + k, v); backend.setLightLevel(k, { brightness_pct: Math.round(v) }); }
+        else { state.lightsCt[k] = v; setPend('lct' + k, v); backend.setLightLevel(k, { color_temp_kelvin: Math.round(v) }); }
+        render(); renderSheet();
+      };
+    }
+    var ids = ['ls-bri', 'ls-ct'], keys = ['bri', 'ct'], q;
+    for (q = 0; q < 2; q++) {
+      on($(ids[q]), 'touchstart', startSlide); on($(ids[q]), 'mousedown', startSlide);
+      on($(ids[q]), 'input', slide(keys[q])); on($(ids[q]), 'change', commit(keys[q]));
     }
   }
 
@@ -670,6 +725,8 @@
       if (b) { state.vent = b.getAttribute('data-v'); setPend('vent', state.vent); backend.setVent(state.vent); render(); }
     });
     on($('lights'), 'click', function (e) {
+      var mo = closest(e.target, 'data-lampmore');
+      if (mo) { openSheet(parseInt(mo.getAttribute('data-lampmore'), 10)); return; }
       var l = closest(e.target, 'data-lamp');
       if (l) {
         var k = parseInt(l.getAttribute('data-lamp'), 10);
@@ -798,7 +855,7 @@
       render(); tickClock();
     },
     setTemp: function () {}, setMode: function () {}, setVent: function () {}, setLight: function () {},
-    setAcMode: function () {}, setAcTemp: function () {}, setScreen: function () {}
+    setAcMode: function () {}, setAcTemp: function () {}, setScreen: function () {}, setLightLevel: function () {}
   };
   // demo: screens bewegen zichtbaar
   setInterval(function () {
@@ -910,6 +967,11 @@
         state.humidity = ha.num(map, E.bathHumidity) || state.humidity;
         for (k = 0; k < CFG.lights.length; k++) {
           state.lightsHas[k] = ha.ok(map, CFG.lights[k].id);
+          var le = map[CFG.lights[k].id], la = (le && le.attributes) || {};
+          if (la.brightness) state.lightsBri[k] = usePend('lbri' + k, Math.max(1, Math.round(la.brightness / 2.55)));
+          if (la.color_temp_kelvin) state.lightsCt[k] = usePend('lct' + k, la.color_temp_kelvin);
+          if (la.min_color_temp_kelvin && la.max_color_temp_kelvin) state.lightsCtRange[k] = [la.min_color_temp_kelvin, la.max_color_temp_kelvin];
+          if (la.supported_color_modes) state.lightsHasCt[k] = la.supported_color_modes.indexOf('color_temp') >= 0;
           state.lights[k] = usePend('light' + k, !!(map[CFG.lights[k].id] && map[CFG.lights[k].id].state === 'on'));
         }
         // op afstand: paneel herladen (input_button) en scherm zwart (input_boolean)
@@ -963,6 +1025,11 @@
       ha.call('cover', cmd === 'up' ? 'open_cover' : (cmd === 'down' ? 'close_cover' : 'stop_cover'), { entity_id: SCREENS[k].id });
     },
     setVent: function (v) { if (!state.has.vent) return; ha.call('fan', 'set_preset_mode', { entity_id: CFG.entities.ventilation, preset_mode: ha.PRESETS[v] }); },
+    setLightLevel: function (k, data) {
+      if (!state.lightsHas[k]) return;
+      data.entity_id = CFG.lights[k].id;
+      ha.call('light', 'turn_on', data);
+    },
     setLight: function (k, onOff) { if (!state.lightsHas[k]) return; ha.call('light', onOff ? 'turn_on' : 'turn_off', { entity_id: CFG.lights[k].id }); }
   };
 
@@ -977,6 +1044,7 @@
   buildAcs();
   buildScreens();
   bindControls();
+  bindSheet();
   bindDim();
   render();
   tickClock();

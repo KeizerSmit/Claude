@@ -43,12 +43,13 @@ var HUB_CONFIG = {
     panelScreenOff:   'input_boolean.wandpaneel_scherm_uit'
   },
 
-  // LUUMR-lampen op de 2e verdieping (zolder) - nog niet gekoppeld.
+  // LUUMR-lampen (wifi/Tuya) op de 2e verdieping. Geef ze in de app precies deze namen,
+  // dan vindt het paneel ze vanzelf (Kamer Margje -> light.kamer_margje).
   // 'at' = plek in de tekening in meters vanaf de linker bouwmuur (x) en de voorgevel (y).
   lights: [
-    { id: 'light.slaapkamer_5', name: 'Slaapkamer 5', at: [2.68, 1.30] },
-    { id: 'light.slaapkamer_4', name: 'Slaapkamer 4', at: [2.68, 7.30] },
-    { id: 'light.toilet',       name: 'Toilet / bad', at: [3.90, 4.40] },
+    { id: 'light.kamer_margje', name: 'Kamer Margje', at: [2.68, 1.30] },
+    { id: 'light.kamer_julius', name: 'Kamer Julius', at: [2.68, 7.30] },
+    { id: 'light.toilet',       name: 'Toilet',       at: [3.90, 4.40] },
     { id: 'light.overloop',     name: 'Overloop',     at: [1.95, 3.90] }
   ],
 

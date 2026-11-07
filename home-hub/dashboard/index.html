@@ -127,6 +127,18 @@
     </aside>
   </main>
 
+  <div id="lamp-sheet" class="sheet hidden">
+    <div class="sheet-head"><span class="sheet-title" id="ls-name">Lamp</span><button class="link" id="ls-close">Klaar</button></div>
+    <div class="seg seg-full" id="ls-onoff"><button data-on="1">Aan</button><button data-on="0">Uit</button></div>
+    <div class="sl-row"><span class="sl-lbl">Helderheid</span><span class="sl-val" id="ls-bri-v">100%</span></div>
+    <input type="range" id="ls-bri" min="1" max="100" step="1" value="100">
+    <div id="ls-ct-box">
+      <div class="sl-row"><span class="sl-lbl">Warmte</span><span class="sl-val" id="ls-ct-v">2700 K</span></div>
+      <input type="range" id="ls-ct" class="ct" min="2700" max="6500" step="100" value="2700">
+      <div class="sl-ends"><span>warm</span><span>koel</span></div>
+    </div>
+  </div>
+
   <div id="dim"><div class="dim-clock" id="dim-clock">--:--</div><div class="dim-sub" id="dim-sub"></div></div>
 </div>
 
