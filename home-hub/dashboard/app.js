@@ -5,7 +5,9 @@
 (function () {
   'use strict';
 
-  var CFG = window.HUB_CONFIG || { mode: 'demo', lights: [], entities: {} };
+  var CFG = window.HUB_CONFIG;
+  var CFG_ERROR = !CFG;   // config.js ontbreekt of bevat een typefout
+  if (!CFG) CFG = { mode: 'demo', lights: [], entities: {}, acs: [], screens: [], dimAfterSec: 120 };
 
   /* =====================================================================
    * 1. Model: alles wat het scherm toont zit in dit ene object.
@@ -954,4 +956,8 @@
   tickClock();
   setInterval(tickClock, 10000);
   backend.start();
+  if (CFG_ERROR) {
+    $('conn-dot').className = 'dot err';
+    $('conn-text').innerHTML = 'Fout in config.js &ndash; demo';
+  }
 })();

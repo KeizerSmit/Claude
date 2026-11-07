@@ -9,7 +9,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Thuis">
 <meta name="format-detection" content="telephone=no">
-<link rel="stylesheet" href="style.css?v=3">
+<script>
+  // altijd de nieuwste versie laden (oude iPads houden bestanden lang in hun geheugen)
+  window.HUB_T = new Date().getTime();
+  document.write('<link rel="stylesheet" href="style.css?t=' + window.HUB_T + '">');
+</script>
 </head>
 <body>
 <div id="app">
@@ -126,7 +130,9 @@
   <div id="dim"><div class="dim-clock" id="dim-clock">--:--</div><div class="dim-sub" id="dim-sub"></div></div>
 </div>
 
-<script src="config.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script>
+  document.write('<script src="config.js?t=' + window.HUB_T + '"><\/script>');
+  document.write('<script src="app.js?t=' + window.HUB_T + '"><\/script>');
+</script>
 </body>
 </html>
