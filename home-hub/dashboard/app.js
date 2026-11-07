@@ -1040,6 +1040,18 @@
   /* =====================================================================
    * 9. Start
    * ===================================================================== */
+  // Op een kleiner scherm (telefoon, of in de Home Assistant-app) het hele paneel passend schalen.
+  function fitScreen() {
+    var w = window.innerWidth, h = window.innerHeight, sc = Math.min(w / 1024, h / 768), a = $('app');
+    if (sc >= 0.999) { sc = 1; }
+    a.style.webkitTransformOrigin = '0 0'; a.style.transformOrigin = '0 0';
+    a.style.webkitTransform = 'scale(' + sc + ')'; a.style.transform = 'scale(' + sc + ')';
+    a.style.margin = '0'; a.style.left = Math.max(0, (w - 1024 * sc) / 2) + 'px'; a.style.top = Math.max(0, (h - 768 * sc) / 2) + 'px';
+  }
+  fitScreen();
+  on(window, 'resize', fitScreen);
+  on(window, 'orientationchange', function () { setTimeout(fitScreen, 300); });
+
   buildScene();
   buildTags();
   buildLights();

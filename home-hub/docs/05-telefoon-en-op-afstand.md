@@ -36,6 +36,11 @@ Ga naar **Instellingen → Systeem → Netwerk → Home Assistant URL's**:
 
 ---
 
+**A6. Het wandpaneel ook in de app (menu-item "Wandpaneel")**
+**Instellingen → Dashboards → + Dashboard toevoegen → Webpagina**. Vul bij URL `/local/thuis/index.html` in en bij titel **Wandpaneel**. Op de telefoon staat het dan in het menu (☰). Het paneel schaalt zich automatisch naar het scherm; houd de telefoon **liggend**.
+
+**Tailscale-adres van Home Assistant:** `100.75.26.42`. Je moeder krijgt toegang via **Share** (alleen Home Assistant) en logt in op Tailscale met haar eigen Apple ID.
+
 ## Deel B: op elke telefoon (± 5 min per telefoon)
 
 1. Installeer **Tailscale** en log in. Julius gebruikt zijn eigen account; je moeder accepteert de uitnodiging uit de mail. Zet de schakelaar op **Verbonden** en geef toestemming voor de VPN.
