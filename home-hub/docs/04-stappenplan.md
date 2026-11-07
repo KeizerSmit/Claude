@@ -87,6 +87,58 @@ Tips:
 - Kijk af en toe of de accu niet opzwelt: bolle bodem, of de klep sluit niet goed meer.
 - Is het een laptop met een draaiende harde schijf (HDD)? Dat werkt prima. Een SSD (± €20) maakt hem sneller, maar is niet nodig.
 
+## Stap 2b. Zonder USB-stick: Home Assistant in VirtualBox op Windows
+
+Dit is een officieel ondersteunde manier. Windows blijft gewoon op de laptop staan. Later kun je met een back-up overstappen naar stap 2 (± 15 minuten); alles blijft dan bewaard.
+
+**A. Virtualisatie aanzetten**
+1. Herstart de laptop en druk herhaaldelijk op **F10** (BIOS).
+2. Zet **Virtualization Technology** (ook *SVM* of *AMD-V* genoemd) op **Enabled**. Je vindt het meestal onder *Advanced* of *System Configuration*.
+3. Druk op **F10** om op te slaan en af te sluiten.
+
+**B. Downloaden en installeren (op de laptop)**
+1. **VirtualBox voor Windows** (virtualbox.org → Downloads): installeer met steeds *Volgende*. Een melding over "Python" mag je negeren.
+2. **Home Assistant OS voor VirtualBox**: home-assistant.io → Installation → **Windows** → het **.vdi**-bestand (een .zip). Klik er met rechts op en kies **Alles uitpakken**.
+
+**C. Virtuele machine maken (VirtualBox → Nieuw)**
+1. **Naam**: `Home Assistant` (precies zo, dat hebben we straks nodig). **Type**: Linux. **Versie**: *Other Linux (64-bit)*. Laat het ISO-veld leeg.
+2. **Hardware**:
+   - Geheugen: **3072 MB**
+   - Processors: **2**
+   - Vink **Enable EFI** aan
+3. **Harde schijf**: kies **Bestaande virtuele harde schijf gebruiken** → mapje → *Toevoegen* → kies het uitgepakte `.vdi`-bestand → *Voltooien*.
+4. Selecteer de machine → **Instellingen**:
+   - **Netwerk** → Adapter 1 → *Gekoppeld aan*: **Netwerkbrug (Bridged Adapter)**. Kies je wifi- of netwerkkaart.
+   - **Audio** uitvinken (niet nodig).
+5. Klik op **Starten**. De eerste keer duurt het **10–20 minuten** ("Preparing Home Assistant").
+6. Ga op je Mac naar **`http://homeassistant.local:8123`**. Werkt dat niet, gebruik dan het IP-adres dat in het VirtualBox-venster staat, met `:8123` erachter. Maak daar je account aan.
+
+**D. Windows zo instellen dat het blijft draaien**
+1. Configuratiescherm → **Energiebeheer**:
+   - Slaapstand bij **netstroom**: *Nooit*
+   - **"Wat het sluiten van de klep doet"** → bij netstroom: *Niets doen*. Dan kan de klep dicht.
+2. Instellingen → Windows Update → **Actieve uren**: zet ze op handmatig, bijvoorbeeld 07:00–01:00, zodat updates 's nachts gebeuren.
+3. **Automatisch aanmelden** (zodat Home Assistant na een herstart vanzelf start):
+   - Instellingen → Accounts → Aanmeldingsopties → zet **"Alleen Windows Hello-aanmelding toestaan"** *uit*.
+   - Druk op **Windows + R**, typ `netplwiz` en druk op Enter.
+   - Vink **"Gebruikers moeten een gebruikersnaam en wachtwoord opgeven"** *uit* → OK → vul je wachtwoord in.
+
+**E. Home Assistant automatisch starten met Windows**
+1. Sluit eerst het VirtualBox-venster netjes af: rechtsklik op de machine → **Sluiten → ACPI-afsluitsignaal**.
+2. Druk op **Windows + R**, typ `shell:startup` en druk op Enter. Er opent een map.
+3. Rechtsklik in die map → **Nieuw → Snelkoppeling**. Plak als locatie:
+   ```
+   "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" startvm "Home Assistant" --type headless
+   ```
+   Klik op *Volgende* en geef hem de naam `Home Assistant starten`.
+4. Dubbelklik er één keer op om te testen. Home Assistant start nu **onzichtbaar op de achtergrond**. In VirtualBox zie je de machine wel op *Actief* staan.
+5. **Test**: herstart Windows en wacht 5 minuten. Werkt `homeassistant.local:8123` dan weer? Dan is het klaar.
+
+**Problemen?**
+- Zie je in VirtualBox een **groen schildpadje** onderin, of is alles extreem traag? Zet dan in Windows-beveiliging → Apparaatbeveiliging → Kernisolatie → **Geheugenintegriteit** *uit* en herstart.
+- *"VT-x/AMD-V is not available"*: virtualisatie staat nog uit in de BIOS (stap A).
+- Zet in de FRITZ!Box (`fritz.box` → Thuisnetwerk → Netwerk) bij **homeassistant** ook **"Altijd hetzelfde IPv4-adres toewijzen"** aan.
+
 ## Stap 3. Koppelingen toevoegen (Instellingen → Apparaten & diensten)
 
 1. **HomeWizard**: zet in de HomeWizard-app per meter *Lokale API* aan. Home Assistant vindt ze dan vanzelf.
