@@ -54,7 +54,7 @@ var HUB_CONFIG = {
 
   // LG-aircos via LG ThinQ. 'floor' = 1 (1e verdieping) of 2 (zolder),
   // 'at' = plek van de binnenunit in de tekening, 'side' = kant van de kamer (1 = achter, -1 = voor).
-  // CONTROLEREN: welke kamer is van wie? Pas zo nodig floor/at/side aan.
+  // Margje = zolder straatkant, Julius = zolder tuinkant, Muriel = 1e verdieping (slaapkamer 1).
   acs: [
     { id: 'climate.kamer_julius', name: 'Kamer Julius', floor: 2, at: [1.45, 5.46], side: 1 },
     { id: 'climate.kamer_margje', name: 'Kamer Margje', floor: 2, at: [3.75, 2.28], side: -1 },
