@@ -154,12 +154,28 @@ Dit is een officieel ondersteunde manier. Windows blijft gewoon op de laptop sta
 
 ## Stap 4. Het dashboard op de iPad
 
-1. Installeer de add-on **File editor** (of Samba) en kopieer de map `dashboard/` naar `/config/www/thuis/`.
-2. Maak een **long-lived access token** aan (Profiel → Beveiliging) en zet die in `config.js`. Vul de entiteit-namen in en zet `mode: 'homeassistant'`.
-3. Maak twee **helpers** aan (Instellingen → Apparaten & diensten → Helpers):
-   - *Knop* `wandpaneel_herladen`: indrukken = het paneel laadt opnieuw, ook op afstand.
-   - *Schakelaar* `wandpaneel_scherm_uit`: aan = het paneel wordt zwart, bijvoorbeeld 's nachts of als iedereen weg is. Aanraken maakt hem even wakker.
-4. Open op de iPad in Safari `http://<ip-van-home-assistant>/local/thuis/index.html`. Kies *Deel → Zet op beginscherm* en open hem vanaf het beginscherm. Zet daarna **Begeleide toegang** aan.
+**A. Bestanden op Home Assistant zetten (Samba)**
+1. Ga naar **Instellingen → Add-ons → Samba share** → *Installeren*. Vul bij *Configuratie* een username en password in en klik op **Starten**.
+2. Druk op de Mac in Finder op **⌘ + K**, typ `smb://homeassistant.local`, log in met die username en dat password en kies **config**. Laat dit venster open.
+
+**B. Alles in één keer installeren en het token erin zetten (Terminal op de Mac)**
+Plak dit in de Terminal en druk op Enter:
+```
+printf "Plak je token en druk op Enter (je ziet niets, dat is normaal): "; read -s T; echo; T=$(printf %s "$T" | tr -d "[:space:]"); W=/Volumes/config/www/thuis; B=https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard; if [ ! -d /Volumes/config ]; then echo "Map config niet gevonden: verbind eerst in Finder met smb://homeassistant.local"; else mkdir -p "$W"; for f in index.html style.css app.js config.js; do curl -fsSL "$B/$f" -o "$W/$f" || echo "FOUT bij $f"; done; perl -pi -e "s/PLAK_HIER_EEN_LONG_LIVED_ACCESS_TOKEN/$T/" "$W/config.js" && grep -q "$T" "$W/config.js" && echo "Token staat in config.js"; curl -s -o /dev/null -w "Token-test: %{http_code}  (200 = goed, 401 = token fout)\n" -H "Authorization: Bearer $T" http://192.168.178.144/api/; fi
+```
+Hij vraagt om het token. Maak het aan in Home Assistant (**je naam → Beveiliging → Langdurige toegangstokens → Token aanmaken**), kopieer het, plak het in de Terminal en druk op Enter. Je moet zien: `Token staat in config.js` en `Token-test: 200`.
+Hetzelfde commando gebruik je ook voor **updates** van het paneel.
+
+**C. Op de iPad**
+1. Open Safari en ga naar `http://192.168.178.144/local/thuis/index.html?app=2`. Gebruik het **IP-adres**; de oude iPad vindt `homeassistant.local` niet.
+2. Staat er linksboven **"Verbonden"**? Kies dan **Deel → Zet op beginscherm**.
+3. ⚠️ **Een icoon op het beginscherm heeft een eigen geheugen.** Toont het icoon een oude versie (bijv. "Demo-modus") terwijl Safari "Verbonden" laat zien? Verwijder dan het icoon en maak het opnieuw aan met een ander nummer: `?app=3`, `?app=4`, enzovoort.
+4. Zet daarna **Begeleide toegang** aan (Instellingen → Algemeen → Toegankelijkheid).
+
+**D. Helpers voor bediening op afstand (optioneel)**
+Ga naar Instellingen → Apparaten & diensten → **Helpers**:
+- Maak een *Knop* `wandpaneel_herladen` aan: indrukken laat het paneel opnieuw laden.
+- Maak een *Schakelaar* `wandpaneel_scherm_uit` aan: aan maakt het paneel zwart.
 
 ## Stap 5. Op afstand (gratis)
 
