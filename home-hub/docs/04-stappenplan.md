@@ -38,7 +38,22 @@ Nodig: je Mac, de Lightning-kabel en een **apart, nieuw Apple ID** (niet je eige
 5. **Vertrouwen op de iPad**: Instellingen → Algemeen → **Apparaatbeheer** (of Profielen) → het Apple ID → *Vertrouw*.
 6. **Jailbreaken**: open de Socket-app en tik op *jailbreak*. Lukt het niet in één keer? Herstart en probeer opnieuw; dat is normaal. Daarna verschijnt **Zebra**. Dat is de app-winkel voor tweaks, de opvolger van Cydia.
 7. **Procyon (automatisch jailbreaken na herstart)**: voeg in Zebra de bron `https://lukezgd.github.io/repo` toe en installeer **procyon untether**. Op de iPad 4 met iOS 10.3.2+ lukt het automatisch opstarten in ±93% van de keren. Blijft hij een keer hangen bij het opstarten (geen beginscherm)? Houd dan de aan/uit-knop en de thuisknop tegelijk ingedrukt tot het Apple-logo verschijnt.
-8. **OpenSSH installeren** in Zebra, en **meteen de wachtwoorden wijzigen**. Het standaardwachtwoord is voor iedereen hetzelfde (`alpine`). Log via SSH in en typ `passwd` (voor root) en `passwd mobile`.
+8. **OpenSSH installeren** in Zebra, en **meteen de wachtwoorden wijzigen** (standaard `alpine`). Zo hebben we het werkend gekregen:
+   - **Wachtwoorden wijzigen op de iPad zelf**: installeer **MTerminal** in Zebra en typ `su` (wachtwoord `alpine`), dan `passwd` en `passwd mobile`.
+   - **Ontbrekende sleutels aanmaken**: `ssh-keygen -A` (in MTerminal, als root).
+   - **Oude SSH-versie**: de iPad heeft OpenSSH 6.7 (uit 2015). Die kent alleen het oude sleuteltype `ssh-rsa`, en een nieuwe Mac staat dat standaard niet toe. Op de Mac zet je `HostKeyAlgorithms +ssh-rsa` in de instellingen (zie hieronder).
+   - **Poort 22 bleef hangen**: de standaard automatische start van OpenSSH werkt niet op dit toestel. Daarom draait SSH op **poort 2222**, via een eigen opstartbestand op de iPad: `/Library/LaunchDaemons/nl.thuis.sshd.plist`. Dat start `/usr/sbin/sshd -D -p 2222` bij het opstarten.
+   - **Snelkoppeling op de Mac** in `~/.ssh/config`:
+     ```
+     Host ipad
+       HostName 192.168.178.226
+       Port 2222
+       User root
+       HostKeyAlgorithms +ssh-rsa
+       PubkeyAcceptedAlgorithms +ssh-rsa
+     ```
+     Daarna is inloggen gewoon `ssh ipad`. Vlak na een herstart geeft hij een minuutje *Connection refused*, tot de iPad helemaal is opgestart.
+   - ✅ **Getest**: na een herstart, zonder Socket te openen, werkt `ssh ipad`. Procyon en de automatische SSH-start doen het dus.
 9. **Handige extra's** (als de bronnen nog bereikbaar zijn):
    - *Activator*: acties op knoppen en gebaren
    - *NoSlowAnimations*: snellere animaties
