@@ -476,6 +476,8 @@
     $('wh-info').innerHTML = H.weheat ? 'Weheat &middot; aanvoer <b>' + Math.round(s.flowTemp) + '°</b> &middot; COP <b>' + nl(s.cop) + '</b>' :
       (H.hp ? 'Warmtepomp &middot; <b>' + nl(s.hp) + ' kW</b>' : 'Weheat nog niet gekoppeld');
     segSelect('mode-seg', 'data-mode', s.mode);
+    // Thuis/Eco/Weg alleen tonen als de thermostaat die standen kent (via HomeKit vaak niet)
+    $('mode-seg').style.visibility = (!LIVE || (th.presets && th.presets.length)) ? 'visible' : 'hidden';
     renderAcs();
     renderScreens();
 
@@ -932,6 +934,7 @@
       if (!e || !e.attributes) return;
       z.temp = parseFloat(e.attributes.current_temperature) || z.temp;
       z.set = usePend('thset', parseFloat(e.attributes.temperature) || z.set);
+      z.presets = e.attributes.preset_modes || null;
       z.heating = e.attributes.hvac_action ? e.attributes.hvac_action === 'heating' : z.temp < z.set - 0.1;
     },
     PRESETS: { auto: 'auto', '1': 'low', '2': 'medium', '3': 'high', boost: 'timer' },
@@ -948,7 +951,7 @@
       setInterval(function () { if (ha.baseDay !== new Date().getDate()) { for (var k = 0; k < 24; k++) state.history[k] = { sun: 0, use: 0 }; } }, 60000);
     },
     setTemp: function (t) { if (!state.has.thermo) return; ha.call('climate', 'set_temperature', { entity_id: CFG.entities.thermostat, temperature: t }); },
-    setMode: function (m) { if (!state.has.thermo) return; ha.call('climate', 'set_preset_mode', { entity_id: CFG.entities.thermostat, preset_mode: m }); },
+    setMode: function (m) { if (!state.has.thermo || !state.thermo.presets || state.thermo.presets.indexOf(m) < 0) return; ha.call('climate', 'set_preset_mode', { entity_id: CFG.entities.thermostat, preset_mode: m }); },
     setAcMode: function (k, m) {
       if (!state.acs[k].has) return;
       if (m === 'off') ha.call('climate', 'turn_off', { entity_id: ACS[k].id });
