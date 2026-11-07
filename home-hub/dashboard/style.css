@@ -1,0 +1,200 @@
+/* Thuis - wandpaneel voor iPad 2 (1024x768 liggend, iOS 9 Safari)
+   Bewust zonder CSS grid / custom properties; flexbox met -webkit- prefix. */
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: rgba(0,0,0,0); }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+body {
+  background: #0a0e15;
+  background: -webkit-radial-gradient(30% 40%, circle, #16213a 0%, #0a0e15 70%);
+  background: radial-gradient(circle at 30% 40%, #16213a 0%, #0a0e15 70%);
+  color: #e8edf5;
+  font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+button { font-family: inherit; color: inherit; border: 0; background: none; padding: 0; outline: 0; cursor: pointer; }
+
+#app { width: 1024px; height: 768px; position: relative; margin: 0 auto; }
+
+/* ---------- kleuren ---------- */
+.c-sun  { color: #ffc94d; }
+.c-home { color: #8fb4ff; }
+.c-heat { color: #ff8a5c; }
+.c-exp  { color: #4fe0a5; }
+.c-imp  { color: #6fc8ff; }
+.muted  { color: #7d8aa0; font-size: 13px; }
+
+/* ---------- topbalk ---------- */
+.topbar {
+  height: 72px; padding: 14px 24px 0 28px;
+  display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+}
+.tb-left, .tb-right { width: 300px; }
+.tb-center { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; text-align: center; }
+.tb-right { text-align: right; }
+.home-name { font-size: 24px; font-weight: 600; letter-spacing: 0.2px; }
+.status { font-size: 13px; color: #7d8aa0; margin-top: 3px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: #ffc94d; margin-right: 7px; vertical-align: 1px; }
+.dot.live { background: #4fe0a5; }
+.dot.err  { background: #ff5c6c; }
+.clock { font-size: 40px; font-weight: 200; letter-spacing: 1px; line-height: 44px; }
+.date { font-size: 13px; color: #7d8aa0; }
+.weather .w-temp { font-size: 26px; font-weight: 300; }
+.weather .w-text { font-size: 14px; color: #a8b4c8; margin-left: 6px; }
+.rain { font-size: 13px; color: #6fc8ff; margin-top: 3px; }
+
+/* ---------- hoofdindeling ---------- */
+.main {
+  height: 696px;
+  display: -webkit-box; display: -webkit-flex; display: flex;
+}
+.scene { width: 600px; height: 696px; position: relative; }
+#house { position: absolute; left: 0; top: 0; }
+#labels { position: absolute; left: 0; top: 0; width: 600px; height: 690px; }
+.side { width: 424px; padding: 4px 22px 16px 4px; }
+
+/* ---------- kaarten ---------- */
+.card {
+  background: rgba(22, 30, 46, 0.86);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 18px;
+  padding: 11px 16px 11px;
+  margin-bottom: 9px;
+  -webkit-transition: border-color .3s, box-shadow .3s; transition: border-color .3s, box-shadow .3s;
+}
+.card.flash { border-color: rgba(143,180,255,0.6); box-shadow: 0 0 0 3px rgba(143,180,255,0.15); }
+.card-head {
+  display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  -webkit-box-pack: justify; -webkit-justify-content: space-between; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.card-title { font-size: 13px; font-weight: 600; color: #a8b4c8; text-transform: uppercase; letter-spacing: 1.2px; }
+.chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 11px; background: rgba(79,224,165,0.14); color: #4fe0a5; }
+.chip.imp { background: rgba(111,200,255,0.14); color: #6fc8ff; }
+.link { font-size: 14px; color: #8fb4ff; padding: 4px 2px; }
+
+/* energie */
+.energy-main { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: end; -webkit-align-items: flex-end; align-items: flex-end; }
+.big { font-size: 44px; font-weight: 200; line-height: 44px; letter-spacing: -1px; color: #4fe0a5; }
+.big.imp { color: #6fc8ff; }
+.big-unit { font-size: 15px; color: #a8b4c8; margin: 0 0 5px 10px; line-height: 18px; }
+.stats { display: -webkit-box; display: -webkit-flex; display: flex; margin: 8px 0 2px; }
+.stat { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; }
+.s-val { font-size: 20px; font-weight: 400; }
+.s-lbl { font-size: 11px; color: #7d8aa0; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 1px; }
+#chart { display: block; margin: 6px 0 2px; }
+.today { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-pack: justify; -webkit-justify-content: space-between; justify-content: space-between; font-size: 12px; color: #7d8aa0; }
+.today b { font-weight: 600; color: #e8edf5; }
+.today b.c-sun { color: #ffc94d; } .today b.c-home { color: #8fb4ff; }
+
+/* klimaat */
+.zone {
+  display: -webkit-box; display: -webkit-flex; display: flex;
+  -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  padding: 4px 0;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.z-info { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; }
+.z-name { font-size: 16px; font-weight: 500; }
+.z-sub { font-size: 12px; color: #7d8aa0; font-weight: 400; margin-left: 4px; }
+.z-now { margin-top: 2px; }
+.z-temp { font-size: 22px; font-weight: 300; margin-right: 8px; }
+.z-state { font-size: 12px; color: #7d8aa0; }
+.z-state.heating { color: #ff8a5c; }
+.z-ctrl { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center; }
+.rb {
+  width: 42px; height: 42px; border-radius: 21px;
+  background: rgba(255,255,255,0.07); font-size: 24px; line-height: 42px; font-weight: 300;
+}
+.rb:active { background: rgba(255,138,92,0.35); }
+.z-set { width: 74px; text-align: center; font-size: 22px; font-weight: 500; color: #ff8a5c; }
+
+/* segment-knoppen */
+.seg { background: rgba(255,255,255,0.06); border-radius: 12px; padding: 3px; display: -webkit-box; display: -webkit-flex; display: flex; }
+.seg button { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; font-size: 14px; color: #a8b4c8; border-radius: 9px; padding: 0 10px; height: 38px; }
+.seg button.on { background: #2b3b5c; color: #fff; font-weight: 600; }
+.seg-small button { height: 28px; font-size: 12px; padding: 0 9px; }
+.seg-full button { height: 40px; font-size: 16px; }
+
+/* verlichting */
+.lights { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; margin: 0 -4px; }
+.lamp {
+  width: 50%; padding: 4px;
+}
+.lamp-in {
+  border-radius: 12px; background: rgba(255,255,255,0.05); padding: 8px 11px; height: 48px;
+  display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  -webkit-transition: background .25s; transition: background .25s;
+}
+.lamp.on .lamp-in { background: rgba(255,201,77,0.18); }
+.bulb { width: 26px; height: 26px; border-radius: 13px; background: #2a3448; margin-right: 10px; -webkit-transition: all .25s; transition: all .25s; }
+.lamp.on .bulb { background: #ffc94d; box-shadow: 0 0 14px rgba(255,201,77,0.8); }
+.lamp-name { font-size: 15px; font-weight: 500; line-height: 17px; }
+.lamp-st { font-size: 12px; color: #7d8aa0; }
+.lamp.on .lamp-st { color: #ffc94d; }
+
+/* ---------- labels op de 3D-scene ---------- */
+.tag {
+  position: absolute; white-space: nowrap;
+  background: rgba(13, 19, 31, 0.88);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px; padding: 6px 11px 6px 9px;
+  font-size: 13px; line-height: 16px;
+  -webkit-transform: translate(-50%, -50%); transform: translate(-50%, -50%);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+.tag .t-k { color: #7d8aa0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; display: block; }
+.tag .t-v { font-size: 15px; font-weight: 600; }
+.tag .t-v small { font-weight: 400; color: #a8b4c8; font-size: 12px; }
+.tag.sun  { border-color: rgba(255,201,77,0.45); }
+.tag.heat { border-color: rgba(255,138,92,0.45); }
+.tag.exp  { border-color: rgba(79,224,165,0.5); }
+.tag.imp  { border-color: rgba(111,200,255,0.5); }
+.tag.floor { padding-left: 12px; }
+
+/* ---------- SVG-scene ---------- */
+.ground { fill: #121a29; stroke: rgba(255,255,255,0.04); }
+.grid-line { stroke: rgba(255,255,255,0.035); stroke-width: 1; }
+.slab-top { fill: #26324a; } .slab-front { fill: #1a2335; } .slab-right { fill: #141c2b; }
+.wall-top { fill: #3a4a6a; } .wall-front { fill: #2c3a56; } .wall-right { fill: #222e46; }
+.part-top { fill: #33415f; } .part-front { fill: #2a3752; } .part-right { fill: #202a40; }
+.unit-top { fill: #56657f; } .unit-front { fill: #3f4c64; } .unit-right { fill: #333e53; }
+.hp-top { fill: #c9d2e0; } .hp-front { fill: #9aa6ba; } .hp-right { fill: #7d899c; }
+.floor-hit { fill: rgba(0,0,0,0); }
+.floor-sel .slab-top { fill: #2e3d5c; }
+.roof { fill: rgba(120, 150, 210, 0.10); stroke: rgba(170, 195, 240, 0.35); stroke-width: 1; }
+.gable { fill: rgba(120, 150, 210, 0.06); stroke: rgba(170, 195, 240, 0.25); stroke-width: 1; }
+.panel { fill: #1d3561; stroke: #4c6ea8; stroke-width: 0.8; }
+.panel.active { fill: #24467f; }
+.ufh { fill: none; stroke: #ff8a5c; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.glow { fill: #ffc94d; }
+.duct { fill: none; stroke: #8fd8ff; stroke-width: 2; stroke-dasharray: 3 7; stroke-linecap: round; }
+.room-name { fill: #7d8aa0; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+
+.flow { fill: none; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 2 10; }
+.flow-base { fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0.16; }
+.f-sun  { stroke: #ffc94d; } .f-exp { stroke: #4fe0a5; } .f-imp { stroke: #6fc8ff; } .f-heat { stroke: #ff8a5c; }
+.node { fill: #0d131f; stroke-width: 2; }
+.pole { stroke: #6b7890; stroke-width: 2; fill: none; }
+
+@-webkit-keyframes flowFwd { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes flowFwd { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@-webkit-keyframes flowRev { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
+@keyframes flowRev { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
+.anim-fwd { -webkit-animation: flowFwd 1s linear infinite; animation: flowFwd 1s linear infinite; }
+.anim-rev { -webkit-animation: flowRev 1s linear infinite; animation: flowRev 1s linear infinite; }
+.anim-off { -webkit-animation: none; animation: none; opacity: 0; }
+
+/* ---------- dim / screensaver ---------- */
+#dim {
+  position: absolute; left: 0; top: 0; width: 1024px; height: 768px;
+  background: #000; opacity: 0; pointer-events: none;
+  -webkit-transition: opacity 1.2s; transition: opacity 1.2s;
+  text-align: center; padding-top: 270px;
+}
+#dim.on { opacity: 0.92; pointer-events: auto; }
+.dim-clock { font-size: 120px; font-weight: 100; color: #5d6a80; }
+.dim-sub { font-size: 20px; color: #3e4859; margin-top: 8px; }

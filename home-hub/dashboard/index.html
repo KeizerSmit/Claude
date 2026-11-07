@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Thuis</title>
+<!-- Gemaakt voor iPad 2 (1024x768, iOS 9 Safari). Geen ES6, geen CSS grid. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Thuis">
+<meta name="format-detection" content="telephone=no">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="tb-left">
+      <div class="home-name">Thuis</div>
+      <div class="status"><span class="dot" id="conn-dot"></span><span id="conn-text">Demo-modus</span></div>
+    </div>
+    <div class="tb-center">
+      <div class="clock" id="clock">--:--</div>
+      <div class="date" id="date"></div>
+    </div>
+    <div class="tb-right">
+      <div class="weather">
+        <span class="w-temp" id="w-temp">--°</span>
+        <span class="w-text" id="w-text">Buiten</span>
+      </div>
+      <div class="rain" id="rain">Komende 2 uur droog</div>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="scene" id="scene">
+      <svg id="house" width="600" height="690" viewBox="0 0 600 690" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="labels"></div>
+    </section>
+
+    <aside class="side">
+
+      <div class="card card-energy" id="card-energy">
+        <div class="card-head">
+          <span class="card-title">Energie nu</span>
+          <span class="chip" id="grid-chip">Teruglevering</span>
+        </div>
+        <div class="energy-main">
+          <div class="big" id="grid-big">-1,2</div>
+          <div class="big-unit">kW<br><span id="grid-word">naar het net</span></div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="s-val c-sun" id="st-sun">0,0</div><div class="s-lbl">Zon kW</div></div>
+          <div class="stat"><div class="s-val c-home" id="st-home">0,0</div><div class="s-lbl">Huis kW</div></div>
+          <div class="stat"><div class="s-val c-heat" id="st-hp">0,0</div><div class="s-lbl">Warmtepomp kW</div></div>
+        </div>
+        <svg id="chart" width="380" height="54" viewBox="0 0 380 54"></svg>
+        <div class="today">
+          <span>Vandaag</span>
+          <span><b class="c-sun" id="td-sun">0,0</b> kWh op</span>
+          <span><b class="c-home" id="td-use">0,0</b> kWh af</span>
+          <span><b id="td-net">0,0</b> kWh netto</span>
+        </div>
+      </div>
+
+      <div class="card card-climate" id="card-climate">
+        <div class="card-head">
+          <span class="card-title">Klimaat</span>
+          <div class="seg seg-small" id="mode-seg">
+            <button data-mode="home" class="on">Thuis</button><button data-mode="eco">Eco</button><button data-mode="away">Weg</button>
+          </div>
+        </div>
+        <div class="zone" id="zone-down">
+          <div class="z-info">
+            <div class="z-name">Beneden <span class="z-sub">vloerverwarming</span></div>
+            <div class="z-now"><span class="z-temp" id="zd-temp">20,6°</span><span class="z-state heating" id="zd-state">verwarmt</span></div>
+          </div>
+          <div class="z-ctrl">
+            <button class="rb" data-zone="down" data-d="-0.5">&minus;</button>
+            <div class="z-set" id="zd-set">21,0°</div>
+            <button class="rb" data-zone="down" data-d="0.5">+</button>
+          </div>
+        </div>
+        <div class="zone" id="zone-up">
+          <div class="z-info">
+            <div class="z-name">Boven <span class="z-sub">slaapkamers</span></div>
+            <div class="z-now"><span class="z-temp" id="zu-temp">18,9°</span><span class="z-state" id="zu-state">op temperatuur</span></div>
+          </div>
+          <div class="z-ctrl">
+            <button class="rb" data-zone="up" data-d="-0.5">&minus;</button>
+            <div class="z-set" id="zu-set">19,0°</div>
+            <button class="rb" data-zone="up" data-d="0.5">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-vent" id="card-vent">
+        <div class="card-head">
+          <span class="card-title">Ventilatie</span>
+          <span class="muted" id="vent-info">Vocht badkamer 58%</span>
+        </div>
+        <div class="seg seg-full" id="vent-seg">
+          <button data-v="auto" class="on">Auto</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="boost">Boost</button>
+        </div>
+      </div>
+
+      <div class="card card-lights" id="card-lights">
+        <div class="card-head">
+          <span class="card-title">Verlichting boven</span>
+          <button class="link" id="all-off">Alles uit</button>
+        </div>
+        <div class="lights" id="lights"></div>
+      </div>
+
+    </aside>
+  </main>
+
+  <div id="dim"><div class="dim-clock" id="dim-clock">--:--</div><div class="dim-sub" id="dim-sub"></div></div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
