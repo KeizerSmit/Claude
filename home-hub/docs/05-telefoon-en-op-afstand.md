@@ -41,18 +41,18 @@ Ga naar **Instellingen → Systeem → Netwerk → Home Assistant URL's**:
 
 **Tailscale-adres van Home Assistant:** `100.75.26.42`. Je moeder krijgt toegang via **Share** (alleen Home Assistant) en logt in op Tailscale met haar eigen Apple ID.
 
-## Deel B: op elke telefoon (± 5 min per telefoon)
+## Deel B: op elke telefoon (± 5 min per telefoon), zo werkt het nu
 
-1. Installeer **Tailscale** en log in. Julius gebruikt zijn eigen account; je moeder accepteert de uitnodiging uit de mail. Zet de schakelaar op **Verbonden** en geef toestemming voor de VPN.
-2. Installeer de **Home Assistant**-app en open hem.
-   - **Thuis** vindt hij Home Assistant meestal vanzelf. Anders vul je in: `http://192.168.178.250`.
-   - Log in met je eigen gebruikersnaam en wachtwoord (je moeder met haar account uit A2).
-3. In de app: **Instellingen → Companion-app → (server) → Thuisnetwerk**: voeg het wifinetwerk **BJS** toe. Thuis gebruikt de app dan het thuisadres, onderweg het Tailscale-adres.
-4. Laat de app **meldingen** sturen. Dat is handig voor latere automatiseringen, zoals "raam open" of "wasmachine klaar".
+Op de telefoon gebruiken we **hetzelfde wandpaneel als op de iPad**, als icoon op het beginscherm. De Home Assistant-app is daarvoor niet nodig.
 
-**Onderweg testen:** zet de wifi op je telefoon uit (4G/5G), zorg dat Tailscale op *Verbonden* staat en open de Home Assistant-app.
+1. **Tailscale** installeren:
+   - Julius logt in met zijn eigen account.
+   - Je moeder opent de **share-link** en logt in met haar eigen Apple ID → **Accept**.
+2. In Tailscale: **Instellingen → VPN On Demand** aanzetten, zodat Tailscale altijd vanzelf verbindt, ook na een herstart.
+3. Open **Safari** en ga naar `http://100.75.26.42/local/thuis/index.html` (werkt dat niet, dan met `:8123` achter het adres). Linksboven moet **"Verbonden"** staan.
+4. **Deel → Zet op beginscherm → Voeg toe.** Open het icoon **Thuis** en houd de telefoon **liggend**.
 
----
+Dit werkt thuis en onderweg, zolang Tailscale verbonden is.
 
 ## Goed om te weten
 - Tailscale moet op de telefoon **aan** staan voor bediening van buitenaf. Thuis op wifi is het niet nodig.
