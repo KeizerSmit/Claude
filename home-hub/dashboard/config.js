@@ -31,8 +31,8 @@ var HUB_CONFIG = {
     // Weheat Blackbird (officiele Weheat-integratie, alleen uitlezen) - nog niet gekoppeld
     heatPumpCop:      'sensor.blackbird_cop',
     heatPumpFlow:     'sensor.blackbird_water_outlet_temperature',
-    // Honeywell-thermostaat (keuken) - nog niet gekoppeld
-    thermostat:       'climate.honeywell',
+    // Honeywell Home T6 (keuken), gekoppeld via HomeKit Device (lokaal)
+    thermostat:       'climate.tstat_287065_t6_thermostat',
     // Orcon-ventilatie via ramses_cc - nog niet gekoppeld
     ventilation:      'fan.orcon',
     bathHumidity:     'sensor.badkamer_vochtigheid',
