@@ -25,12 +25,17 @@ Na jaren updates en apps is het geheugen vol en draaien er veel processen op de 
 
 ## Jailbreaken
 
-Je wilt hem jailbreaken. Op iOS 10.3.3 met een 32-bit toestel kan dat met **h3lix** (van tihmstar, gebaseerd op de v0rtex-exploit). Daarbij:
+Je wilt hem jailbreaken. Op iOS 10.3.3 met een 32-bit iPad zijn er twee opties:
 
-- h3lix ondersteunt de iPad 4 op iOS 10.0–10.3.3 ([uitleg](https://ioshacker.com/news/new-h3lix-jailbreak-makes-ios-10-jailbreak-possible-32-bit-devices)).
-- Het is **semi-untethered**. Na een herstart open je de h3lix-app en tik je op *jailbreak*. Een wandpaneel dat altijd aan de lader zit, herstart bijna nooit, dus dat is weinig werk.
-- Je zet de app erop met **Sideloadly** (Mac of Windows) en een Apple ID. Met een gratis Apple ID verloopt de app na **7 dagen**. Dat merk je alleen als je daarna opnieuw moet jailbreaken; de jailbreak zelf blijft actief tot een herstart. Daarna Sideloadly opnieuw gebruiken.
-- Een volledig *untethered* jailbreak kan alleen door terug te gaan naar iOS 8.4.1 (met Legacy iOS Kit). Dat raad ik **af**: de Safari van iOS 8 is ouder en minder geschikt voor het dashboard.
+| | **Socket** (aanbevolen) | h3lix (oud) |
+|---|---|---|
+| Voor | iPhone 5/5c en **iPad 4** op iOS 10 ([The Apple Wiki](https://theapplewiki.com/wiki/Socket), [GitHub](https://github.com/staturnzz/socket)) | Alle 32-bit toestellen op iOS 10 ([The Apple Wiki](https://theapplewiki.com/wiki/H3lix)) |
+| Installeren | IPA met Sideloadly, geen patch nodig | IPA moet eerst gepatcht worden, omdat het oude Cydia Impactor niet meer werkt |
+| Tweak-winkel | Zebra | Cydia |
+| Na een herstart | Met de **Procyon**-untether automatisch weer gejailbreakt ([Procyon-wiki](https://github.com/staturnzz/procyon/wiki)) | Handmatig opnieuw jailbreaken |
+| Onderhoud | Nog bijgewerkt | Sinds 2017 nauwelijks |
+
+**Conclusie: Socket + Procyon.** Na een stroomstoring start het wandpaneel dan vanzelf gejailbreakt op (±93% van de keren op de iPad 4; anders één keer handmatig herstarten). Het stappenplan staat in [04-stappenplan.md](04-stappenplan.md).
 
 **Wat levert de jailbreak op voor het wandpaneel:**
 
@@ -40,7 +45,7 @@ Je wilt hem jailbreaken. Op iOS 10.3.3 met een 32-bit toestel kan dat met **h3li
 | **Activator** | Scherm 's nachts uit en 's ochtends aan op tijd, of via een webverzoek vanuit Home Assistant |
 | Animaties uitzetten (bijv. NoSlowAnimations) | Voelt sneller aan |
 | Updatemeldingen blokkeren | Geen pop-ups over iOS-updates meer |
-| Safari of een kioskbrowser automatisch starten | Na een herstart (en opnieuw jailbreaken) komt het dashboard vanzelf terug |
+| Safari of een kioskbrowser automatisch starten | Na een herstart komt het dashboard vanzelf terug (met Procyon) |
 
 > Maak eerst een back-up van wat je wilt bewaren. Jailbreaken is op eigen risico, maar op een oude iPad die alleen nog als scherm dient is het risico klein.
 

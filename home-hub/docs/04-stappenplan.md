@@ -6,7 +6,7 @@ Doel: het wandpaneel werkend krijgen, op afstand te beheren, met zo min mogelijk
 
 | Onderdeel | Gratis? | Toelichting |
 |---|---|---|
-| iPad 4 jailbreaken (h3lix) | ✅ €0 | Sideloadly + een (extra) Apple ID |
+| iPad 4 jailbreaken (Socket + Procyon) | ✅ €0 | Sideloadly + een (extra) Apple ID |
 | Home Assistant (software) | ✅ €0 | Open source |
 | Computer waar Home Assistant op draait | ✅ €0 *als je een oude laptop/pc hebt* | Anders tweedehands thin client (bijv. Dell Wyse 5070, HP t630, Fujitsu Futro) ± €30–60 via Marktplaats, of een Home Assistant Green ± €100–130 |
 | HomeWizard (P1, kWh-meters) | ✅ €0 | Lokale koppeling |
@@ -23,25 +23,31 @@ Doel: het wandpaneel werkend krijgen, op afstand te beheren, met zo min mogelijk
 
 ---
 
-## Stap 1. De iPad jailbreaken (h3lix, iOS 10.3.3)
+## Stap 1. De iPad jailbreaken (Socket + Procyon, iOS 10.3.3)
 
-Nodig: een Windows-pc of Mac, de Lightning-kabel en een Apple ID. Neem bij voorkeur een **apart, nieuw Apple ID** en niet je eigen account.
+We gebruiken **Socket** en niet h3lix. Socket is nieuwer, gemaakt voor precies dit toestel (iPad 4 op iOS 10), en hoeft niet eerst "gepatcht" te worden. Daarbovenop komt **Procyon**: die zorgt dat de iPad na een herstart of stroomstoring **vanzelf** weer gejailbreakt opstart. Ideaal voor een wandpaneel.
 
-1. **Schoon beginnen (aanbevolen).** Zet de iPad terug via Finder (Mac) of iTunes (Windows): *iPad herstellen*. Stel hem in als **nieuwe** iPad, zonder back-up. Updates hoeven niet: iOS 10.3.3 is de laatste versie voor deze iPad.
-2. **Sideloadly installeren** op de computer (sideloadly.io). Op Windows heb je ook iTunes nodig, de versie van apple.com en niet die uit de Microsoft Store.
-3. **h3lix downloaden**: de IPA voor iOS 10 (32-bit) van de officiële h3lix-site van tihmstar. Download alleen van de officiële bron.
-4. **Installeren**: iPad aansluiten, de IPA in Sideloadly slepen, je Apple ID invullen en op *Start* drukken.
-5. **Vertrouwen op de iPad**: Instellingen → Algemeen → **Apparaatbeheer** (of Profielen) → jouw Apple ID → *Vertrouw*.
-6. **Jailbreaken**: open h3lix en tik op *jailbreak*. Lukt het niet in één keer? Herstart de iPad en probeer opnieuw; dat is normaal. Daarna verschijnt **Cydia**.
-7. **OpenSSH installeren** in Cydia, en **meteen de wachtwoorden wijzigen**. Het standaardwachtwoord is voor iedereen hetzelfde (`alpine`). Log via SSH in en typ `passwd` (voor root) en `passwd mobile`.
-8. **Handige extra's** (als de repositories nog bereikbaar zijn; sommige oude bronnen zijn offline):
+De officiële handleiding staat op **ios.cfw.guide → "Installing socket"**. Volg die als hoofdbron; hieronder staat de route in het kort.
+
+Nodig: je Mac, de Lightning-kabel en een **apart, nieuw Apple ID** (niet je eigen account).
+
+1. **Schoon beginnen (aanbevolen).** Zet de iPad terug via Finder op de Mac (*iPad herstellen*) en stel hem in als **nieuwe** iPad, zonder back-up. Updates hoeven niet: iOS 10.3.3 is de laatste versie voor deze iPad.
+2. **Sideloadly installeren** op de Mac (sideloadly.io).
+3. **Socket downloaden**: het `.ipa`-bestand van de officiële bron (socket-jb.app, of de "Releases" op github.com/staturnzz/socket).
+4. **Installeren**: iPad aansluiten, de IPA in Sideloadly slepen, het aparte Apple ID invullen en op *Start* drukken.
+5. **Vertrouwen op de iPad**: Instellingen → Algemeen → **Apparaatbeheer** (of Profielen) → het Apple ID → *Vertrouw*.
+6. **Jailbreaken**: open de Socket-app en tik op *jailbreak*. Lukt het niet in één keer? Herstart en probeer opnieuw; dat is normaal. Daarna verschijnt **Zebra**. Dat is de app-winkel voor tweaks, de opvolger van Cydia.
+7. **Procyon (automatisch jailbreaken na herstart)**: voeg in Zebra de bron `https://lukezgd.github.io/repo` toe en installeer **procyon untether**. Op de iPad 4 met iOS 10.3.2+ lukt het automatisch opstarten in ±93% van de keren. Blijft hij een keer hangen bij het opstarten (geen beginscherm)? Houd dan de aan/uit-knop en de thuisknop tegelijk ingedrukt tot het Apple-logo verschijnt.
+8. **OpenSSH installeren** in Zebra, en **meteen de wachtwoorden wijzigen**. Het standaardwachtwoord is voor iedereen hetzelfde (`alpine`). Log via SSH in en typ `passwd` (voor root) en `passwd mobile`.
+9. **Handige extra's** (als de bronnen nog bereikbaar zijn):
    - *Activator*: acties op knoppen en gebaren
    - *NoSlowAnimations*: snellere animaties
    - een tweak die updatemeldingen blokkeert
 
 **Let op:**
-- **Na een herstart** open je h3lix en tik je weer op *jailbreak*. Herstart de iPad dus niet op afstand, want dan moet je er even bij.
-- Met een gratis Apple ID **verloopt de h3lix-app na 7 dagen**. Dat merk je alleen bij een herstart: installeer hem dan opnieuw met Sideloadly (stap 4) en tik weer op jailbreak.
+- Met Procyon hoef je na een herstart **niets** te doen. Daardoor maakt het ook niet uit dat de Socket-app na **7 dagen** verloopt (bij een gratis Apple ID): die app heb je alleen nodig als je ooit opnieuw moet jailbreaken.
+- Zonder Procyon is Socket *semi-untethered*: na een herstart open je Socket en tik je weer op *jailbreak*.
+- Installeer Procyon **niet** samen met de tweak "CoolBooter Untetherer". Volgens de makers start de iPad dan op met een zwart scherm.
 
 ## Stap 2. Home Assistant installeren (gratis)
 
