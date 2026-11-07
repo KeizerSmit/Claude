@@ -50,6 +50,19 @@
   }
   function nlIf(ok, v, d) { return ok ? nl(v, d) : '&ndash;'; }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  // Na een tik op het paneel houden we de nieuwe waarde even vast, tot Home Assistant
+  // (via de cloud van het apparaat) hetzelfde meldt. Zo springt een knop niet terug.
+  var pend = {};
+  function setPend(key, val, ms) { pend[key] = { v: val, t: new Date().getTime() + (ms || 20000) }; }
+  function usePend(key, haVal) {
+    var p = pend[key];
+    if (!p) return haVal;
+    if (new Date().getTime() > p.t || p.v === haVal) { delete pend[key]; return haVal; }
+    return p.v;
+  }
+  // + en - snel achter elkaar: pas na een korte pauze één opdracht versturen
+  var debounceT = {};
+  function debounce(key, fn, ms) { clearTimeout(debounceT[key]); debounceT[key] = setTimeout(fn, ms || 1200); }
   function on(elm, ev, fn) { elm.addEventListener(ev, fn, false); }
   function closest(elm, attr) {
     while (elm && elm.getAttribute) {
@@ -624,36 +637,42 @@
       var b = closest(e.target, 'data-thermo');
       if (b) {
         var th = state.thermo;
-        th.set = clamp(Math.round((th.set + parseFloat(b.getAttribute('data-thermo'))) * 2) / 2, 5, 28);
-        backend.setTemp(th.set);
+        th.set = clamp(Math.round(((isNaN(th.set) ? 20 : th.set) + parseFloat(b.getAttribute('data-thermo'))) * 2) / 2, 5, 28);
+        setPend('thset', th.set);
+        debounce('thset', function () { backend.setTemp(state.thermo.set); });
         render(); return;
       }
       var am = closest(e.target, 'data-acmode');
       if (am) {
         var ai = parseInt(am.getAttribute('data-acmode'), 10), ac = state.acs[ai];
         var order = [], q;
-        for (q = 0; q < AC_ORDER.length; q++) if (!ac.modes || ac.modes.indexOf(AC_ORDER[q]) >= 0) order.push(AC_ORDER[q]);
+        for (q = 0; q < AC_ORDER.length; q++) if (AC_ORDER[q] === 'off' || !ac.modes || ac.modes.indexOf(AC_ORDER[q]) >= 0) order.push(AC_ORDER[q]);
         ac.mode = order[(order.indexOf(ac.mode) + 1) % order.length];
-        backend.setAcMode(ai, ac.mode); render(); return;
+        setPend('acmode' + ai, ac.mode);
+        debounce('acmode' + ai, function () { backend.setAcMode(ai, state.acs[ai].mode); }, 900);
+        render(); return;
       }
       var ad = closest(e.target, 'data-acd');
       if (ad) {
         var aj = parseInt(ad.getAttribute('data-aci'), 10);
-        state.acs[aj].set = clamp(state.acs[aj].set + parseFloat(ad.getAttribute('data-acd')), 16, 30);
-        backend.setAcTemp(aj, state.acs[aj].set); render(); return;
+        state.acs[aj].set = clamp((isNaN(state.acs[aj].set) ? 20 : state.acs[aj].set) + parseFloat(ad.getAttribute('data-acd')), 16, 30);
+        setPend('acset' + aj, state.acs[aj].set);
+        debounce('acset' + aj, function () { backend.setAcTemp(aj, state.acs[aj].set); });
+        render(); return;
       }
       var m = closest(e.target, 'data-mode');
-      if (m) { state.mode = m.getAttribute('data-mode'); backend.setMode(state.mode); render(); }
+      if (m) { state.mode = m.getAttribute('data-mode'); setPend('mode', state.mode); backend.setMode(state.mode); render(); }
     });
     on($('vent-seg'), 'click', function (e) {
       var b = closest(e.target, 'data-v');
-      if (b) { state.vent = b.getAttribute('data-v'); backend.setVent(state.vent); render(); }
+      if (b) { state.vent = b.getAttribute('data-v'); setPend('vent', state.vent); backend.setVent(state.vent); render(); }
     });
     on($('lights'), 'click', function (e) {
       var l = closest(e.target, 'data-lamp');
       if (l) {
         var k = parseInt(l.getAttribute('data-lamp'), 10);
         state.lights[k] = !state.lights[k];
+        setPend('light' + k, state.lights[k], 10000);
         backend.setLight(k, state.lights[k]); render();
       }
     });
@@ -680,7 +699,7 @@
       if (this.getAttribute('data-tabs') === 'lights') $('all-off').style.visibility = b.getAttribute('data-tab') === 'lamps' ? 'visible' : 'hidden';
     });
     on($('all-off'), 'click', function () {
-      for (var k = 0; k < state.lights.length; k++) if (state.lights[k]) { state.lights[k] = false; backend.setLight(k, false); }
+      for (var k = 0; k < state.lights.length; k++) if (state.lights[k]) { state.lights[k] = false; setPend('light' + k, false, 10000); backend.setLight(k, false); }
       render();
     });
     // tik op een verdieping of label -> bijbehorende kaart licht op
@@ -806,7 +825,7 @@
       };
       x.send(body ? JSON.stringify(body) : null);
     },
-    call: function (domain, service, data) { ha.req('POST', '/api/services/' + domain + '/' + service, data, function () { setTimeout(ha.poll, 800); }); },
+    call: function (domain, service, data) { ha.req('POST', '/api/services/' + domain + '/' + service, data, function () { setTimeout(ha.poll, 2500); }); },
     num: function (map, id, div) { var e = map[id]; var v = e ? parseFloat(e.state) : NaN; return isNaN(v) ? 0 : v / (div || 1); },
     ok: function (map, id) { var e = id && map[id]; return !!(e && e.state !== 'unavailable' && e.state !== 'unknown'); },
     // tellerstanden om middernacht ophalen (voor "vandaag")
@@ -871,8 +890,8 @@
           if (!a.has) continue;
           a.modes = ac.attributes.hvac_modes || null;
           a.temp = parseFloat(ac.attributes.current_temperature) || a.temp;
-          a.set = parseFloat(ac.attributes.temperature) || a.set;
-          a.mode = ac.state === 'heat_cool' ? 'auto' : (AC_TXT[ac.state] ? ac.state : (ac.state === 'off' ? 'off' : 'auto'));
+          a.set = usePend('acset' + k, parseFloat(ac.attributes.temperature) || a.set);
+          a.mode = usePend('acmode' + k, ac.state === 'heat_cool' ? 'auto' : (AC_TXT[ac.state] ? ac.state : (ac.state === 'off' ? 'off' : 'auto')));
         }
         H.screens = false;
         for (k = 0; k < SCREENS.length; k++) {
@@ -885,11 +904,11 @@
           if (cv.state === 'closing') sc.target = 100;
         }
         var fan = map[E.ventilation];
-        if (fan && fan.attributes && fan.attributes.preset_mode) state.vent = ha.ventFromPreset(fan.attributes.preset_mode);
+        if (fan && fan.attributes && fan.attributes.preset_mode) state.vent = usePend('vent', ha.ventFromPreset(fan.attributes.preset_mode));
         state.humidity = ha.num(map, E.bathHumidity) || state.humidity;
         for (k = 0; k < CFG.lights.length; k++) {
           state.lightsHas[k] = ha.ok(map, CFG.lights[k].id);
-          state.lights[k] = !!(map[CFG.lights[k].id] && map[CFG.lights[k].id].state === 'on');
+          state.lights[k] = usePend('light' + k, !!(map[CFG.lights[k].id] && map[CFG.lights[k].id].state === 'on'));
         }
         // op afstand: paneel herladen (input_button) en scherm zwart (input_boolean)
         var rb = map[E.panelReload];
@@ -912,7 +931,7 @@
     zone: function (e, z) {
       if (!e || !e.attributes) return;
       z.temp = parseFloat(e.attributes.current_temperature) || z.temp;
-      z.set = parseFloat(e.attributes.temperature) || z.set;
+      z.set = usePend('thset', parseFloat(e.attributes.temperature) || z.set);
       z.heating = e.attributes.hvac_action ? e.attributes.hvac_action === 'heating' : z.temp < z.set - 0.1;
     },
     PRESETS: { auto: 'auto', '1': 'low', '2': 'medium', '3': 'high', boost: 'timer' },
@@ -930,7 +949,11 @@
     },
     setTemp: function (t) { if (!state.has.thermo) return; ha.call('climate', 'set_temperature', { entity_id: CFG.entities.thermostat, temperature: t }); },
     setMode: function (m) { if (!state.has.thermo) return; ha.call('climate', 'set_preset_mode', { entity_id: CFG.entities.thermostat, preset_mode: m }); },
-    setAcMode: function (k, m) { if (!state.acs[k].has) return; ha.call('climate', 'set_hvac_mode', { entity_id: ACS[k].id, hvac_mode: m }); },
+    setAcMode: function (k, m) {
+      if (!state.acs[k].has) return;
+      if (m === 'off') ha.call('climate', 'turn_off', { entity_id: ACS[k].id });
+      else ha.call('climate', 'set_hvac_mode', { entity_id: ACS[k].id, hvac_mode: m });
+    },
     setAcTemp: function (k, t) { if (!state.acs[k].has) return; ha.call('climate', 'set_temperature', { entity_id: ACS[k].id, temperature: t }); },
     setScreen: function (k, cmd) {
       if (!state.has.screens) return;

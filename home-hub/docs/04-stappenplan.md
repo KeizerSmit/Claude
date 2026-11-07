@@ -175,7 +175,11 @@ Plak dit in de Terminal en druk op Enter:
 printf "Plak je token en druk op Enter (je ziet niets, dat is normaal): "; read -s T; echo; T=$(printf %s "$T" | tr -d "[:space:]"); W=/Volumes/config/www/thuis; B=https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard; if [ ! -d /Volumes/config ]; then echo "Map config niet gevonden: verbind eerst in Finder met smb://homeassistant.local"; else mkdir -p "$W"; for f in index.html style.css app.js config.js; do curl -fsSL "$B/$f" -o "$W/$f" || echo "FOUT bij $f"; done; perl -pi -e "s/PLAK_HIER_EEN_LONG_LIVED_ACCESS_TOKEN/$T/" "$W/config.js" && grep -q "$T" "$W/config.js" && echo "Token staat in config.js"; curl -s -o /dev/null -w "Token-test: %{http_code}  (200 = goed, 401 = token fout)\n" -H "Authorization: Bearer $T" http://192.168.178.250/api/; fi
 ```
 Hij vraagt om het token. Maak het aan in Home Assistant (**je naam → Beveiliging → Langdurige toegangstokens → Token aanmaken**), kopieer het, plak het in de Terminal en druk op Enter. Je moet zien: `Token staat in config.js` en `Token-test: 200`.
-Hetzelfde commando gebruik je ook voor **updates** van het paneel.
+**Updates van het paneel** (je config.js met token blijft staan): verbind in Finder met `smb://192.168.178.250` (map config) en plak in de Terminal:
+```
+W=/Volumes/config/www/thuis; B=https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard; if [ ! -d "$W" ]; then echo "Map niet gevonden: verbind eerst in Finder met smb://192.168.178.250 (map config)"; else for f in index.html style.css app.js; do curl -fsSL "$B/$f?$(date +%s)" -o "$W/$f" && echo "OK $f" || echo "FOUT bij $f"; done; fi
+```
+Sluit daarna de app op de iPad af en open hem opnieuw.
 
 **C. Op de iPad**
 1. Open Safari en ga naar `http://192.168.178.250/local/thuis/index.html?app=2`. Gebruik het **IP-adres**; de oude iPad vindt `homeassistant.local` niet.
