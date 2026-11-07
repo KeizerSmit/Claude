@@ -33,9 +33,9 @@
   var LIVE = CFG.mode === 'homeassistant';
   // welke onderdelen leveren echte data? In demo-modus alles; live pas als de entiteit bestaat.
   state.has = { solar: !LIVE, hp: !LIVE, ac: !LIVE, weheat: !LIVE, thermo: !LIVE, vent: !LIVE, screens: !LIVE, today: !LIVE, weather: !LIVE };
-  state.lightsHas = []; state.lightsBri = []; state.lightsCt = []; state.lightsCtRange = []; state.lightsHasCt = [];
+  state.lightsHas = []; state.lightsWall = []; state.lightsBri = []; state.lightsCt = []; state.lightsCtRange = []; state.lightsHasCt = [];
   for (i = 0; i < CFG.lights.length; i++) {
-    state.lightsHas.push(!LIVE); state.lightsBri.push(80); state.lightsCt.push(2700);
+    state.lightsHas.push(!LIVE); state.lightsWall.push(false); state.lightsBri.push(80); state.lightsCt.push(2700);
     state.lightsCtRange.push([2700, 6500]); state.lightsHasCt.push(!LIVE);
   }
   if (LIVE) for (i = 0; i < CFG.lights.length; i++) state.lights[i] = false;
@@ -493,7 +493,7 @@
     var lampEls = $('lights').children, nOn = 0;
     for (k = 0; k < lampEls.length; k++) {
       lampEls[k].className = 'lamp' + (s.lights[k] ? ' on' : '');
-      lampEls[k].querySelector('.lamp-st').innerHTML = !s.lightsHas[k] ? 'niet gekoppeld' : (s.lights[k] ? 'Aan &middot; ' + Math.round(s.lightsBri[k]) + '%' : 'Uit');
+      lampEls[k].querySelector('.lamp-st').innerHTML = s.lightsWall[k] ? 'uit (muurknop)' : (!s.lightsHas[k] ? 'niet gekoppeld' : (s.lights[k] ? 'Aan &middot; ' + Math.round(s.lightsBri[k]) + '%' : 'Uit'));
       if (s.lights[k]) nOn++;
       if (refs.glows[k]) refs.glows[k].setAttribute('opacity', s.lights[k] ? (0.35 + 0.65 * s.lightsBri[k] / 100).toFixed(2) : '0');
       if (refs.bulbs[k]) refs.bulbs[k].setAttribute('fill', s.lights[k] ? '#ffc94d' : '#3a4660');
@@ -967,6 +967,8 @@
         state.humidity = ha.num(map, E.bathHumidity) || state.humidity;
         for (k = 0; k < CFG.lights.length; k++) {
           state.lightsHas[k] = ha.ok(map, CFG.lights[k].id);
+          // bestaat de lamp wel, maar is hij onbereikbaar? Dan staat de muurknop (stroom) uit.
+          state.lightsWall[k] = !!(map[CFG.lights[k].id] && map[CFG.lights[k].id].state === 'unavailable');
           var le = map[CFG.lights[k].id], la = (le && le.attributes) || {};
           if (la.brightness) state.lightsBri[k] = usePend('lbri' + k, Math.max(1, Math.round(la.brightness / 2.55)));
           if (la.color_temp_kelvin) state.lightsCt[k] = usePend('lct' + k, la.color_temp_kelvin);
