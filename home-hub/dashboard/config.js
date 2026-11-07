@@ -4,7 +4,7 @@
  *
  * Dit bestand staat samen met index.html/app.js/style.css in /config/www/thuis/
  * van Home Assistant. Open op de iPad:
- *   http://192.168.178.144/local/thuis/index.html
+ *   http://192.168.178.250/local/thuis/index.html
  *
  * Een entiteit die (nog) niet bestaat, wordt op het paneel als "–" getoond.
  * Zodra je hem koppelt in Home Assistant verschijnt hij vanzelf.

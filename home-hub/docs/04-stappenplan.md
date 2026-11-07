@@ -140,6 +140,17 @@ Dit is een officieel ondersteunde manier. Windows blijft gewoon op de laptop sta
 - *"VT-x/AMD-V is not available"*: virtualisatie staat nog uit in de BIOS (stap A).
 - Zet in de FRITZ!Box (`fritz.box` → Thuisnetwerk → Netwerk) bij **homeassistant** ook **"Altijd hetzelfde IPv4-adres toewijzen"** aan.
 
+## Stap 2c. Netwerkkabel en vast IP-adres (zo staat het nu)
+
+- De laptop ligt **dicht** in de meterkast, met een **netwerkkabel** naar het Ziggo-modem en de lader eraan. Met de klep dicht blijft hij gewoon draaien (getest).
+- Home Assistant heeft een **vast adres: `192.168.178.250`**, ingesteld in Home Assistant zelf (niet in het modem). Het netwerkscherm in Home Assistant gaf een fout (dubbele `/24`), daarom is het via de **Terminal & SSH-app** gedaan (Instellingen → Apps → Terminal & SSH → Open web UI):
+  ```
+  ha network update enp2s0 --ipv4-method static --ipv4-address 192.168.178.250/24 --ipv4-gateway 192.168.178.1 --ipv4-nameserver 192.168.178.1
+  ha network update wlp3s0 --disabled
+  ```
+- Op de laptop zelf typ je dezelfde commando's **zonder** `ha` ervoor (daar staat al `ha >`).
+- **Stroomstoring:** korte storingen vangt de accu op. Is de accu leeg geraakt, dan gaat de laptop niet vanzelf weer aan: druk dan één keer op de aan-knop.
+
 ## Stap 3. Koppelingen toevoegen (Instellingen → Apparaten & diensten)
 
 1. **HomeWizard**: zet in de HomeWizard-app per meter *Lokale API* aan. Home Assistant vindt ze dan vanzelf.
@@ -161,13 +172,13 @@ Dit is een officieel ondersteunde manier. Windows blijft gewoon op de laptop sta
 **B. Alles in één keer installeren en het token erin zetten (Terminal op de Mac)**
 Plak dit in de Terminal en druk op Enter:
 ```
-printf "Plak je token en druk op Enter (je ziet niets, dat is normaal): "; read -s T; echo; T=$(printf %s "$T" | tr -d "[:space:]"); W=/Volumes/config/www/thuis; B=https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard; if [ ! -d /Volumes/config ]; then echo "Map config niet gevonden: verbind eerst in Finder met smb://homeassistant.local"; else mkdir -p "$W"; for f in index.html style.css app.js config.js; do curl -fsSL "$B/$f" -o "$W/$f" || echo "FOUT bij $f"; done; perl -pi -e "s/PLAK_HIER_EEN_LONG_LIVED_ACCESS_TOKEN/$T/" "$W/config.js" && grep -q "$T" "$W/config.js" && echo "Token staat in config.js"; curl -s -o /dev/null -w "Token-test: %{http_code}  (200 = goed, 401 = token fout)\n" -H "Authorization: Bearer $T" http://192.168.178.144/api/; fi
+printf "Plak je token en druk op Enter (je ziet niets, dat is normaal): "; read -s T; echo; T=$(printf %s "$T" | tr -d "[:space:]"); W=/Volumes/config/www/thuis; B=https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard; if [ ! -d /Volumes/config ]; then echo "Map config niet gevonden: verbind eerst in Finder met smb://homeassistant.local"; else mkdir -p "$W"; for f in index.html style.css app.js config.js; do curl -fsSL "$B/$f" -o "$W/$f" || echo "FOUT bij $f"; done; perl -pi -e "s/PLAK_HIER_EEN_LONG_LIVED_ACCESS_TOKEN/$T/" "$W/config.js" && grep -q "$T" "$W/config.js" && echo "Token staat in config.js"; curl -s -o /dev/null -w "Token-test: %{http_code}  (200 = goed, 401 = token fout)\n" -H "Authorization: Bearer $T" http://192.168.178.250/api/; fi
 ```
 Hij vraagt om het token. Maak het aan in Home Assistant (**je naam → Beveiliging → Langdurige toegangstokens → Token aanmaken**), kopieer het, plak het in de Terminal en druk op Enter. Je moet zien: `Token staat in config.js` en `Token-test: 200`.
 Hetzelfde commando gebruik je ook voor **updates** van het paneel.
 
 **C. Op de iPad**
-1. Open Safari en ga naar `http://192.168.178.144/local/thuis/index.html?app=2`. Gebruik het **IP-adres**; de oude iPad vindt `homeassistant.local` niet.
+1. Open Safari en ga naar `http://192.168.178.250/local/thuis/index.html?app=2`. Gebruik het **IP-adres**; de oude iPad vindt `homeassistant.local` niet.
 2. Staat er linksboven **"Verbonden"**? Kies dan **Deel → Zet op beginscherm**.
 3. ⚠️ **Een icoon op het beginscherm heeft een eigen geheugen.** Toont het icoon een oude versie (bijv. "Demo-modus") terwijl Safari "Verbonden" laat zien? Verwijder dan het icoon en maak het opnieuw aan met een ander nummer: `?app=3`, `?app=4`, enzovoort.
 4. Zet daarna **Begeleide toegang** aan (Instellingen → Algemeen → Toegankelijkheid).
