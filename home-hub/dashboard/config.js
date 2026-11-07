@@ -25,25 +25,29 @@ var HUB_CONFIG = {
     gridPower:      'sensor.p1_meter_power',
     gridImportToday:'sensor.p1_meter_energy_import',
     gridExportToday:'sensor.p1_meter_energy_export',
-    // HomeWizard kWh-meter op de omvormer (zonnepanelen) en op de warmtepomp
+    // HomeWizard kWh-meter op de omvormer (zonnepanelen)
     solarPower:     'sensor.kwh_meter_zon_power',
     solarToday:     'sensor.kwh_meter_zon_energy_today',
-    heatPumpPower:  'sensor.kwh_meter_warmtepomp_power',
+    // Weheat Blackbird (officiele Weheat-integratie, alleen uitlezen)
+    heatPumpPower:  'sensor.blackbird_electrical_power',
+    heatPumpCop:    'sensor.blackbird_cop',
     // Honeywell (Evohome / Lyric) zones
     climateDown:    'climate.beneden',
     climateUp:      'climate.boven',
-    // Ventilatie (bijv. Itho/Orcon/Zehnder via add-on)
-    ventilation:    'fan.ventilatie',
+    // Orcon ventilatiebox (zolder, technische ruimte) via RF: ramses_cc
+    ventilation:    'fan.orcon',
     bathHumidity:   'sensor.badkamer_vochtigheid',
     // Weer (Buienradar-integratie)
     weather:        'weather.buienradar'
   },
 
+  // LUUMR-lampen op de 2e verdieping (zolder). 'at' = plek in de tekening
+  // in meters vanaf de linker bouwmuur (x) en de voorgevel (y), uit het SketchUp-model.
   lights: [
-    { id: 'light.slaapkamer',  name: 'Slaapkamer', room: 0 },
-    { id: 'light.overloop',    name: 'Overloop',   room: 1 },
-    { id: 'light.kinderkamer', name: 'Kamer 2',    room: 2 },
-    { id: 'light.badkamer',    name: 'Badkamer',   room: 1 }
+    { id: 'light.slaapkamer_5', name: 'Slaapkamer 5', at: [2.68, 1.30] },
+    { id: 'light.slaapkamer_4', name: 'Slaapkamer 4', at: [2.68, 7.30] },
+    { id: 'light.toilet',       name: 'Toilet / bad', at: [3.90, 4.40] },
+    { id: 'light.overloop',     name: 'Overloop',     at: [1.95, 3.90] }
   ],
 
   // Na zoveel seconden zonder aanraking dimt het scherm (klok-modus)

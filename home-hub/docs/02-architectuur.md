@@ -9,9 +9,9 @@
                                                   │ integraties
      ┌──────────────┬──────────────┬──────────────┼──────────────┬───────────────┐
      ▼              ▼              ▼              ▼              ▼               ▼
- HomeWizard     Honeywell      Warmtepomp     Ventilatie     Lumen-lampen     Buienradar
- P1 + kWh-      thermostaat    (merk?)        (merk?)        (protocol?)      (weer/regen)
- meters (lokaal)(cloud/lokaal)
+ HomeWizard     Honeywell      Weheat         Orcon MV-box   LUUMR-lampen     Buienradar
+ P1 + kWh-      thermostaat    Blackbird      (RF 868 MHz,   (Zigbee,         (weer/regen)
+ meters (lokaal)(cloud/lokaal) (cloud, lezen) lokaal)        lokaal)
 ```
 
 **Waarom zo?** De iPad is te oud om zelf integraties te draaien. Home Assistant is gratis, Nederlands-vriendelijk en ondersteunt vrijwel alles wat je hebt. De iPad haalt elke 5 seconden alle waarden op uit Home Assistant en stuurt een opdracht als je ergens op tikt.
@@ -43,22 +43,25 @@ Twee zones (vloerverwarming beneden en warmte boven) wijst bijna zeker op **Hone
 | Lyric T6 / T6R | `lyric` (officieel) | Via de Resideo-cloud. De T6 kan ook via HomeKit-koppeling **lokaal** |
 | Round Connected | `honeywell` (officieel) | Via de TCC-cloud |
 
-### Warmtepomp: welk merk?
-Minimaal meet je het verbruik met een HomeWizard kWh-meter. Voor temperaturen, COP of een stooklijn hangt het van het merk af. Een paar voorbeelden: Daikin (Onecta / ESPAltherma), Mitsubishi (MELCloud), Itho Daalderop, Quatt, Remeha, Nefit en Vaillant (via add-ons).
+### Warmtepomp: Weheat Blackbird
+- Officiële Home Assistant-integratie **[Weheat](https://www.home-assistant.io/integrations/weheat/)**. Die ondersteunt de Blackbird, Sparrow en Flint.
+- Je logt in met je Weheat-account. De Client ID en Client Secret staan in de kennisbank van Weheat.
+- Je krijgt onder meer elektrisch en thermisch vermogen, **COP**, aanvoer- en retourtemperatuur, buitentemperatuur, status en (optioneel) de temperatuur van het warmwatervat. Het dashboard toont vermogen en COP.
+- **Alleen uitlezen.** De integratie kan de warmtepomp niet aansturen. Dat is ook niet nodig: de thermostaat stuurt de warmtevraag. De gegevens komen via de cloud en ververst om de ±2 minuten.
+- In de tekening staat de buitenunit achter in de tuin, en het buffervat en het boilervat in de technische ruimte op zolder, zoals in het SketchUp-model. Staat de buitenunit ergens anders (bijv. op het dak van de uitbouw)? Dan verplaats ik hem.
 
-### "Afzuiger": wat is het precies?
-- **Mechanische ventilatiebox** (meestal op zolder): bij Itho Daalderop werkt de open-source *Itho WiFi add-on* (ESP32) erg goed en volledig lokaal. Bij Orcon of Itho met een RF-afstandsbediening kan het via een RF-dongle (`ramses_rf`), en bij Zehnder via de ComfoConnect LAN C.
-- **WTW-unit** (Brink, Zehnder): vaak via een add-on module of Modbus.
-- **Keukenafzuigkap**: meestal niet slim. Stand bedienen gaat dan alleen met een (door een installateur geplaatste) relaismodule.
+### Ventilatie: Orcon-box op zolder, bediend met het kastje in de keuken
+- De MV-unit hangt in de technische ruimte op zolder, met afzuigpunten in keuken, toilet en badkamers. Het kastje bij de keuken is vrijwel zeker een **Orcon RF-afstandsbediening** (bijv. de 15RF, 868 MHz).
+- Koppelen kan **lokaal** met een 868 MHz USB-stick (evofw3-type, ± €40–60) en de community-integratie **ramses_cc** (via HACS). Home Assistant doet zich dan voor als een tweede afstandsbediening. Op het forum werkt dat met de Orcon MVS-15, maar het instellen (binden) is wat priegelwerk ([forumdraad](https://community.home-assistant.io/t/honeywell-ch-dhw-via-rf-evohome-sundial-hometronics-chronotherm/151584?page=154)).
+- Mooie bijvangst: blijkt de Honeywell een **evohome** te zijn, dan leest dezelfde stick die ook lokaal uit (evohome gebruikt hetzelfde RF-protocol).
+- Alternatief zonder solderen of configuratiewerk: een RFXtrx 868 die de afstandsbediening nabootst.
+- Graag nog een foto van het kastje en van het typeplaatje van de box (merk en type, bijv. "MVS-15RHB").
 
-Het dashboard gaat uit van standen Auto / 1 / 2 / 3 / Boost, zoals bij de meeste ventilatieboxen.
-
-### Lumen-lampen: welke app gebruik je?
-"Lumen" kon ik niet eenduidig vinden. Dit bepaalt de koppeling:
-- **Tuya / Smart Life-app** (veel huismerken, zoals LSC van de Action): Tuya-integratie of Local Tuya.
-- **Zigbee** (bijv. Innr, IKEA, Hue zonder bridge): via een Zigbee-stick, lokaal en snel.
-- **Eigen wifi of MQTT**: via MQTT.
-Stuur me de naam van de app of een foto van de verpakking, dan zoek ik het precies uit.
+### Verlichting: LUUMR op de 2e verdieping
+- Lampen in slaapkamer 4, slaapkamer 5, toilet/badkamer en overloop.
+- LUUMR-slimme lampen zijn **Zigbee-lampen** (werken met Tuya en Philips Hue). Een losse Zigbee-stick aan Home Assistant (bijv. Home Assistant Connect ZBT-1 of SLZB-06, ± €30–40) is dan de beste route: **lokaal, snel en zonder cloud**. Je koppelt de lampen direct aan Home Assistant (ZHA of Zigbee2MQTT).
+- Gebruik je nu de LUUMR- of Tuya-app met een Tuya-gateway? Dan kan het ook via de Tuya-integratie, maar dat loopt via de cloud en is trager.
+- In `config.js` staat per lamp de plek in de tekening (`at: [x, y]` in meters), zodat de juiste kamer oplicht.
 
 ### Weer
 Integratie **Buienradar**: temperatuur, verwachting en "komende 2 uur droog/regen" voor Tilburg.
@@ -75,10 +78,13 @@ Integratie **Buienradar**: temperatuur, verwachting en "komende 2 uur droog/rege
 
 ## Het 3D-huis
 
-Nu staat er een gestileerd huis in het dashboard (3 verdiepingen, opengewerkt). De volgende stap is jouw eigen woning:
+Het huis in het dashboard is nu op maat getekend uit het SketchUp-model van de woning (verbouwing zolder):
 
-1. **Jouw 3D-beelden**: stuur ze, dan maak ik er een isometrische tekening van in dezelfde stijl.
-2. **3D BAG** (TU Delft, open data): gratis LoD2-model van elk Nederlands gebouw, met de echte dakvorm en hoogtes ([3dbag.nl](https://3dbag.nl), [projectpagina](https://3d.bk.tudelft.nl/projects/3dbag/)). Daarmee kloppen de dakvlakken voor de zonnepanelen precies.
-3. Plattegrond per verdieping: welke kamers waar? Dan zet ik de lampen en zones op de juiste plek.
+- Tussenwoning van 5,37 m breed en 9,5 m diep, plus een uitbouw tot 11,9 m. Vloerhoogtes 0 / 2,90 / 5,78 m, nok op 9,74 m.
+- Zadeldak in grijs felszink met 6 zonnepanelen op het rechter dakvlak. Topgevels voor en achter in oranje gevelsteen, met zolderramen. De bouwmuren zijn grijs, zoals in het model.
+- Begane grond: hal, toilet, trap, meterkast, woonkamer met vloerverwarming, keuken en uitbouw met tuinpui.
+- 1e verdieping: badkamer, slaapkamer 1, 2 en 3, en de radiatoren.
+- 2e verdieping (zolder): slaapkamer 4 en 5, badkamer met toilet, overloop, en de technische ruimte met wasmachine, droger, buffervat, boilervat en de Orcon-unit.
+- Weergave: opengewerkt. De verdiepingen en het dak zweven los, zodat je in elke verdieping kijkt.
 
-Voor de iPad 2 wordt het huis **vooraf getekend** (SVG/afbeelding) en niet live in 3D gerenderd. De A5-chip trekt echte 3D (WebGL) niet soepel, en zo blijft alles vloeiend.
+Het SketchUp-bestand zelf staat **niet** in deze repository (privé). Alleen de maten zijn overgenomen in `dashboard/app.js`.

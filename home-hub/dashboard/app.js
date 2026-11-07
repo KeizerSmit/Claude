@@ -11,7 +11,7 @@
    * 1. Model: alles wat het scherm toont zit in dit ene object.
    * ===================================================================== */
   var state = {
-    solar: 0, home: 0, hp: 0, grid: 0,          // kW (grid > 0 = afname, < 0 = teruglevering)
+    solar: 0, home: 0, hp: 0, grid: 0, cop: 4.1,         // kW (grid > 0 = afname, < 0 = teruglevering)
     todaySun: 0, todayUse: 0, todayNet: 0,     // kWh
     zones: {
       down: { temp: 20.6, set: 21.0, heating: true },
@@ -25,7 +25,7 @@
     history: []                                 // 24 x { sun: kWh, use: kWh }
   };
   var i;
-  for (i = 0; i < CFG.lights.length; i++) state.lights.push(i === 0 || i === 2);
+  for (i = 0; i < CFG.lights.length; i++) state.lights.push(i === 1 || i === 3);
   for (i = 0; i < 24; i++) state.history.push({ sun: 0, use: 0 });
 
   /* =====================================================================
@@ -46,182 +46,315 @@
   }
 
   /* =====================================================================
-   * 3. Isometrische 3D-scene (SVG)
-   *    Coordinaten in meters: x = lengte (0..9), y = breedte (0..6), z = hoogte.
-   *    Opengewerkte "exploded" weergave: elke verdieping zweeft los zodat
-   *    je erin kijkt. Later te vervangen door een render van je eigen woning.
+   * 3. Isometrische 3D-scene (SVG), op maat van de woning
+   *    Alle maten komen uit het SketchUp-model van de woning (meters):
+   *      model-x = breedte (0,12 = linker bouwmuur, 5,25 = rechter bouwmuur)
+   *      model-y = diepte  (0 = voorgevel, 9,5 = achtergevel, 11,9 = uitbouw)
+   *      model-z = hoogte  (BG 0,00 / 1e 2,90 / zolder 5,78 / nok 9,74)
+   *    Weergave: "exploded": elke verdieping zweeft los zodat je erin kijkt;
+   *    het dak met de voorgevel (topgevel) zweeft boven de zolder.
+   *    We kijken schuin van voren-rechts: links de voorgevel (topgevel),
+   *    rechts het dakvlak met de zonnepanelen en de tuin met de warmtepomp.
    * ===================================================================== */
   var NS = 'http://www.w3.org/2000/svg';
   var svg = $('house');
-  var S = 24, OX = 270, OY = 378;              // schaal en oorsprong op scherm
-  var LEN = 9, WID = 6, SLAB = 0.3, WALL = 1.1;
-  var FLOOR_Z = [0, 4.2, 8.4];
-  var ROOF_Z = FLOOR_Z[2] + SLAB + 2.5, RIDGE = 2.7;   // dak zweeft los boven de zolder
+  var S = 21, OX = 296, OY = 428;              // schaal en oorsprong op scherm
 
-  function P(x, y, z) {
-    return [OX + (x - y) * 0.866 * S, OY + (x + y) * 0.5 * S - z * S];
-  }
-  function ptsStr(list) {
-    var out = [], k, p;
-    for (k = 0; k < list.length; k++) { p = P(list[k][0], list[k][1], list[k][2]); out.push(p[0].toFixed(1) + ',' + p[1].toFixed(1)); }
-    return out.join(' ');
-  }
+  // verdiepingen: echte vloerhoogte -> hoogte in de opengewerkte tekening
+  var LV = [{ real: 0.00, off: 0.0 }, { real: 2.90, off: 4.6 }, { real: 5.78, off: 9.2 }];
+  var LIFT = 4.7;       // zoveel zweeft het dak boven de zolder
+  var CUT = 6.40;       // boven deze hoogte hoort de gevel bij het dakdeel
+  var EAVE = 7.31, RIDGE = 9.74, RIDGE_X = 2.685;
+  var NEAR = 0.9, FAR = 2.0, PART = 1.0;       // hoogte waarop muren zijn "doorgezaagd"
+
+  function ZZ(lv, z) { return LV[lv].off + (z - LV[lv].real); }
+  function ZR(z) { return LV[2].off + (z - LV[2].real) + LIFT; }
+  function roofZ(x) { return RIDGE - Math.abs(x - RIDGE_X) * 0.8663; }   // hoogte dakvlak (dakhelling ~41 graden)
+
+  function P(X, Y, Z) { return [OX + (X - Y) * 0.866 * S, OY + (X + Y) * 0.5 * S - Z * S]; }
+  function Pm(x, y, z) { return P(x + 0.12, 12 - y, z); }   // model -> scherm (rechtshandig: niet gespiegeld)
+
   function el(name, attrs, parent) {
     var e = document.createElementNS(NS, name), k;
     for (k in attrs) if (attrs.hasOwnProperty(k)) e.setAttribute(k, attrs[k]);
     (parent || svg).appendChild(e);
     return e;
   }
-  function face(list, cls, parent) { return el('polygon', { points: ptsStr(list), 'class': cls }, parent); }
-  function line(list, cls, parent) { return el('polyline', { points: ptsStr(list), 'class': cls }, parent); }
-  function box(x, y, z, dx, dy, dz, cls, parent) {
+  function ptsM(list) {
+    var out = [], k, p;
+    for (k = 0; k < list.length; k++) { p = Pm(list[k][0], list[k][1], list[k][2]); out.push(p[0].toFixed(1) + ',' + p[1].toFixed(1)); }
+    return out.join(' ');
+  }
+  function face(list, cls, parent) { return el('polygon', { points: ptsM(list), 'class': cls }, parent); }
+  function line(list, cls, parent) { return el('polyline', { points: ptsM(list), 'class': cls }, parent); }
+  // blok in modelcoordinaten; zichtbare vlakken: boven (-top), straatkant (-right), rechterzijde (-front)
+  function box(x0, x1, y0, y1, z0, z1, cls, parent) {
     var g = el('g', {}, parent);
-    face([[x, y + dy, z], [x + dx, y + dy, z], [x + dx, y + dy, z + dz], [x, y + dy, z + dz]], cls + '-front', g);
-    face([[x + dx, y, z], [x + dx, y + dy, z], [x + dx, y + dy, z + dz], [x + dx, y, z + dz]], cls + '-right', g);
-    face([[x, y, z + dz], [x + dx, y, z + dz], [x + dx, y + dy, z + dz], [x, y + dy, z + dz]], cls + '-top', g);
+    face([[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], cls + '-front', g);
+    face([[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], cls + '-right', g);
+    face([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], cls + '-top', g);
     return g;
   }
-  function circleFlat(cx, cy, z, r) { // cirkel op de vloer -> ellips op scherm
+  function circleFlat(cx, cy, z, r) {
     var list = [], a;
     for (a = 0; a < 24; a++) list.push([cx + r * Math.cos(a / 24 * 6.2832), cy + r * Math.sin(a / 24 * 6.2832), z]);
     return list;
   }
-  function text(x, y, z, str, cls, parent) {
-    var p = P(x, y, z);
-    var t = el('text', { x: p[0].toFixed(1), y: p[1].toFixed(1), 'class': cls, 'text-anchor': 'middle' }, parent);
-    t.appendChild(document.createTextNode(str));
-    return t;
+  // kamernamen worden na de wanden getekend (anders vallen ze erachter)
+  var pendingText = [];
+  function text(x, y, z, str, parent) { pendingText.push([x, y, z, str, parent]); }
+  function flushText() {
+    for (var k = 0; k < pendingText.length; k++) {
+      var q = pendingText[k], p = Pm(q[0], q[1], q[2]);
+      var t = el('text', { x: p[0].toFixed(1), y: p[1].toFixed(1), 'class': 'room-name', 'text-anchor': 'middle' }, q[4]);
+      t.appendChild(document.createTextNode(q[3]));
+    }
+    pendingText = [];
+  }
+  // tekenvolgorde binnen een verdieping: verst weg eerst
+  function drawSorted(items) {
+    items.sort(function (a, b) { return a.k - b.k; });
+    for (var k = 0; k < items.length; k++) items[k].f();
+  }
+  function item(x0, x1, y0, y1, fn) { return { k: (12 - (y0 + y1) / 2) + (x0 + x1) / 2, f: fn }; }
+  function partition(list, z, h, g) {
+    var out = [], k;
+    for (k = 0; k < list.length; k++) (function (w) {
+      out.push(item(w[0], w[1], w[2], w[3], function () { box(w[0], w[1], w[2], w[3], z, z + (w[4] || h), 'part', g); }));
+    })(list[k]);
+    return out;
+  }
+  function stairs(x0, x1, y0, y1, n, z, g) { // treden, oplopend naar achteren
+    var out = [], d = (y1 - y0) / n, k;
+    for (k = 0; k < n; k++) (function (i) {
+      out.push(item(x0, x1, y0 + i * d, y0 + (i + 1) * d, function () { box(x0, x1, y0 + i * d, y0 + (i + 1) * d, z, z + (i + 1) * 0.19, 'stair', g); }));
+    })(k);
+    return out;
+  }
+  function hitArea(g, z0, z1, y1) {
+    face([[0.12, 0.4, z0], [5.25, 0.4, z0], [5.25, y1, z0], [5.25, y1, z1], [0.12, y1, z1], [0.12, 0.4, z1]], 'floor-hit', g);
   }
 
-  var refs = { floors: [], glows: [], bulbs: [], panels: [] };
+  var refs = { floors: [], glows: [], bulbs: [], panels: [], ufh: [] };
 
   function buildScene() {
     var defs = el('defs', {});
     var rg = el('radialGradient', { id: 'glowGrad' }, defs);
-    el('stop', { offset: '0%', 'stop-color': '#ffc94d', 'stop-opacity': '0.75' }, rg);
+    el('stop', { offset: '0%', 'stop-color': '#ffc94d', 'stop-opacity': '0.8' }, rg);
     el('stop', { offset: '100%', 'stop-color': '#ffc94d', 'stop-opacity': '0' }, rg);
 
-    // grond + raster
-    face([[-1.4, -1.0, -0.02], [11.8, -1.0, -0.02], [11.8, 9.8, -0.02], [-1.4, 9.8, -0.02]], 'ground');
-    var gx;
-    for (gx = 0; gx <= 11; gx += 2) line([[gx, -1.0, 0], [gx, 9.8, 0]], 'grid-line');
-    for (gx = 0; gx <= 9; gx += 2) line([[-1.4, gx, 0], [11.8, gx, 0]], 'grid-line');
+    // ---- terrein: stoep, tuin, terras ----
+    face([[-1.2, -2.6, -0.02], [6.6, -2.6, -0.02], [6.6, 15.4, -0.02], [-1.2, 15.4, -0.02]], 'grass');
+    face([[-1.2, -2.6, -0.01], [6.6, -2.6, -0.01], [6.6, -0.05, -0.01], [-1.2, -0.05, -0.01]], 'paving');
+    face([[0.12, 11.9, -0.01], [5.25, 11.9, -0.01], [5.25, 14.9, -0.01], [0.12, 14.9, -0.01]], 'paving');
 
-    // ---- begane grond ----
-    var f0 = el('g', { 'class': 'floor', 'data-floor': '0' });
-    refs.floors.push(f0);
-    buildFloorShell(f0, FLOOR_Z[0], [5.5]);
-    var z0 = FLOOR_Z[0] + SLAB + 0.01, y, row = 0, path = [];
-    for (y = 0.8; y <= 5.5; y += 0.55) {        // vloerverwarming-slang
-      if (row % 2 === 0) { path.push([0.6, y, z0]); path.push([8.5, y, z0]); }
-      else { path.push([8.5, y, z0]); path.push([0.6, y, z0]); }
-      row++;
-    }
-    refs.ufh = line(path, 'ufh', f0);
-    refs.ufh.setAttribute('stroke-dasharray', '6 6');
-    text(2.7, 0.9, z0 + 0.6, 'Woonkamer', 'room-name', f0);
-    text(7.2, 0.9, z0 + 0.6, 'Keuken', 'room-name', f0);
-    hitArea(f0, FLOOR_Z[0]);
+    // ---- warmtepomp buitenunit (Weheat Blackbird) achter in de tuin ----
+    var hp = el('g', {});
+    box(4.4, 5.7, 13.0, 13.55, 0, 1.0, 'hp', hp);
+    box(4.4, 5.7, 13.0, 13.55, 1.0, 1.07, 'hpcap', hp);
+    var fan = [], a;
+    for (a = 0; a < 20; a++) fan.push([5.05 + 0.34 * Math.cos(a / 20 * 6.2832), 12.999, 0.52 + 0.34 * Math.sin(a / 20 * 6.2832)]);
+    face(fan, 'hp-fan', hp);
 
-    // ---- warmtepomp buitenunit ----
-    var hp = el('g', { 'class': 'hp' });
-    box(9.9, 3.5, 0, 1.25, 0.6, 1.0, 'hp', hp);
-    face(circleOnFront(10.52, 4.11, 0.5, 0.34), 'hp-grill', hp).setAttribute('style', 'fill:#4a5568');
-    face(circleOnFront(10.52, 4.11, 0.5, 0.12), 'hp-hub', hp).setAttribute('style', 'fill:#2a3242');
-    refs.hp = hp;
+    buildGround();
+    buildFirst();
+    buildAttic();
+    buildRoof();
+    buildFlows();
 
-    // ---- eerste verdieping ----
-    var f1 = el('g', { 'class': 'floor', 'data-floor': '1' });
-    refs.floors.push(f1);
-    buildFloorShell(f1, FLOOR_Z[1], [3.5, 5.5]);
-    var z1 = FLOOR_Z[1] + SLAB + 0.01;
-    var roomCenters = [[1.75, 3.0], [4.5, 3.0], [7.25, 3.0]];
-    var r;
-    for (r = 0; r < roomCenters.length; r++) {
-      refs.glows.push(el('polygon', { points: ptsStr(circleFlat(roomCenters[r][0], roomCenters[r][1], z1, 1.5)), fill: 'url(#glowGrad)', opacity: '0' }, f1));
-    }
-    text(1.75, 5.2, z1, 'Slaapkamer', 'room-name', f1);
-    text(4.5, 5.2, z1, 'Bad', 'room-name', f1);
-    text(7.25, 5.2, z1, 'Kamer 2', 'room-name', f1);
-    for (r = 0; r < roomCenters.length; r++) {
-      var top = P(roomCenters[r][0], roomCenters[r][1], z1 + 1.9), bot = P(roomCenters[r][0], roomCenters[r][1], z1 + 1.15);
-      el('line', { x1: top[0], y1: top[1], x2: bot[0], y2: bot[1], stroke: '#3a4660', 'stroke-width': 1 }, f1);
-      refs.bulbs.push(el('circle', { cx: bot[0], cy: bot[1], r: 4.5, fill: '#3a4660' }, f1));
-    }
-    hitArea(f1, FLOOR_Z[1]);
-
-    // ---- zolder + dak ----
-    var f2 = el('g', { 'class': 'floor', 'data-floor': '2' });
-    refs.floors.push(f2);
-    var z2 = FLOOR_Z[2];
-    box(0, 0, z2, LEN, WID, SLAB, 'slab', f2);
-    var zt = z2 + SLAB;
-    // ventilatie-unit (WTW / mechanische afzuiging) met kanalen
-    box(1.0, 2.6, zt, 1.7, 1.3, 1.0, 'unit', f2);
-    refs.ducts = [];
-    refs.ducts.push(line([[1.85, 3.25, zt + 1.0], [1.85, 3.25, ROOF_Z + 0.9]], 'duct', f2));
-    refs.ducts.push(line([[2.7, 3.25, zt + 0.45], [5.0, 3.25, zt + 0.45], [5.0, 3.25, zt - 1.2]], 'duct', f2));
-    text(6.4, 4.6, zt, 'Zolder', 'room-name', f2);
-    // dak: achterste vlak + achtergevel doorzichtig
-    face([[0, 0, ROOF_Z], [LEN, 0, ROOF_Z], [LEN, 3, ROOF_Z + RIDGE], [0, 3, ROOF_Z + RIDGE]], 'gable', f2);
-    face([[0, 0, ROOF_Z], [0, WID, ROOF_Z], [0, 3, ROOF_Z + RIDGE]], 'gable', f2);
-    // voorste dakvlak (glas-effect) + zonnepanelen
-    face([[0, WID, ROOF_Z], [LEN, WID, ROOF_Z], [LEN, 3, ROOF_Z + RIDGE], [0, 3, ROOF_Z + RIDGE]], 'roof', f2);
-    var c, t, x0, t0, t1;
-    for (c = 0; c < 4; c++) {
-      for (t = 0; t < 2; t++) {
-        x0 = 3.3 + c * 1.35; t0 = 0.1 + t * 0.44; t1 = t0 + 0.4;
-        refs.panels.push(face([
-          [x0, WID - 3 * t0, ROOF_Z + RIDGE * t0], [x0 + 1.25, WID - 3 * t0, ROOF_Z + RIDGE * t0],
-          [x0 + 1.25, WID - 3 * t1, ROOF_Z + RIDGE * t1], [x0, WID - 3 * t1, ROOF_Z + RIDGE * t1]
-        ], 'panel', f2));
-      }
-    }
-    face([[LEN, 0, ROOF_Z], [LEN, WID, ROOF_Z], [LEN, 3, ROOF_Z + RIDGE]], 'gable', f2);
-    hitArea(f2, FLOOR_Z[2]);
-
-    // ---- energiestromen ----
-    var HUB = [-0.7, 6.7, 0.2];
-    var sunPts = [[3.3, WID - 0.3, ROOF_Z + 0.27], [0, WID, ROOF_Z], [HUB[0], HUB[1], ROOF_Z], HUB];
-    var gridPts = [HUB, [HUB[0], 9.4, 0.2]];
-    var hpPts = [HUB, [10.52, HUB[1], 0.2], [10.52, 4.3, 0.2]];
-    refs.flowSun = flow(sunPts, 'f-sun');
-    refs.flowGrid = flow(gridPts, 'f-exp');
-    refs.flowHp = flow(hpPts, 'f-heat');
-
-    // elektriciteitsmast (net)
-    var b = P(HUB[0], 9.4, 0), tp = P(HUB[0], 9.4, 2.4), arm1 = P(HUB[0] - 0.5, 9.4, 2.0), arm2 = P(HUB[0] + 0.5, 9.4, 2.0);
-    el('line', { x1: b[0], y1: b[1], x2: tp[0], y2: tp[1], 'class': 'pole' });
-    el('line', { x1: arm1[0], y1: arm1[1], x2: arm2[0], y2: arm2[1], 'class': 'pole' });
-    var hubP = P(HUB[0], HUB[1], HUB[2]);
-    refs.hubNode = el('circle', { cx: hubP[0], cy: hubP[1], r: 6, 'class': 'node', stroke: '#8fb4ff' });
-
+    // labels: verdiepingen in een kolom rechts naast het huis
+    var COL = 446;
     refs.anchor = {
-      sun: P(4.5, 3, ROOF_Z + RIDGE + 1.9),
-      vent: P(LEN, 0, FLOOR_Z[2] + 1.0),
-      hp: P(10.5, 4.1, -1.6),
-      grid: P(HUB[0], 9.6, -1.1),
-      floor0: P(LEN, 0, FLOOR_Z[0] + 1.0),
-      floor1: P(LEN, 0, FLOOR_Z[1] + 1.0)
+      sun: Pm(RIDGE_X, 5.5, ZR(RIDGE) + 2.2),
+      zolder: [COL, Pm(5.49, 9.5, ZZ(2, 6.6))[1]],
+      floor1: [COL, Pm(5.49, 9.5, ZZ(1, 3.6))[1]],
+      floor0: [COL, Pm(5.49, 0, 0)[1] - 18],
+      hp: [COL, Pm(5.05, 13.27, 0)[1] + 46],
+      grid: Pm(2.0, -2.8, -1.5)
     };
   }
 
-  function circleOnFront(cx, y, cz, r) { // cirkel in het voorvlak van de warmtepomp
-    var list = [], a;
-    for (a = 0; a < 20; a++) list.push([cx + r * Math.cos(a / 20 * 6.2832), y + 0.001, cz + r * Math.sin(a / 20 * 6.2832)]);
-    return list;
+  // ---------------- begane grond ----------------
+  function buildGround() {
+    var g = el('g', { 'class': 'floor', 'data-floor': '0' }), z = 0;
+    refs.floors.push(g);
+    box(0.12, 5.25, 0.4, 11.5, -0.3, 0, 'slab', g);
+    // verre muren: linker bouwmuur (binnenkant), achtergevel uitbouw met tuinpui
+    box(-0.12, 0.12, 0, 11.9, z, z + FAR, 'iwall', g);
+    box(0.12, 0.5, 11.5, 11.9, z, z + FAR, 'extin', g);
+    box(4.31, 5.25, 11.5, 11.9, z, z + FAR, 'extin', g);
+    box(0.5, 4.31, 11.6, 11.75, z, z + FAR, 'glass', g);
+    // vloerverwarming (woonkamer + uitbouw, keuken)
+    refs.ufh.push(serpentine(2.75, 5.05, 0.6, 11.3, 0.33, ZZ(0, 0.01), g));
+    refs.ufh.push(serpentine(0.9, 2.3, 5.75, 11.3, 0.33, ZZ(0, 0.01), g));
+    text(3.9, 4.6, 0.02, 'Woonkamer', g);
+    text(1.55, 7.2, 0.02, 'Keuken', g);
+    text(2.0, 1.75, 0.02, 'Hal', g);
+    var it = [];
+    it = it.concat(partition([
+      [2.42, 2.52, 0.4, 4.18], [1.39, 2.42, 2.82, 2.89], [1.32, 1.39, 2.82, 5.46], [1.39, 2.52, 4.11, 4.18],
+      [0.12, 1.32, 5.46, 5.53], [1.56, 1.60, 0.4, 0.8], [1.60, 2.42, 0.78, 0.8]
+    ], z, PART, g));
+    it = it.concat(stairs(0.12, 1.32, 2.2, 5.4, 6, z, g));
+    it.push(item(0.12, 0.72, 7.64, 8.24, function () { box(0.12, 0.72, 7.64, 8.24, z, z + 2.15, 'kitchen', g); }));
+    it.push(item(0.12, 0.72, 8.24, 11.5, function () { box(0.12, 0.72, 8.24, 11.5, z, z + 0.91, 'counter', g); }));
+    it.push(item(0.12, 0.62, 10.25, 10.95, function () { box(0.12, 0.62, 10.25, 10.95, z + 1.5, z + 1.64, 'app', g); }));
+    drawSorted(it);
+    // thermostaat (Honeywell) op de wand hal/woonkamer
+    var th = Pm(2.53, 4.48, 1.56);
+    refs.thermo = el('circle', { cx: th[0], cy: th[1], r: 4, 'class': 'thermo' }, g);
+    // nabije muren: voorgevel (met voordeuropening) en rechter bouwmuur
+    box(0.12, 0.53, 0, 0.4, z, z + NEAR, 'brick', g);
+    box(1.69, 5.25, 0, 0.4, z, z + NEAR, 'brick', g);
+    box(0.53, 1.69, 0, 0.4, z, z + 0.02, 'paving-step', g);
+    box(5.25, 5.49, 0, 11.9, z, z + NEAR, 'party', g);
+    flushText();
+    hitArea(g, 0, 1.2, 11.5);
+  }
+  function serpentine(x0, x1, y0, y1, step, z, g) {
+    var pts = [], x, row = 0;
+    for (x = x0; x <= x1 + 0.001; x += step) {
+      if (row % 2 === 0) { pts.push([x, y0, z]); pts.push([x, y1, z]); } else { pts.push([x, y1, z]); pts.push([x, y0, z]); }
+      row++;
+    }
+    var l = line(pts, 'ufh', g);
+    l.setAttribute('stroke-dasharray', '5 5');
+    return l;
   }
 
-  function buildFloorShell(g, z, partitions) {
-    box(0, 0, z, LEN, WID, SLAB, 'slab', g);
-    box(0, 0, z + SLAB, LEN, 0.18, WALL, 'wall', g);           // achtermuur
-    box(0, 0.18, z + SLAB, 0.18, WID - 0.18, WALL, 'wall', g);  // zijmuur
-    for (var k = 0; k < partitions.length; k++) {
-      box(partitions[k], 0.18, z + SLAB, 0.1, 3.6, WALL * 0.55, 'part', g);
-    }
+  // ---------------- eerste verdieping ----------------
+  function buildFirst() {
+    var g = el('g', { 'class': 'floor', 'data-floor': '1' }), z = LV[1].off;
+    refs.floors.push(g);
+    box(0.12, 5.25, 0.4, 9.1, z - 0.27, z, 'slab', g);
+    box(-0.12, 0.12, 0, 9.5, z, z + FAR, 'iwall', g);
+    // achtergevel met ramen slaapkamer 3 en 1 (borstwering + penanten + glas)
+    box(0.12, 5.25, 9.1, 9.5, z, z + 0.74, 'extin', g);
+    box(0.12, 0.63, 9.1, 9.5, z + 0.74, z + FAR, 'extin', g);
+    box(2.22, 3.15, 9.1, 9.5, z + 0.74, z + FAR, 'extin', g);
+    box(4.74, 5.25, 9.1, 9.5, z + 0.74, z + FAR, 'extin', g);
+    box(0.63, 2.22, 9.25, 9.35, z + 0.74, z + FAR, 'glass', g);
+    box(3.15, 4.74, 9.25, 9.35, z + 0.74, z + FAR, 'glass', g);
+    face([[0.12, 0.4, z + 0.01], [2.42, 0.4, z + 0.01], [2.42, 3.03, z + 0.01], [0.12, 3.03, z + 0.01]], 'tile', g);
+    text(1.27, 1.6, z + 0.02, 'Badkamer', g);
+    text(3.87, 2.4, z + 0.02, 'Slaapkamer 2', g);
+    text(3.87, 6.9, z + 0.02, 'Slaapkamer 1', g);
+    text(1.27, 7.5, z + 0.02, 'Slaapkamer 3', g);
+    var it = [];
+    it = it.concat(partition([
+      [2.42, 2.49, 0.4, 9.1], [1.32, 2.42, 3.03, 3.10], [0.12, 2.42, 5.80, 5.87], [2.49, 5.25, 4.73, 4.80], [0.12, 1.32, 3.03, 3.10]
+    ], z, PART, g));
+    it = it.concat(stairs(0.12, 1.37, 2.45, 5.85, 6, z, g));
+    var rads = [[3.58, 4.73, 0.39, 0.52], [3.28, 4.61, 8.95, 9.08], [0.76, 2.09, 8.95, 9.08], [2.28, 2.41, 1.70, 2.50]];
+    for (var k = 0; k < rads.length; k++) (function (r) {
+      it.push(item(r[0], r[1], r[2], r[3], function () { box(r[0], r[1], r[2], r[3], z + 0.08, z + 0.75, 'rad', g); }));
+    })(rads[k]);
+    drawSorted(it);
+    // voorgevel met ramen slaapkamer 2 (klein + groot)
+    box(0.12, 5.25, 0, 0.4, z, z + 0.69, 'brick', g);
+    box(0.12, 0.83, 0, 0.4, z + 0.69, z + NEAR, 'brick', g);
+    box(2.10, 3.45, 0, 0.4, z + 0.69, z + NEAR, 'brick', g);
+    box(4.86, 5.25, 0, 0.4, z + 0.69, z + NEAR, 'brick', g);
+    box(0.83, 2.10, 0.12, 0.2, z + 0.69, z + NEAR, 'glass', g);
+    box(3.45, 4.86, 0.12, 0.2, z + 0.69, z + NEAR, 'glass', g);
+    box(5.25, 5.49, 0, 9.5, z, z + NEAR, 'party', g);
+    flushText();
+    hitArea(g, z, z + 1.2, 9.1);
   }
-  function hitArea(g, z) { // onzichtbaar vlak om op te tikken
-    face([[0, 0, z], [LEN, 0, z], [LEN, WID, z], [LEN, WID, z + 2], [0, WID, z + 2], [0, 0, z + 2]], 'floor-hit', g);
+
+  // ---------------- zolder (2e verdieping) ----------------
+  function buildAttic() {
+    var g = el('g', { 'class': 'floor', 'data-floor': '2' }), z = LV[2].off;
+    refs.floors.push(g);
+    box(0.12, 5.25, 0.4, 9.1, z - 0.25, z, 'slab', g);
+    box(-0.12, 0.12, 0, 9.5, z, ZZ(2, EAVE), 'iwall', g);          // knieschot links
+    box(0.12, 5.25, 9.1, 9.5, z, ZZ(2, CUT), 'extin', g);
+    face([[2.57, 3.38, z + 0.01], [5.25, 3.38, z + 0.01], [5.25, 5.36, z + 0.01], [2.57, 5.36, z + 0.01]], 'tile', g);
+    // LUUMR-lampen: gloed op de vloer
+    var k;
+    for (k = 0; k < CFG.lights.length; k++) {
+      var at = CFG.lights[k].at || [2.7, 1.3];
+      refs.glows.push(el('polygon', { points: ptsM(circleFlat(at[0], at[1], z + 0.02, 1.1)), fill: 'url(#glowGrad)', opacity: '0' }, g));
+    }
+    text(2.7, 1.35, z + 0.02, 'Slaapkamer 5', g);
+    text(3.9, 4.75, z + 0.02, 'Badkamer', g);
+    text(2.7, 7.5, z + 0.02, 'Slaapkamer 4', g);
+    var it = [];
+    it = it.concat(partition([
+      [0.12, 5.25, 2.28, 2.38], [0.12, 5.25, 5.36, 5.46], [1.32, 1.42, 3.43, 5.36], [2.48, 2.57, 2.38, 5.36],
+      [2.57, 5.25, 3.28, 3.38], [4.40, 5.25, 3.38, 3.58, 1.2]
+    ], z, PART, g));
+    // technische ruimte: wasmachine, droger, buffervat, boilervat, Orcon MV-unit
+    var tech = [[2.65, 3.25, 2.40, 3.00, 0, 0.85], [3.30, 3.90, 2.40, 3.00, 0, 0.85], [4.00, 4.50, 2.58, 3.08, 0, 1.30],
+      [4.58, 5.18, 2.53, 3.13, 0, 1.50], [4.70, 5.15, 2.39, 2.73, 1.70, 2.05]];
+    for (k = 0; k < tech.length; k++) (function (t, i) {
+      it.push(item(t[0], t[1], t[2], t[3], function () {
+        var b = box(t[0], t[1], t[2], t[3], z + t[4], z + t[5], i === 4 ? 'mv' : 'app', g);
+        if (i === 4) refs.mvUnit = b;
+      }));
+    })(tech[k], k);
+    it.push(item(4.34, 4.35, 4.46, 5.35, function () { box(4.33, 4.36, 4.46, 5.35, z, z + 1.0, 'glass', g); }));
+    it.push(item(4.65, 5.01, 3.59, 4.12, function () { box(4.65, 5.01, 3.59, 4.12, z + 0.25, z + 0.42, 'app', g); }));
+    for (k = 0; k < CFG.lights.length; k++) (function (i) {
+      var at = CFG.lights[i].at || [2.7, 1.3];
+      it.push(item(at[0], at[0], at[1], at[1], function () {
+        var t1 = Pm(at[0], at[1], z + 2.3), b1 = Pm(at[0], at[1], z + 1.75);
+        el('line', { x1: t1[0], y1: t1[1], x2: b1[0], y2: b1[1], stroke: '#4a5670', 'stroke-width': 1 }, g);
+        refs.bulbs[i] = el('circle', { cx: b1[0], cy: b1[1], r: 4.5, fill: '#3a4660' }, g);
+      }));
+    })(k);
+    // ventilatiekanaal van MV-unit naar het dak (door de "explosie"-ruimte heen)
+    it.push(item(3.4, 5.0, 2.5, 5.9, function () {
+      refs.duct = line([[4.92, 2.56, z + 2.05], [4.92, 2.56, z + 2.5], [3.44, 2.56, z + 2.5], [3.44, 5.9, z + 2.5],
+        [3.44, 5.9, ZR(roofZ(3.44))]], 'duct', g);
+    }));
+    drawSorted(it);
+    box(0.12, 5.25, 0, 0.4, z, ZZ(2, CUT), 'brick', g);
+    box(5.25, 5.49, 0, 9.5, z, z + NEAR, 'party', g);
+    flushText();
+    hitArea(g, z, z + 1.6, 9.1);
+  }
+
+  // ---------------- dak + topgevels ----------------
+  function buildRoof() {
+    var g = el('g', { 'class': 'floor', 'data-floor': '3' });
+    // achterste topgevel (binnenkant)
+    face([[0.12, 9.1, ZR(CUT)], [5.25, 9.1, ZR(CUT)], [5.25, 9.1, ZR(EAVE)], [RIDGE_X, 9.1, ZR(RIDGE)], [0.12, 9.1, ZR(EAVE)]], 'gable-in', g);
+    // rechter dakvlak (felszink) met zonnepanelen
+    face([[RIDGE_X, 0.4, ZR(RIDGE)], [RIDGE_X, 9.1, ZR(RIDGE)], [5.49, 9.1, ZR(EAVE)], [5.49, 0.4, ZR(EAVE)]], 'roofz', g);
+    var rows = [[4.35, 5.16], [3.51, 4.32]], cols = [[1.2, 2.9], [2.96, 4.66], [4.72, 6.42]], r, c;
+    for (r = 0; r < rows.length; r++) for (c = 0; c < cols.length; c++) {
+      var x0 = rows[r][0], x1 = rows[r][1], y0 = cols[c][0], y1 = cols[c][1];
+      refs.panels.push(face([[x0, y0, ZR(roofZ(x0) + 0.07)], [x0, y1, ZR(roofZ(x0) + 0.07)], [x1, y1, ZR(roofZ(x1) + 0.07)], [x1, y0, ZR(roofZ(x1) + 0.07)]], 'panel', g));
+    }
+    // doorvoeren (MV en riool-ontluchting)
+    line([[3.44, 5.9, ZR(roofZ(3.44))], [3.44, 5.9, ZR(roofZ(3.44) + 0.5)]], 'pipe', g);
+    line([[3.83, 6.6, ZR(roofZ(3.83))], [3.83, 6.6, ZR(roofZ(3.83) + 0.45)]], 'pipe', g);
+    // voorgevel (topgevel) in gevelsteen, met zolderraam en boeiboorden
+    face([[RIDGE_X, 0, ZR(RIDGE)], [5.49, 0, ZR(EAVE)], [5.49, 0.4, ZR(EAVE)], [RIDGE_X, 0.4, ZR(RIDGE)]], 'brick-top', g);
+    face([[-0.12, 0, ZR(CUT)], [5.49, 0, ZR(CUT)], [5.49, 0, ZR(EAVE)], [RIDGE_X, 0, ZR(RIDGE)], [-0.12, 0, ZR(EAVE)]], 'brick-right', g);
+    face([[1.98, -0.01, ZR(6.43)], [3.39, -0.01, ZR(6.43)], [3.39, -0.01, ZR(7.77)], [1.98, -0.01, ZR(7.77)]], 'win-frame', g);
+    face([[2.06, -0.02, ZR(6.51)], [3.31, -0.02, ZR(6.51)], [3.31, -0.02, ZR(7.69)], [2.06, -0.02, ZR(7.69)]], 'win-glass', g);
+    line([[-0.12, -0.03, ZR(EAVE)], [RIDGE_X, -0.03, ZR(RIDGE + 0.06)], [5.49, -0.03, ZR(EAVE)]], 'fascia', g);
+    line([[5.49, 0.4, ZR(EAVE)], [5.49, 9.1, ZR(EAVE)]], 'gutter', g);
+    refs.floors.push(g);
+  }
+
+  // ---------------- energiestromen ----------------
+  function buildFlows() {
+    var HUB = [2.0, -0.25, 0.25];
+    var sunPts = [[5.16, 3.8, ZR(roofZ(5.16) + 0.07)], [5.49, 3.8, ZR(EAVE)], [5.49, -0.12, ZR(EAVE)], [5.62, -0.12, ZR(EAVE)],
+      [5.62, -0.12, 0.25], HUB];
+    var gridPts = [HUB, [2.0, -2.8, 0.25]];
+    var hpPts = [HUB, [2.0, -0.4, 0.25], [5.85, -0.4, 0.25], [5.85, 13.27, 0.25], [5.7, 13.27, 0.25]];
+    refs.flowSun = flow(sunPts, 'f-sun');
+    refs.flowGrid = flow(gridPts, 'f-exp');
+    refs.flowHp = flow(hpPts, 'f-heat');
+    var b = Pm(2.0, -2.8, 0), tp = Pm(2.0, -2.8, 2.6), arm1 = Pm(1.5, -2.8, 2.2), arm2 = Pm(2.5, -2.8, 2.2);
+    el('line', { x1: b[0], y1: b[1], x2: tp[0], y2: tp[1], 'class': 'pole' });
+    el('line', { x1: arm1[0], y1: arm1[1], x2: arm2[0], y2: arm2[1], 'class': 'pole' });
+    var hubP = Pm(HUB[0], HUB[1], HUB[2]);
+    refs.hubNode = el('circle', { cx: hubP[0], cy: hubP[1], r: 6, 'class': 'node', stroke: '#8fb4ff' });
   }
   function flow(list, cls) {
     line(list, 'flow-base ' + cls);
@@ -244,18 +377,18 @@
   }
   function buildTags() {
     var a = refs.anchor;
-    makeTag('sun', 'sun', a.sun, 0, -26);
-    makeTag('vent', 'floor', a.vent, 8, 0, 'left');
+    makeTag('sun', 'sun', a.sun);
+    makeTag('zolder', 'floor', a.zolder, 8, 0, 'left');
     makeTag('floor1', 'floor', a.floor1, 8, 0, 'left');
     makeTag('floor0', 'floor heat', a.floor0, 8, 0, 'left');
-    makeTag('hp', 'heat', a.hp, -6, 6);
-    makeTag('grid', 'exp', a.grid, 0, 0);
+    makeTag('hp', 'heat', a.hp, 0, 0, 'left');
+    makeTag('grid', 'exp', a.grid);
   }
 
   /* =====================================================================
    * 5. Renderen van de state naar het scherm
    * ===================================================================== */
-  var VENT_TXT = { auto: 'Automatisch', '1': 'Stand 1', '2': 'Stand 2', '3': 'Stand 3', boost: 'Boost 30 min' };
+  var VENT_TXT = { auto: 'auto', '1': 'stand 1', '2': 'stand 2', '3': 'stand 3', boost: 'boost' };
   var VENT_SPEED = { auto: 2.2, '1': 3.2, '2': 1.8, '3': 1.0, boost: 0.6 };
 
   function setAnim(node, kw, reverse) {
@@ -292,16 +425,14 @@
     segSelect('vent-seg', 'data-v', s.vent);
     $('vent-info').innerHTML = 'Vocht badkamer ' + Math.round(s.humidity) + '%';
 
-    // verlichting
-    var lampEls = $('lights').children, nOn = 0, roomOn = [0, 0, 0];
+    // verlichting (LUUMR, 2e verdieping)
+    var lampEls = $('lights').children, nOn = 0;
     for (k = 0; k < lampEls.length; k++) {
       lampEls[k].className = 'lamp' + (s.lights[k] ? ' on' : '');
       lampEls[k].querySelector('.lamp-st').innerHTML = s.lights[k] ? 'Aan' : 'Uit';
-      if (s.lights[k]) { nOn++; roomOn[CFG.lights[k].room || 0]++; }
-    }
-    for (k = 0; k < refs.glows.length; k++) {
-      refs.glows[k].setAttribute('opacity', roomOn[k] ? '1' : '0');
-      refs.bulbs[k].setAttribute('fill', roomOn[k] ? '#ffc94d' : '#3a4660');
+      if (s.lights[k]) nOn++;
+      if (refs.glows[k]) refs.glows[k].setAttribute('opacity', s.lights[k] ? '1' : '0');
+      if (refs.bulbs[k]) refs.bulbs[k].setAttribute('fill', s.lights[k] ? '#ffc94d' : '#3a4660');
     }
 
     // scene: zon, stromen, vloerverwarming, ventilatie
@@ -312,23 +443,25 @@
     setAnim(refs.flowHp, s.hp, false);
     refs.hubNode.setAttribute('stroke', exp ? '#4fe0a5' : '#6fc8ff');
     var heating = s.zones.down.heating || s.zones.up.heating;
-    refs.ufh.setAttribute('opacity', s.zones.down.heating ? '0.9' : '0.18');
-    setClass(refs.ufh, 'ufh ' + (s.zones.down.heating ? 'anim-rev' : ''));
-    refs.ufh.style.webkitAnimationDuration = '3s'; refs.ufh.style.animationDuration = '3s';
-    for (k = 0; k < refs.ducts.length; k++) {
-      setClass(refs.ducts[k], 'duct anim-fwd');
-      refs.ducts[k].style.webkitAnimationDuration = VENT_SPEED[s.vent] + 's';
-      refs.ducts[k].style.animationDuration = VENT_SPEED[s.vent] + 's';
+    for (k = 0; k < refs.ufh.length; k++) {
+      refs.ufh[k].setAttribute('opacity', s.zones.down.heating ? '0.9' : '0.18');
+      setClass(refs.ufh[k], 'ufh ' + (s.zones.down.heating ? 'anim-rev' : ''));
+      refs.ufh[k].style.webkitAnimationDuration = '3s'; refs.ufh[k].style.animationDuration = '3s';
     }
+    refs.thermo.setAttribute('class', 'thermo' + (s.zones.down.heating ? ' on' : ''));
+    setClass(refs.duct, 'duct anim-fwd');
+    refs.duct.style.webkitAnimationDuration = VENT_SPEED[s.vent] + 's';
+    refs.duct.style.animationDuration = VENT_SPEED[s.vent] + 's';
 
     // labels
     tags.sun.innerHTML = '<span class="t-k">Zonnepanelen</span><span class="t-v c-sun">' + nl(s.solar) + ' kW</span>';
-    tags.vent.innerHTML = '<span class="t-k">Ventilatie</span><span class="t-v">' + VENT_TXT[s.vent] + '</span>';
-    tags.floor1.innerHTML = '<span class="t-k">Boven</span><span class="t-v">' + nl(s.zones.up.temp) + '° <small>&rarr; ' + nl(s.zones.up.set) + '°</small></span>' +
+    tags.zolder.innerHTML = '<span class="t-k">2e verdieping</span><span class="t-v"><small>Ventilatie</small> ' + VENT_TXT[s.vent] + '</span>' +
       '<span class="t-k" style="color:' + (nOn ? '#ffc94d' : '#7d8aa0') + '">' + (nOn ? nOn + ' lamp' + (nOn > 1 ? 'en' : '') + ' aan' : 'lampen uit') + '</span>';
-    tags.floor0.innerHTML = '<span class="t-k">Beneden</span><span class="t-v">' + nl(s.zones.down.temp) + '° <small>&rarr; ' + nl(s.zones.down.set) + '°</small></span>' +
+    tags.floor1.innerHTML = '<span class="t-k">1e verdieping</span><span class="t-v">' + nl(s.zones.up.temp) + '° <small>&rarr; ' + nl(s.zones.up.set) + '°</small></span>' +
+      '<span class="t-k" style="color:' + (s.zones.up.heating ? '#ff8a5c' : '#7d8aa0') + '">' + (s.zones.up.heating ? 'radiatoren aan' : 'radiatoren uit') + '</span>';
+    tags.floor0.innerHTML = '<span class="t-k">Begane grond</span><span class="t-v">' + nl(s.zones.down.temp) + '° <small>&rarr; ' + nl(s.zones.down.set) + '°</small></span>' +
       '<span class="t-k" style="color:' + (s.zones.down.heating ? '#ff8a5c' : '#7d8aa0') + '">' + (s.zones.down.heating ? 'vloer verwarmt' : 'vloer uit') + '</span>';
-    tags.hp.innerHTML = '<span class="t-k">Warmtepomp</span><span class="t-v c-heat">' + nl(s.hp) + ' kW <small>' + (heating ? 'verwarmt' : 'stand-by') + '</small></span>';
+    tags.hp.innerHTML = '<span class="t-k">Weheat Blackbird</span><span class="t-v c-heat">' + nl(s.hp) + ' kW <small>' + (heating ? 'COP ' + nl(s.cop) : 'stand-by') + '</small></span>';
     tags.grid.className = 'tag ' + (exp ? 'exp' : 'imp');
     tags.grid.innerHTML = '<span class="t-k">Net</span><span class="t-v ' + (exp ? 'c-exp' : 'c-imp') + '">' + (exp ? '&uarr; ' : '&darr; ') + nl(Math.abs(s.grid)) + ' kW</span>';
 
@@ -412,8 +545,8 @@
       render();
     });
     // tik op een verdieping of label -> bijbehorende kaart licht op
-    var TARGET = { '0': 'card-climate', '1': 'card-lights', '2': 'card-vent', sun: 'card-energy', vent: 'card-vent',
-      floor0: 'card-climate', floor1: 'card-lights', hp: 'card-energy', grid: 'card-energy' };
+    var TARGET = { '0': 'card-climate', '1': 'card-climate', '2': 'card-lights', '3': 'card-energy', sun: 'card-energy', zolder: 'card-vent',
+      floor0: 'card-climate', floor1: 'card-climate', hp: 'card-energy', grid: 'card-energy' };
     function flash(id) {
       var c = $(id); if (!c) return;
       c.className = c.className.replace(' flash', '') + ' flash';
@@ -487,6 +620,7 @@
       }
       var heatOn = state.zones.down.heating || state.zones.up.heating;
       state.hp = heatOn ? 0.7 + Math.random() * 0.4 : 0.06;
+      state.cop = clamp(3.2 + (state.outTemp - 2) * 0.12 + (Math.random() - 0.5) * 0.2, 2.2, 5.5);
       var base = 0.28 + Math.random() * 0.15, k;
       for (k = 0; k < state.lights.length; k++) if (state.lights[k]) base += 0.008;
       state.home = base + state.hp + (state.vent === 'boost' ? 0.05 : 0.02);
@@ -526,6 +660,7 @@
         state.grid = ha.num(map, E.gridPower, 1000);
         state.solar = Math.abs(ha.num(map, E.solarPower, 1000));
         state.hp = ha.num(map, E.heatPumpPower, 1000);
+        state.cop = ha.num(map, E.heatPumpCop) || state.cop;
         state.home = Math.max(0, state.grid + state.solar);
         state.todaySun = ha.num(map, E.solarToday);
         state.todayNet = ha.num(map, E.gridExportToday) - ha.num(map, E.gridImportToday);

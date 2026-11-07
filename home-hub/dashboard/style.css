@@ -74,6 +74,7 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 .card-title { font-size: 13px; font-weight: 600; color: #a8b4c8; text-transform: uppercase; letter-spacing: 1.2px; }
 .chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 11px; background: rgba(79,224,165,0.14); color: #4fe0a5; }
 .chip.imp { background: rgba(111,200,255,0.14); color: #6fc8ff; }
+.brand { color: #5d6a80; letter-spacing: 0.6px; margin-left: 4px; }
 .link { font-size: 14px; color: #8fb4ff; padding: 4px 2px; }
 
 /* energie */
@@ -156,23 +157,43 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 .tag.floor { padding-left: 12px; }
 
 /* ---------- SVG-scene ---------- */
-.ground { fill: #121a29; stroke: rgba(255,255,255,0.04); }
-.grid-line { stroke: rgba(255,255,255,0.035); stroke-width: 1; }
-.slab-top { fill: #26324a; } .slab-front { fill: #1a2335; } .slab-right { fill: #141c2b; }
-.wall-top { fill: #3a4a6a; } .wall-front { fill: #2c3a56; } .wall-right { fill: #222e46; }
-.part-top { fill: #33415f; } .part-front { fill: #2a3752; } .part-right { fill: #202a40; }
-.unit-top { fill: #56657f; } .unit-front { fill: #3f4c64; } .unit-right { fill: #333e53; }
-.hp-top { fill: #c9d2e0; } .hp-front { fill: #9aa6ba; } .hp-right { fill: #7d899c; }
+/* Kleuren uit het SketchUp-model (Gevelsteen_oranje, Betonwand_grijs, Falzinc_grijs, ...)
+   Per blok: -top (bovenkant), -right (straatkant), -front (rechterzijde) met eigen belichting. */
+.grass { fill: #17221b; }
+.paving { fill: #222936; }
+.paving-step-top { fill: #8f8d8a; } .paving-step-front, .paving-step-right { fill: #6e6c69; }
+.slab-top { fill: #2b3546; } .slab-front { fill: #1d2431; } .slab-right { fill: #242c3b; }
+.brick-top { fill: #d27c50; } .brick-right { fill: #bc5e34; } .brick-front { fill: #8f4420; }
+.extin-top { fill: #d27c50; } .extin-right { fill: #ddd9d1; } .extin-front { fill: #b8b4ac; }
+.party-top { fill: #cfcfcc; } .party-front { fill: #a7a7a4; } .party-right { fill: #b9b9b6; }
+.iwall-top { fill: #cfcfcc; } .iwall-front { fill: #d5d8de; } .iwall-right { fill: #e4e6ea; }
+.part-top { fill: #eceef1; } .part-front { fill: #b2b8c2; } .part-right { fill: #cdd2d9; }
+.stair-top { fill: #dcc8a0; } .stair-front { fill: #a8956f; } .stair-right { fill: #c4b18b; }
+.kitchen-top { fill: #ededea; } .kitchen-front { fill: #b9b9b6; } .kitchen-right { fill: #d4d4d1; }
+.counter-top { fill: #4a4a4d; } .counter-front { fill: #c4c4c1; } .counter-right { fill: #dadad7; }
+.app-top { fill: #f2f3f5; } .app-front { fill: #b6bac2; } .app-right { fill: #d6d9de; }
+.mv-top { fill: #9fe0ff; } .mv-front { fill: #5aa7cc; } .mv-right { fill: #78bfe2; }
+.rad-top { fill: #f6f6f6; } .rad-front { fill: #c4c4c4; } .rad-right { fill: #e0e0e0; }
+.hp-top { fill: #eceef1; } .hp-front { fill: #b3b8bf; } .hp-right { fill: #cdd1d7; }
+.hpcap-top { fill: #2b2f36; } .hpcap-front { fill: #1f2228; } .hpcap-right { fill: #25292f; }
+.hp-fan { fill: #3a4048; }
+.glass-top, .glass-front, .glass-right { fill: rgba(150, 195, 220, 0.30); stroke: rgba(200, 230, 245, 0.45); stroke-width: 0.6; }
+.tile { fill: #3b414d; }
+.roofz { fill: #7b8086; stroke: #8d9298; stroke-width: 0.8; }
+.gable-in { fill: #cfccc5; }
+.win-frame { fill: #f6f6f2; }
+.win-glass { fill: #48667c; }
+.fascia { fill: none; stroke: #3d3d40; stroke-width: 3; stroke-linejoin: round; }
+.gutter { fill: none; stroke: #5d6166; stroke-width: 2; }
+.pipe { fill: none; stroke: #6f7378; stroke-width: 3; stroke-linecap: round; }
+.panel { fill: #1c2640; stroke: #5672a8; stroke-width: 0.8; }
+.panel.active { fill: #24376a; }
+.thermo { fill: #7d8aa0; stroke: #0d131f; stroke-width: 1.5; }
+.thermo.on { fill: #ff8a5c; }
 .floor-hit { fill: rgba(0,0,0,0); }
-.floor-sel .slab-top { fill: #2e3d5c; }
-.roof { fill: rgba(120, 150, 210, 0.10); stroke: rgba(170, 195, 240, 0.35); stroke-width: 1; }
-.gable { fill: rgba(120, 150, 210, 0.06); stroke: rgba(170, 195, 240, 0.25); stroke-width: 1; }
-.panel { fill: #1d3561; stroke: #4c6ea8; stroke-width: 0.8; }
-.panel.active { fill: #24467f; }
-.ufh { fill: none; stroke: #ff8a5c; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.glow { fill: #ffc94d; }
+.ufh { fill: none; stroke: #ff8a5c; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .duct { fill: none; stroke: #8fd8ff; stroke-width: 2; stroke-dasharray: 3 7; stroke-linecap: round; }
-.room-name { fill: #7d8aa0; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.room-name { fill: #8d9ab0; font-size: 9px; letter-spacing: 0.8px; text-transform: uppercase; }
 
 .flow { fill: none; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 2 10; }
 .flow-base { fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0.16; }

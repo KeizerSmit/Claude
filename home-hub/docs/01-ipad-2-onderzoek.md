@@ -32,6 +32,7 @@ Wat dat in de praktijk betekent:
 
 ## Als je toch wilt jailbreaken: de routes
 
+> Je iPad staat volgens jou volledig up-to-date. Bij een iPad 2 is dat **iOS 9.3.5** (wifi) of 9.3.6 (3G), dus route A hieronder past.
 > Controleer eerst je versie: Instellingen → Algemeen → Info. Noteer de iOS-versie en het modelnummer (A1395 = wifi, A1396/A1397 = 3G).
 > Maak eerst een back-up. Bij een jailbreak of downgrade kun je alles kwijtraken.
 
