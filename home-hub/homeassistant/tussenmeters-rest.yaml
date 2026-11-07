@@ -1,0 +1,48 @@
+
+# HomeWizard tussenmeters, rechtstreeks uitgelezen via de Lokale API (v1)
+rest:
+  - resource: http://192.168.178.248/api/v1/data
+    scan_interval: 5
+    sensor:
+      - name: "Zonnepanelen vermogen"
+        unique_id: hw_zonnepanelen_vermogen
+        value_template: "{{ value_json.active_power_w }}"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+      - name: "Zonnepanelen energie export"
+        unique_id: hw_zonnepanelen_energie_export
+        value_template: "{{ value_json.total_power_export_kwh | default(value_json.total_power_export_t1_kwh) }}"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+  - resource: http://192.168.178.32/api/v1/data
+    scan_interval: 5
+    sensor:
+      - name: "Warmtepomp vermogen"
+        unique_id: hw_warmtepomp_vermogen
+        value_template: "{{ value_json.active_power_w }}"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+      - name: "Warmtepomp energie import"
+        unique_id: hw_warmtepomp_energie_import
+        value_template: "{{ value_json.total_power_import_kwh | default(value_json.total_power_import_t1_kwh) }}"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+  - resource: http://192.168.178.108/api/v1/data
+    scan_interval: 5
+    sensor:
+      - name: "Airco vermogen"
+        unique_id: hw_airco_vermogen
+        value_template: "{{ value_json.active_power_w }}"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+      - name: "Airco energie import"
+        unique_id: hw_airco_energie_import
+        value_template: "{{ value_json.total_power_import_kwh | default(value_json.total_power_import_t1_kwh) }}"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
