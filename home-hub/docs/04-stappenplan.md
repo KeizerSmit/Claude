@@ -45,8 +45,26 @@ Nodig: een Windows-pc of Mac, de Lightning-kabel en een Apple ID. Neem bij voork
 
 ## Stap 2. Home Assistant installeren (gratis)
 
-- Heb je een oude laptop of pc? Installeer daar **Home Assistant OS** op (de installatiehandleiding "Generic x86-64" op home-assistant.io). Een laptop is zelfs handig: de accu werkt als noodstroom.
-- De computer moet 24/7 aan blijven. Een oude laptop of thin client verbruikt ongeveer 5–15 W, oftewel €10–35 per jaar.
+We gebruiken de **HP Laptop 15-bw0xx** (AMD A6-9220, 8 GB RAM, 64-bit). Die is ruim genoeg voor Home Assistant OS. Hij is traag onder Windows, maar Home Assistant OS is veel lichter. Hij verbruikt zo'n **6–10 W**, oftewel ± €15–25 per jaar. De accu werkt als noodstroom.
+
+**Let op: Home Assistant OS wist Windows en alles op de laptop.** Zet eerst bestanden die je wilt houden op een USB-stick of in de cloud.
+
+Nodig: een USB-stick van minimaal 8 GB, je Mac, en een netwerkkabel naar de router (aanbevolen; wifi kan ook).
+
+1. **Op de Mac:** download *Ubuntu Desktop* (ubuntu.com) en *balenaEtcher*. Zet Ubuntu met Etcher op de USB-stick.
+2. **BIOS van de HP:** zet de laptop aan en druk meteen herhaaldelijk op **F10**. Zet **Secure Boot uit** (Home Assistant OS ondersteunt dat niet) en laat UEFI-boot aan. Opslaan en afsluiten.
+3. **Opstarten van de USB-stick:** stick erin, aanzetten en herhaaldelijk op **F9** drukken (opstartmenu). Kies de USB-stick en dan *Try Ubuntu* (niet installeren).
+4. **In Ubuntu:** open Firefox, ga naar home-assistant.io → Installation → *Generic x86-64*, en download het Home Assistant OS-bestand (`haos_generic-x86-64-….img.xz`).
+5. Open de app **Schijven** (*Disks*). Kies de **interne schijf van de laptop** (niet de USB-stick!), dan **⋮ → Schijfkopie terugzetten** (*Restore Disk Image*) en kies het gedownloade bestand. Bevestig.
+6. Klaar? Zet de laptop uit, haal de USB-stick eruit en zet hem weer aan. Na een paar minuten staat er een adres op het scherm.
+7. **Op je Mac of telefoon:** ga naar `http://homeassistant.local:8123` en maak een account aan.
+
+**Klep dicht:** dat werkt bij de meeste laptops gewoon. Test het: klep dicht en kijk of `homeassistant.local:8123` bereikbaar blijft. Gaat hij toch slapen? Dan kan dat met een instelling worden uitgezet (dat doen we samen), of je laat de klep een paar centimeter open; het scherm gaat vanzelf uit.
+
+Tips:
+- Zet hem met een kabel bij de router (meterkast of zolder), met de lader eraan.
+- Kijk af en toe of de accu niet opzwelt: bolle bodem, of de klep sluit niet goed meer.
+- Is het een laptop met een draaiende harde schijf (HDD)? Dat werkt prima. Een SSD (± €20) maakt hem sneller, maar is niet nodig.
 
 ## Stap 3. Koppelingen toevoegen (Instellingen → Apparaten & diensten)
 
