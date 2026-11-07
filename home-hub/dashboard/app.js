@@ -484,6 +484,10 @@
     renderAcs();
     renderScreens();
     renderSheet();
+    var su = selfUse();
+    $('selfuse').className = 'selfuse' + (su === null ? ' hidden' : '');
+    if (su !== null) $('selfuse').innerHTML = 'Vandaag <b>' + su + '%</b> van je zonnestroom<br>zelf gebruikt';
+    if (MOBILE) renderMobile();
 
     // ventilatie
     segSelect('vent-seg', 'data-v', H.vent ? s.vent : null);
@@ -541,6 +545,103 @@
     $('w-temp').innerHTML = nl(s.outTemp) + '°';
     $('w-text').innerHTML = s.weatherText;
     $('rain').innerHTML = s.rainText;
+  }
+
+  function selfUse() {
+    var s = state;
+    if (!s.has.today || !s.has.solar || !(s.todaySun >= 0.3)) return null;
+    return Math.round(clamp((s.todaySun - (s.todayExp || 0)) / s.todaySun, 0, 1) * 100);
+  }
+
+  /* ---------- telefoonversie: grote letters, grote knoppen ---------- */
+  var MOBILE = Math.min(window.innerWidth, window.innerHeight) < 600;
+  function mThermo(d) {
+    var th = state.thermo;
+    if (!state.has.thermo) return;
+    th.set = clamp(Math.round(((isNaN(th.set) ? 20 : th.set) + d) * 2) / 2, 5, 28);
+    setPend('thset', th.set);
+    debounce('thset', function () { backend.setTemp(state.thermo.set); });
+    render();
+  }
+  function mAcMode(k) {
+    var ac = state.acs[k], order = [], q;
+    if (!ac.has) return;
+    for (q = 0; q < AC_ORDER.length; q++) if (AC_ORDER[q] === 'off' || !ac.modes || ac.modes.indexOf(AC_ORDER[q]) >= 0) order.push(AC_ORDER[q]);
+    ac.mode = order[(order.indexOf(ac.mode) + 1) % order.length];
+    setPend('acmode' + k, ac.mode);
+    debounce('acmode' + k, function () { backend.setAcMode(k, state.acs[k].mode); }, 900);
+    render();
+  }
+  function mAcSet(k, d) {
+    var ac = state.acs[k];
+    if (!ac.has) return;
+    ac.set = clamp((isNaN(ac.set) ? 20 : ac.set) + d, 16, 30);
+    setPend('acset' + k, ac.set);
+    debounce('acset' + k, function () { backend.setAcTemp(k, state.acs[k].set); });
+    render();
+  }
+  function mLamp(k) {
+    if (!state.lightsHas[k]) return;
+    state.lights[k] = !state.lights[k];
+    setPend('light' + k, state.lights[k], 10000);
+    backend.setLight(k, state.lights[k]); render();
+  }
+  function renderMobile() {
+    var s = state, H = s.has, th = s.thermo, k, html = '', exp = s.grid < 0, d = new Date();
+    var su = selfUse();
+    html += '<div class="m-top"><div><div class="m-title">Thuis</div><div class="m-status">' + $('conn-text').innerHTML + '</div></div>' +
+      '<div><div class="m-clock">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</div><div class="m-weather">' + nl(s.outTemp) + '° &middot; ' + (s.weatherText || '') + '</div></div></div>';
+    // energie
+    html += '<div class="m-card"><div class="m-h">Energie nu &middot; kW</div>' +
+      '<div class="m-big" style="color:' + (exp ? '#4fe0a5' : '#6fc8ff') + '">' + nl(Math.abs(s.grid)) + '<small>kW ' + (exp ? 'naar het net' : 'van het net') + '</small></div>' +
+      '<div class="m-grid">' +
+      '<div class="m-cell"><div class="m-cell-in"><div class="m-val c-sun">' + nlIf(H.solar, s.solar) + '</div><div class="m-lbl">Zon</div></div></div>' +
+      '<div class="m-cell"><div class="m-cell-in"><div class="m-val c-home">' + nl(s.home) + '</div><div class="m-lbl">Huis</div></div></div>' +
+      '<div class="m-cell"><div class="m-cell-in"><div class="m-val c-heat">' + nlIf(H.hp, s.hp) + '</div><div class="m-lbl">Warmtepomp</div></div></div>' +
+      '<div class="m-cell"><div class="m-cell-in"><div class="m-val c-imp">' + nlIf(H.ac, s.ac) + '</div><div class="m-lbl">Airco\'s</div></div></div>' +
+      '</div>' + (su !== null ? '<div class="m-line">Vandaag <b>' + su + '%</b> van de zonnestroom zelf gebruikt</div>' : '') + '</div>';
+    // thermostaat
+    html += '<div class="m-card"><div class="m-h">Verwarming</div>' +
+      '<div class="m-thermo"><div><div class="m-now">' + nlIf(H.thermo, th.temp) + '°</div><div class="m-sub" style="color:' + (H.thermo && th.heating ? '#ff8a5c' : '#a8b4c8') + '">' +
+      (!H.thermo ? 'nog niet gekoppeld' : (th.heating ? 'verwarmt' : 'op temperatuur')) + '</div></div>' +
+      '<div class="m-ac-ctrl"><span class="m-setlbl">Instellen op</span><button class="m-btn" data-m="th" data-d="-0.5">&minus;</button><div class="m-set">' + nlIf(H.thermo, th.set) + '°</div>' +
+      '<button class="m-btn" data-m="th" data-d="0.5">+</button></div></div></div>';
+    // airco's
+    html += '<div class="m-card"><div class="m-h">Airco\'s</div>';
+    for (k = 0; k < ACS.length; k++) {
+      var a = s.acs[k];
+      html += '<div class="m-row"><div class="m-info"><div class="m-name">' + ACS[k].name + '</div><div class="m-sub">nu ' + nl(a.temp) + '°</div>' +
+        '<div class="m-ac-ctrl"><button class="m-mode ' + a.mode + '" data-m="acmode" data-k="' + k + '">' + AC_TXT[a.mode] + '</button>' +
+        '<button class="m-btn" data-m="acset" data-k="' + k + '" data-d="-0.5">&minus;</button><div class="m-set">' + nl(a.set) + '°</div>' +
+        '<button class="m-btn" data-m="acset" data-k="' + k + '" data-d="0.5">+</button></div></div></div>';
+    }
+    html += '</div>';
+    // lampen (alleen als er minstens een gekoppeld is)
+    var anyLamp = false;
+    for (k = 0; k < CFG.lights.length; k++) if (s.lightsHas[k] || s.lightsWall[k]) anyLamp = true;
+    if (anyLamp) {
+      html += '<div class="m-card"><div class="m-h">Lampen</div><div class="m-lamps">';
+      for (k = 0; k < CFG.lights.length; k++) {
+        html += '<button class="m-lamp' + (s.lights[k] ? ' on' : '') + '" data-m="lamp" data-k="' + k + '">' + CFG.lights[k].name +
+          (s.lightsWall[k] ? ' &middot; muurknop uit' : '') + '</button>';
+      }
+      html += '</div></div>';
+    }
+    $('mobile').innerHTML = html;
+  }
+  function bindMobile() {
+    if (!MOBILE) return;
+    document.documentElement.className += ' mobile';
+    $('mobile').className = '';
+    on($('mobile'), 'click', function (e) {
+      var b = closest(e.target, 'data-m');
+      if (!b) return;
+      var m = b.getAttribute('data-m'), k = parseInt(b.getAttribute('data-k'), 10), d = parseFloat(b.getAttribute('data-d'));
+      if (m === 'th') mThermo(d);
+      else if (m === 'acmode') mAcMode(k);
+      else if (m === 'acset') mAcSet(k, d);
+      else if (m === 'lamp') mLamp(k);
+    });
   }
 
   var AC_ORDER = ['off', 'cool', 'heat', 'auto'];
@@ -789,18 +890,34 @@
     $('dim-sub').innerHTML = nl(state.outTemp) + '° buiten &middot; ' + (state.grid < 0 ? 'je levert ' : 'je neemt ') + nl(Math.abs(state.grid)) + ' kW ' + (state.grid < 0 ? 'terug' : 'af');
   }
   var lastTouch = new Date().getTime(), panelOff = false, reloadStamp = null;
+  // nachtstand: tussen nightFrom en nightTo gaat het scherm helemaal zwart (tik = wakker)
+  function hm(str) { var p = (str || '0:0').split(':'); return parseInt(p[0], 10) * 60 + parseInt(p[1], 10); }
+  function isNight() {
+    if (!CFG.nightFrom || !CFG.nightTo) return false;
+    var d = new Date(), m = d.getHours() * 60 + d.getMinutes(), a = hm(CFG.nightFrom), b = hm(CFG.nightTo);
+    return a > b ? (m >= a || m < b) : (m >= a && m < b);
+  }
+  // rust-stand: als het scherm gedimd of zwart is, staan de animaties stil en wordt er minder vaak opgehaald (scheelt stroom)
+  function dimSet(c) {
+    $('dim').className = c;
+    var h = document.documentElement, cls = h.className.replace(/ ?(rest|blackout)/g, '');
+    if (c.indexOf('on') === 0) cls += ' rest';
+    if (c.indexOf('black') >= 0) cls += ' blackout';
+    h.className = cls;
+  }
   function bindDim() {
     if (!CFG.dimAfterSec) return;
     function wake(e) {
       lastTouch = new Date().getTime();
-      if ($('dim').className.indexOf('on') === 0) { $('dim').className = ''; e.preventDefault(); e.stopPropagation(); }
+      if ($('dim').className.indexOf('on') === 0) { dimSet(''); e.preventDefault(); e.stopPropagation(); }
     }
     on(document, 'touchstart', wake);
     on(document, 'mousedown', wake);
     setInterval(function () {
+      if (MOBILE) return;
       var idle = new Date().getTime() - lastTouch > CFG.dimAfterSec * 1000;
-      if (panelOff && idle) $('dim').className = 'on black';            // op afstand uitgezet: helemaal zwart
-      else if (idle && $('dim').className === '') $('dim').className = 'on';
+      if ((panelOff || isNight()) && idle) dimSet('on black');  // nacht of op afstand uit: helemaal zwart
+      else if (idle && $('dim').className === '') dimSet('on');
     }, 5000);
   }
 
@@ -849,6 +966,7 @@
       state.grid = state.home - state.solar;
       state.todaySun += state.solar * 3 / 3600; state.todayUse += state.home * 3 / 3600;
       state.todayNet = state.todaySun - state.todayUse;
+      state.todayExp = (state.todayExp || 0) + Math.max(0, -state.grid) * 3 / 3600;
       state.history[d.getHours()].sun = Math.max(state.history[d.getHours()].sun, state.solar);
       state.history[d.getHours()].use = state.home;
       state.humidity = clamp(state.humidity + (Math.random() - 0.5) * 2 - (state.vent === 'boost' ? 1 : 0), 40, 80);
@@ -938,6 +1056,7 @@
           var exq = ha.num(map, E.gridExportTotal) - (B[E.gridExportTotal] !== undefined ? B[E.gridExportTotal] : ha.num(map, E.gridExportTotal));
           state.todaySun = (B[E.solarEnergyTotal] !== undefined) ? Math.abs(ha.num(map, E.solarEnergyTotal) - B[E.solarEnergyTotal]) : 0;
           state.todayNet = exq - imp;
+          state.todayExp = exq;
           state.todayUse = state.todaySun + imp - exq;
           H.today = true;
         }
@@ -981,8 +1100,8 @@
         if (rb) { if (reloadStamp !== null && rb.state !== reloadStamp) { location.reload(); return; } reloadStamp = rb.state; }
         var so = map[E.panelScreenOff];
         panelOff = !!(so && so.state === 'on');
-        if (panelOff && new Date().getTime() - lastTouch > 15000) $('dim').className = 'on black';
-        if (!panelOff && $('dim').className === 'on black') $('dim').className = '';
+        if (!MOBILE && panelOff && new Date().getTime() - lastTouch > 15000) dimSet('on black');
+        if (!panelOff && $('dim').className === 'on black') dimSet('');
         var w = map[E.weather];
         if (w && w.attributes) {
           var t = parseFloat(w.attributes.temperature);
@@ -1010,7 +1129,9 @@
     start: function () {
       $('conn-text').innerHTML = 'Verbinden&hellip;';
       ha.loadHist(); ha.loadBase(); ha.poll();
-      setInterval(ha.poll, CFG.homeassistant.pollMs || 5000);
+      // in rust-stand maar 1 op de 6 keer ophalen (elke 30 s i.p.v. 5 s)
+      var pollN = 0;
+      setInterval(function () { pollN++; if (document.documentElement.className.indexOf('rest') >= 0 && pollN % 6) return; ha.poll(); }, CFG.homeassistant.pollMs || 5000);
       // nieuwe dag: grafiek leeg
       setInterval(function () { if (ha.baseDay !== new Date().getDate()) { for (var k = 0; k < 24; k++) state.history[k] = { sun: 0, use: 0 }; } }, 60000);
     },
@@ -1048,8 +1169,10 @@
     a.style.webkitTransform = 'scale(' + sc + ')'; a.style.transform = 'scale(' + sc + ')';
     a.style.margin = '0'; a.style.left = Math.max(0, (w - 1024 * sc) / 2) + 'px'; a.style.top = Math.max(0, (h - 768 * sc) / 2) + 'px';
   }
-  fitScreen();
-  on(window, 'resize', fitScreen);
+  if (Math.min(window.innerWidth, window.innerHeight) >= 600) {
+    fitScreen();
+    on(window, 'resize', fitScreen);
+  }
   on(window, 'orientationchange', function () { setTimeout(fitScreen, 300); });
 
   buildScene();
@@ -1059,6 +1182,7 @@
   buildScreens();
   bindControls();
   bindSheet();
+  bindMobile();
   bindDim();
   render();
   tickClock();

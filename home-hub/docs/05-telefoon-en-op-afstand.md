@@ -58,3 +58,7 @@ Dit werkt thuis en onderweg, zolang Tailscale verbonden is.
 - Tailscale moet op de telefoon **aan** staan voor bediening van buitenaf. Thuis op wifi is het niet nodig.
 - Het wandpaneel op de iPad heeft hier niets mee te maken. Dat blijft gewoon werken.
 - Iemand de toegang afnemen kan op twee manieren: in Tailscale de gebruiker verwijderen, of in Home Assistant de persoon uitzetten.
+
+## Telefoonweergave en icoon
+- Op een telefoon toont het paneel vanzelf een **grote, eenvoudige weergave**: grote cijfers en grote knoppen, onder elkaar. Scrol omlaag voor de aircos en lampen. Er is geen sluimerscherm op de telefoon.
+- Het icoon op het beginscherm is een huisje met zonnepanelen. Zie je nog het oude icoon? Verwijder het icoon dan en voeg het opnieuw toe via **Deel → Zet op beginscherm**, met een nieuw nummer achter de link, bijv. `http://100.75.26.42/local/thuis/index.html?app=5`.

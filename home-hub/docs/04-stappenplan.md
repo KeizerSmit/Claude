@@ -178,9 +178,9 @@ Hij vraagt om het token. Maak het aan in Home Assistant (**je naam → Beveiligi
 **Updates van het paneel**: gewoon via de **Terminal in Home Assistant**. Samba of Finder is niet nodig, en je config.js met het token blijft staan.
 Open `http://192.168.178.250`, klik in de zijbalk op **Terminal** en plak:
 ```
-D=/config/www/thuis; [ -d $D ] || D=/homeassistant/www/thuis; cd $D && for f in index.html style.css app.js; do (curl -fsSL "https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard/$f?$(date +%s)" -o $f || wget -qO $f "https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard/$f") && echo "OK $f"; done
+D=/config/www/thuis; [ -d $D ] || D=/homeassistant/www/thuis; cd $D && for f in index.html style.css app.js icon-180.png icon-152.png; do (curl -fsSL "https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard/$f?$(date +%s)" -o $f || wget -qO $f "https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/dashboard/$f") && echo "OK $f"; done
 ```
-Je ziet drie keer **OK**. Sluit daarna de app op de iPad af en open hem opnieuw.
+Je ziet vijf keer **OK**. Sluit daarna de app op de iPad af en open hem opnieuw.
 
 **C. Op de iPad**
 1. Open Safari en ga naar `http://192.168.178.250/local/thuis/index.html?app=2`. Gebruik het **IP-adres**; de oude iPad vindt `homeassistant.local` niet.

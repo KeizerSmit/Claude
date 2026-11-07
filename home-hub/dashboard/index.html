@@ -8,6 +8,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Thuis">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icon-152.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
 <meta name="format-detection" content="telephone=no">
 <script>
   // altijd de nieuwste versie laden (oude iPads houden bestanden lang in hun geheugen)
@@ -16,6 +20,7 @@
 </script>
 </head>
 <body>
+<div id="mobile" class="m-hidden"></div>
 <div id="app">
 
   <header class="topbar">
@@ -40,6 +45,7 @@
     <section class="scene" id="scene">
       <svg id="house" width="600" height="690" viewBox="0 0 600 690" xmlns="http://www.w3.org/2000/svg"></svg>
       <div id="labels"></div>
+      <div id="selfuse" class="selfuse hidden"></div>
     </section>
 
     <aside class="side">

@@ -71,5 +71,8 @@ var HUB_CONFIG = {
   screenMyPos: 60,
 
   // Na zoveel seconden zonder aanraking dimt het scherm (klok-modus)
-  dimAfterSec: 120
+  dimAfterSec: 120,
+  // Nachtstand: in deze periode gaat het scherm helemaal zwart (tik = wakker)
+  nightFrom: '23:00',
+  nightTo: '07:00'
 };
