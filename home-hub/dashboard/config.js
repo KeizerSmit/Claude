@@ -31,7 +31,7 @@ var HUB_CONFIG = {
     // Weheat Blackbird (officiele Weheat-integratie, alleen uitlezen)
     heatPumpPower:  'sensor.blackbird_electrical_power',
     heatPumpCop:    'sensor.blackbird_cop',
-    // Honeywell-thermostaat in de keuken (model nog onbekend; zie docs/02-architectuur.md)
+    // Honeywell-thermostaat (wifi) in de keuken: via HomeKit Device (lokaal) of de Honeywell/Lyric-integratie
     thermostat:     'climate.honeywell',
     // Weheat: aanvoertemperatuur (optioneel)
     heatPumpFlow:   'sensor.blackbird_water_outlet_temperature',
@@ -39,7 +39,10 @@ var HUB_CONFIG = {
     ventilation:    'fan.orcon',
     bathHumidity:   'sensor.badkamer_vochtigheid',
     // Weer (Buienradar-integratie)
-    weather:        'weather.buienradar'
+    weather:        'weather.buienradar',
+    // Wandpaneel op afstand bedienen (helpers die je zelf in Home Assistant aanmaakt):
+    panelReload:    'input_button.wandpaneel_herladen',   // indrukken = paneel laadt opnieuw
+    panelScreenOff: 'input_boolean.wandpaneel_scherm_uit' // aan = scherm zwart (aanraken = even wakker)
   },
 
   // LUUMR-lampen op de 2e verdieping (zolder). 'at' = plek in de tekening
@@ -60,11 +63,12 @@ var HUB_CONFIG = {
     { id: 'climate.airco_slaapkamer_1', name: 'Slaapkamer 1', floor: 1, at: [3.85, 4.80], side: 1 }
   ],
 
-  // Somfy-screens aan de tuinzijde (cover-entiteiten; via TaHoma/Overkiz bij io, ESPSomfy-RTS bij RTS)
+  // Somfy io-screens (Situo 1 io) op de zuidzijde/tuinzijde, via TaHoma + Overkiz-integratie.
+  // 'win' = raam in de tekening (x van-tot in meters), alleen voor de 1e verdieping getekend.
   screens: [
-    { id: 'cover.screen_1', name: 'Screen 1' },
-    { id: 'cover.screen_2', name: 'Screen 2' },
-    { id: 'cover.screen_3', name: 'Screen 3' }
+    { id: 'cover.screen_slaapkamer_1', name: 'Slaapkamer 1', floor: 1, win: [3.15, 4.74] },
+    { id: 'cover.screen_slaapkamer_3', name: 'Slaapkamer 3', floor: 1, win: [0.63, 2.22] },
+    { id: 'cover.screen_slaapkamer_4', name: 'Slaapkamer 4', floor: 2 }
   ],
 
   screenMyPos: 60,   // stand van de Somfy 'my'-knop (procent dicht), alleen voor de weergave

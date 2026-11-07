@@ -12,6 +12,7 @@ Een oude iPad (4e generatie, iOS 10.3.3) als mooi, rustig bedieningspaneel aan d
 | [`docs/01-ipad-onderzoek.md`](docs/01-ipad-onderzoek.md) | Welke iPad het is (iPad 4), sneller maken, jailbreak met h3lix, accu-veiligheid en ophangen |
 | [`docs/02-architectuur.md`](docs/02-architectuur.md) | Hoe alles koppelt via Home Assistant, per apparaat |
 | [`docs/03-upgrades.md`](docs/03-upgrades.md) | Wat je nog meer kunt toevoegen (energie, klimaat, veiligheid) |
+| [`docs/04-stappenplan.md`](docs/04-stappenplan.md) | **Stappenplan zo goedkoop mogelijk**: kosten per onderdeel, jailbreak stap voor stap, Home Assistant, op afstand (Tailscale) |
 
 ## Het ontwerp in het kort
 - **Links: de woning op maat**, getekend uit het SketchUp-model (verbouwing zolder). Het huis is opengewerkt: de verdiepingen en het dak zweven los, zodat je erin kijkt.
@@ -38,6 +39,8 @@ Open `dashboard/index.html` in een browser (op een pc: venster op 1024×768), of
 1. ✅ Opzet, onderzoek en ontwerp (deze map)
 2. ✅ Woning op maat uit het SketchUp-model; Weheat, Orcon en LUUMR uitgezocht
    ✅ Aircos (LG), screens (Somfy) en buitenunits op het uitbouwdak toegevoegd
-   ⏳ Nog open: foto van de Honeywell-thermostaat, Somfy io of RTS, merk van de slimme schakelaar
-3. Home Assistant installeren en koppelen, daarna `config.js` op `mode: 'homeassistant'`
-4. iPad inrichten (Begeleide toegang, slimme stekker voor de lader) en ophangen
+   ✅ Honeywell heeft wifi, Somfy is io, screens bij slaapkamer 1, 3 en 4 (zuidzijde)
+   ⏳ Nog open: merk van de slimme schakelaar naast de Situo, welke Honeywell-app/HomeKit-code
+3. iPad jailbreaken (h3lix) en Home Assistant installeren: zie [docs/04-stappenplan.md](docs/04-stappenplan.md)
+4. Koppelen, daarna `config.js` op `mode: 'homeassistant'`
+5. iPad inrichten (Begeleide toegang, slimme stekker voor de lader) en ophangen

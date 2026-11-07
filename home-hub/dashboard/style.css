@@ -220,6 +220,7 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 .acflow.cool { stroke: #6fc8ff; opacity: 1; } .acflow.heat { stroke: #ff8a5c; opacity: 1; } .acflow.auto { stroke: #4fe0a5; opacity: 1; }
 .glass-top, .glass-front, .glass-right { fill: rgba(150, 195, 220, 0.30); stroke: rgba(200, 230, 245, 0.45); stroke-width: 0.6; }
 .tile { fill: #3b414d; }
+.fabric { fill: rgba(52, 58, 70, 0.92); stroke: #6b7486; stroke-width: 0.8; }
 .roofz { fill: #7b8086; stroke: #8d9298; stroke-width: 0.8; }
 .gable-in { fill: #cfccc5; }
 .win-frame { fill: #f6f6f2; }
@@ -258,5 +259,7 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
   text-align: center; padding-top: 270px;
 }
 #dim.on { opacity: 0.92; pointer-events: auto; }
+#dim.black { opacity: 1; }
+#dim.black .dim-clock, #dim.black .dim-sub { display: none; }
 .dim-clock { font-size: 120px; font-weight: 100; color: #5d6a80; }
 .dim-sub { font-size: 20px; color: #3e4859; margin-top: 8px; }

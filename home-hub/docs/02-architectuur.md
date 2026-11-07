@@ -34,8 +34,8 @@ Optioneel: een **Zigbee-stick** (bijv. SMLIGHT SLZB-06 of Home Assistant Connect
 - Levert: vermogen (W) per fase, import/export (kWh), gas, en eventueel water.
 - Heb je een losse kWh-meter op de **zonnepanelen** en op de **warmtepomp**? Dan krijg je exact de cijfers die het dashboard toont. Zo niet, dan raad ik ze aan (± €30–50 per stuk, DIN-rail, laten plaatsen in de meterkast).
 
-### Honeywell-thermostaat in de keuken: welk model?
-Eén thermostaat in de keuken, met een Weheat: dan stuurt die thermostaat waarschijnlijk de warmtepomp aan (vloerverwarming beneden en radiatoren boven op hetzelfde systeem). **Stuur een foto van de voorkant van de thermostaat**, dan weet ik het zeker. Wat er kan:
+### Honeywell-thermostaat in de keuken (met wifi) ✅
+De thermostaat heeft wifi, dus aflezen **én** instellen vanaf het paneel kan, gratis. Welke koppeling hangt af van het model. Kijk welke app je gebruikt ("Honeywell Home"/"Resideo" of "Total Connect Comfort") en of er een **HomeKit-code** op de thermostaat of in de doos staat:
 
 | Als het is... | Koppeling | Opmerking |
 |---|---|---|
@@ -68,7 +68,10 @@ Het dashboard gaat nu uit van **één** thermostaat (keuken) met Thuis/Eco/Weg. 
 - Geen wifi in de units? Dan kan een LG-wifimodule (PWFMDD200, ± €40 per unit) of een ESPHome-module op de bedrade bedieningsaansluiting (meer knutselwerk, wel lokaal).
 - Het dashboard heeft een tabblad **Klimaat → Airco**: per kamer de stand Uit/Koelt/Warmt/Auto (tikken wisselt de stand) en de temperatuur met − en +. In de tekening blaast een kleine lijn blauw (koelen) of oranje (verwarmen) onder de binnenunit.
 
-### Screens: Somfy (3× tuinzijde)
+### Screens: Somfy io (3×, slaapkamers op de zuidzijde) ✅ bevestigd io
+
+> Bevestigd: **io** (Situo 1 io). De screens hangen bij **slaapkamer 1, 3 (1e verdieping) en 4 (zolder)**, aan de zuidzijde (tuinzijde). Gratis gaat dit helaas niet: io-homecontrol heeft altijd een Somfy-gateway nodig. Goedkoopst is een **tweedehands TaHoma of Connexoon io** (de lokale API werkt op TaHoma Switch, TaHoma v2, Connexoon io). In Home Assistant: officiële **Overkiz**-integratie, en je krijgt de echte stand van de screens terug. Zie [04-stappenplan.md](04-stappenplan.md).
+
 - De Situo-afstandsbediening op je foto bestaat in twee varianten: **io** (io-homecontrol, met terugmelding) en **RTS** (alleen zenden). Aan de buitenkant zie je het verschil niet; kijk op het etiketje in het batterijvak of achterop: "io" of "RTS". Een tip: een io-afstandsbediening geeft na het indrukken met een **groen lampje** aan dat de screen het commando heeft ontvangen.
 - **io** → een Somfy-gateway nodig: **TaHoma Switch** (± €150–200), gekoppeld met de officiële **Overkiz**-integratie. Die heeft een **lokale API** (zet de ontwikkelaarsmodus aan op somfy.com). Je krijgt dan ook de echte stand van de screen.
 - **RTS** → goedkoop en lokaal met **[ESPSomfy-RTS](https://github.com/rstrouse/ESPSomfy-RTS)**: een ESP32 met een 433 MHz CC1101-radio (± €15–25). Die koppel je als extra afstandsbediening aan elke screen. Nadeel: RTS meldt niet terug, dus als iemand met de muurbediening schakelt, weet Home Assistant dat niet.

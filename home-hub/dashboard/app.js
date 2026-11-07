@@ -138,7 +138,7 @@
     face([[0.12, 0.4, z0], [5.25, 0.4, z0], [5.25, y1, z0], [5.25, y1, z1], [0.12, y1, z1], [0.12, 0.4, z1]], 'floor-hit', g);
   }
 
-  var refs = { floors: [], glows: [], bulbs: [], panels: [], ufh: [], acFlows: [] };
+  var refs = { floors: [], glows: [], bulbs: [], panels: [], ufh: [], acFlows: [], fabric: [] };
 
   function buildScene() {
     var defs = el('defs', {});
@@ -237,6 +237,11 @@
     box(4.74, 5.25, 9.1, 9.5, z + 0.74, z + FAR, 'extin', g);
     box(0.63, 2.22, 9.25, 9.35, z + 0.74, z + FAR, 'glass', g);
     box(3.15, 4.74, 9.25, 9.35, z + 0.74, z + FAR, 'glass', g);
+    // Somfy-screens (zuidzijde): doek zakt zichtbaar voor het raam
+    for (var sk = 0; sk < SCREENS.length; sk++) if (SCREENS[sk].win && SCREENS[sk].floor === 1) {
+      refs.fabric[sk] = el('polygon', { 'class': 'fabric', points: '' }, g);
+      refs.fabric[sk].win = SCREENS[sk].win; refs.fabric[sk].z = z;
+    }
     face([[0.12, 0.4, z + 0.01], [2.42, 0.4, z + 0.01], [2.42, 3.03, z + 0.01], [0.12, 3.03, z + 0.01]], 'tile', g);
     text(1.27, 1.6, z + 0.02, 'Badkamer', g);
     text(3.87, 2.4, z + 0.02, 'Slaapkamer 2', g);
@@ -522,6 +527,11 @@
     var rows = $('screen-list').children, k, sc, t;
     for (k = 0; k < rows.length; k++) {
       sc = state.screens[k];
+      var f = refs.fabric[k];
+      if (f) {   // doek van boven (z + 2,0) naar beneden tot de vensterbank (z + 0,74)
+        var top = f.z + FAR, bot = top - (FAR - 0.74) * sc.pos / 100, w = f.win;
+        f.setAttribute('points', sc.pos > 0 ? ptsM([[w[0], 9.24, top], [w[1], 9.24, top], [w[1], 9.24, bot], [w[0], 9.24, bot]]) : '');
+      }
       if (sc.pos !== sc.target) t = sc.target > sc.pos ? 'Gaat omlaag&hellip;' : 'Gaat omhoog&hellip;';
       else if (sc.pos <= 0) t = 'Open';
       else if (sc.pos >= 100) t = 'Dicht';
@@ -682,17 +692,19 @@
     $('date').innerHTML = DAYS[d.getDay()].charAt(0).toUpperCase() + DAYS[d.getDay()].slice(1) + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()];
     $('dim-sub').innerHTML = nl(state.outTemp) + '° buiten &middot; ' + (state.grid < 0 ? 'je levert ' : 'je neemt ') + nl(Math.abs(state.grid)) + ' kW ' + (state.grid < 0 ? 'terug' : 'af');
   }
-  var lastTouch = new Date().getTime();
+  var lastTouch = new Date().getTime(), panelOff = false, reloadStamp = null;
   function bindDim() {
     if (!CFG.dimAfterSec) return;
     function wake(e) {
       lastTouch = new Date().getTime();
-      if ($('dim').className === 'on') { $('dim').className = ''; e.preventDefault(); e.stopPropagation(); }
+      if ($('dim').className.indexOf('on') === 0) { $('dim').className = ''; e.preventDefault(); e.stopPropagation(); }
     }
     on(document, 'touchstart', wake);
     on(document, 'mousedown', wake);
     setInterval(function () {
-      if (new Date().getTime() - lastTouch > CFG.dimAfterSec * 1000) $('dim').className = 'on';
+      var idle = new Date().getTime() - lastTouch > CFG.dimAfterSec * 1000;
+      if (panelOff && idle) $('dim').className = 'on black';            // op afstand uitgezet: helemaal zwart
+      else if (idle && $('dim').className === '') $('dim').className = 'on';
     }, 5000);
   }
 
@@ -811,6 +823,13 @@
         if (fan && fan.attributes && fan.attributes.preset_mode) state.vent = ha.ventFromPreset(fan.attributes.preset_mode);
         state.humidity = ha.num(map, E.bathHumidity) || state.humidity;
         for (k = 0; k < CFG.lights.length; k++) state.lights[k] = !!(map[CFG.lights[k].id] && map[CFG.lights[k].id].state === 'on');
+        // op afstand: paneel herladen (input_button) en scherm zwart (input_boolean)
+        var rb = map[E.panelReload];
+        if (rb) { if (reloadStamp !== null && rb.state !== reloadStamp) { location.reload(); return; } reloadStamp = rb.state; }
+        var so = map[E.panelScreenOff];
+        panelOff = !!(so && so.state === 'on');
+        if (panelOff && new Date().getTime() - lastTouch > 15000) $('dim').className = 'on black';
+        if (!panelOff && $('dim').className === 'on black') $('dim').className = '';
         var w = map[E.weather];
         if (w && w.attributes) { state.outTemp = parseFloat(w.attributes.temperature) || state.outTemp; state.weatherText = ha.weatherNl(w.state); }
         var h = new Date().getHours();
