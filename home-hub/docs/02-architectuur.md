@@ -93,7 +93,7 @@ Integratie **Buienradar**: temperatuur, verwachting en "komende 2 uur droog/rege
 2. Kopieer `dashboard/` naar `/config/www/thuis/` (via de *File editor*- of *Samba*-add-on).
 3. Maak een *long-lived access token* aan (Profiel → Beveiliging) en zet die in `config.js`.
 4. Pas de `entity_id`'s in `config.js` aan naar die van jou en zet `mode: 'homeassistant'`.
-5. Open op de iPad `http://<ip-van-home-assistant>:8123/local/thuis/index.html`, kies *Zet op beginscherm* en zet Begeleide toegang aan.
+5. Open op de iPad `http://<ip-van-home-assistant>/local/thuis/index.html`, kies *Zet op beginscherm* en zet Begeleide toegang aan.
 
 > Beveiliging: het token staat in een bestand op je eigen netwerk. Dat is acceptabel voor een thuisnetwerk, maar zet Home Assistant dan **niet** zonder extra beveiliging open naar internet. Wil je van buitenaf, gebruik dan Home Assistant Cloud (Nabu Casa) of een VPN zoals Tailscale.
 

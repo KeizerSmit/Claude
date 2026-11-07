@@ -78,9 +78,10 @@ Nodig: een USB-stick van minimaal 8 GB, je Mac, en een netwerkkabel naar de rout
 4. **In Ubuntu:** open Firefox, ga naar home-assistant.io → Installation → *Generic x86-64*, en download het Home Assistant OS-bestand (`haos_generic-x86-64-….img.xz`).
 5. Open de app **Schijven** (*Disks*). Kies de **interne schijf van de laptop** (niet de USB-stick!), dan **⋮ → Schijfkopie terugzetten** (*Restore Disk Image*) en kies het gedownloade bestand. Bevestig.
 6. Klaar? Zet de laptop uit, haal de USB-stick eruit en zet hem weer aan. Na een paar minuten staat er een adres op het scherm.
-7. **Op je Mac of telefoon:** ga naar `http://homeassistant.local:8123` en maak een account aan.
+7. **Op je Mac of telefoon:** ga naar `http://homeassistant.local` en maak een account aan.
+   (Bij deze versie, Home Assistant OS 18, werkt het adres **zonder** `:8123`. Oudere handleidingen noemen nog `:8123`.)
 
-**Klep dicht:** dat werkt bij de meeste laptops gewoon. Test het: klep dicht en kijk of `homeassistant.local:8123` bereikbaar blijft. Gaat hij toch slapen? Dan kan dat met een instelling worden uitgezet (dat doen we samen), of je laat de klep een paar centimeter open; het scherm gaat vanzelf uit.
+**Klep dicht:** dat werkt bij de meeste laptops gewoon. Test het: klep dicht en kijk of `homeassistant.local` bereikbaar blijft. Gaat hij toch slapen? Dan kan dat met een instelling worden uitgezet (dat doen we samen), of je laat de klep een paar centimeter open; het scherm gaat vanzelf uit.
 
 Tips:
 - Zet hem met een kabel bij de router (meterkast of zolder), met de lader eraan.
@@ -111,7 +112,7 @@ Dit is een officieel ondersteunde manier. Windows blijft gewoon op de laptop sta
    - **Netwerk** → Adapter 1 → *Gekoppeld aan*: **Netwerkbrug (Bridged Adapter)**. Kies je wifi- of netwerkkaart.
    - **Audio** uitvinken (niet nodig).
 5. Klik op **Starten**. De eerste keer duurt het **10–20 minuten** ("Preparing Home Assistant").
-6. Ga op je Mac naar **`http://homeassistant.local:8123`**. Werkt dat niet, gebruik dan het IP-adres dat in het VirtualBox-venster staat, met `:8123` erachter. Maak daar je account aan.
+6. Ga op je Mac naar **`http://homeassistant.local`**. Werkt dat niet, gebruik dan het IP-adres dat in het VirtualBox-venster staat, met `:8123` erachter. Maak daar je account aan.
 
 **D. Windows zo instellen dat het blijft draaien**
 1. Configuratiescherm → **Energiebeheer**:
@@ -132,7 +133,7 @@ Dit is een officieel ondersteunde manier. Windows blijft gewoon op de laptop sta
    ```
    Klik op *Volgende* en geef hem de naam `Home Assistant starten`.
 4. Dubbelklik er één keer op om te testen. Home Assistant start nu **onzichtbaar op de achtergrond**. In VirtualBox zie je de machine wel op *Actief* staan.
-5. **Test**: herstart Windows en wacht 5 minuten. Werkt `homeassistant.local:8123` dan weer? Dan is het klaar.
+5. **Test**: herstart Windows en wacht 5 minuten. Werkt `homeassistant.local` dan weer? Dan is het klaar.
 
 **Problemen?**
 - Zie je in VirtualBox een **groen schildpadje** onderin, of is alles extreem traag? Zet dan in Windows-beveiliging → Apparaatbeveiliging → Kernisolatie → **Geheugenintegriteit** *uit* en herstart.
@@ -158,7 +159,7 @@ Dit is een officieel ondersteunde manier. Windows blijft gewoon op de laptop sta
 3. Maak twee **helpers** aan (Instellingen → Apparaten & diensten → Helpers):
    - *Knop* `wandpaneel_herladen`: indrukken = het paneel laadt opnieuw, ook op afstand.
    - *Schakelaar* `wandpaneel_scherm_uit`: aan = het paneel wordt zwart, bijvoorbeeld 's nachts of als iedereen weg is. Aanraken maakt hem even wakker.
-4. Open op de iPad in Safari `http://<ip-van-home-assistant>:8123/local/thuis/index.html`. Kies *Deel → Zet op beginscherm* en open hem vanaf het beginscherm. Zet daarna **Begeleide toegang** aan.
+4. Open op de iPad in Safari `http://<ip-van-home-assistant>/local/thuis/index.html`. Kies *Deel → Zet op beginscherm* en open hem vanaf het beginscherm. Zet daarna **Begeleide toegang** aan.
 
 ## Stap 5. Op afstand (gratis)
 

@@ -4,7 +4,7 @@
  *
  * Zet dit bestand samen met index.html/app.js/style.css in de map
  * /config/www/thuis/ van Home Assistant; open op de iPad dan
- *   http://<ip-van-home-assistant>:8123/local/thuis/index.html
+ *   http://<ip-van-home-assistant>/local/thuis/index.html
  * Gebruik op de iPad bewust http (geen https): iOS 9 vertrouwt de
  * huidige Let's Encrypt-certificaten niet meer.
  *
