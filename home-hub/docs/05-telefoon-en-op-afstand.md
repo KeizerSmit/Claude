@@ -32,7 +32,7 @@ Ga op **login.tailscale.com → Users → Invite users** en vul haar e-mailadres
 **A5. Thuis- en internetadres invullen**
 Ga naar **Instellingen → Systeem → Netwerk → Home Assistant URL's**:
 - **Lokaal netwerk**: `http://192.168.178.250`
-- **Internet**: `http://100.x.x.x` (het Tailscale-adres uit A1; werkt dat niet, probeer dan `http://100.x.x.x:8123`)
+- **Internet**: `http://100.75.26.42` (het Tailscale-adres uit A1, zonder `:8123`)
 
 ---
 
@@ -49,7 +49,7 @@ Op de telefoon gebruiken we **hetzelfde wandpaneel als op de iPad**, als icoon o
    - Julius logt in met zijn eigen account.
    - Je moeder opent de **share-link** en logt in met haar eigen Apple ID → **Accept**.
 2. In Tailscale: **Instellingen → VPN On Demand** aanzetten, zodat Tailscale altijd vanzelf verbindt, ook na een herstart.
-3. Open **Safari** en ga naar `http://100.75.26.42/local/thuis/index.html` (werkt dat niet, dan met `:8123` achter het adres). Linksboven moet **"Verbonden"** staan.
+3. Open **Safari** en ga naar `http://100.75.26.42/local/thuis/index.html` (zonder `:8123`, getest). Linksboven moet **"Verbonden"** staan.
 4. **Deel → Zet op beginscherm → Voeg toe.** Open het icoon **Thuis** en houd de telefoon **liggend**.
 
 Dit werkt thuis en onderweg, zolang Tailscale verbonden is.
