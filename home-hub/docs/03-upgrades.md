@@ -23,12 +23,18 @@ Ingedeeld naar wat het oplevert. Prijzen zijn indicaties.
 | **Aanwezigheid** (telefoon of mmWave-sensor) | Iedereen weg, dan Eco-stand en lampen uit | €0–60 |
 | **Temperatuursensoren per kamer** | Betere regeling dan alleen de thermostaat | €10–15 per stuk |
 
+## Slimme combinaties met wat je al hebt
+- **Zonne-overschot naar de aircos**: in voor- en najaar overdag met zonnestroom de slaapkamers bijverwarmen via de LG's (lucht-lucht, erg zuinig). Dan hoeft de Weheat 's avonds minder. In de zomer koel je met eigen zonnestroom.
+- **Screens op zon en wind**: screens omlaag bij felle zon op de tuinzijde (middag/avond) als het binnen warm wordt, en automatisch omhoog bij harde wind (Buienradar/KNMI-windstoten). Dat scheelt koelvermogen van de aircos.
+- **Ventilatie volgt de douche**: boost op de Orcon bij hoge luchtvochtigheid in een van beide badkamers (Zigbee-vochtsensor, ± €15).
+- **Nachtstand**: om 23:00 alle lampen op de 2e verdieping uit, de aircos naar 19° en het wandpaneel donker. Dat is één knop of een vaste tijd.
+
 ## 3. Veiligheid
 | Upgrade | Wat het doet |
 |---|---|
 | Slimme rookmelders (Zigbee) | Melding op telefoon én op de iPad, en alle lampen aan bij alarm |
 | Waterlekmelder bij de warmtepomp en wasmachine | Melding bij lekkage |
-| Video-deurbel | Bij aanbellen verschijnt het beeld op de iPad (let op: iOS 9 kan alleen stilstaande snapshots tonen) |
+| Video-deurbel | Bij aanbellen verschijnt het beeld op de iPad (let op: de oude iPad toont snapshots, geen vloeiende video) |
 
 ## 4. Gemak en sfeer
 - **Scènes**: "Film", "Slapen" (alles uit, boven nachtlampje) en "Weg" (alles uit, verwarming Eco), elk met één tik op het paneel.

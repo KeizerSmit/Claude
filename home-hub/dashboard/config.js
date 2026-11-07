@@ -31,9 +31,10 @@ var HUB_CONFIG = {
     // Weheat Blackbird (officiele Weheat-integratie, alleen uitlezen)
     heatPumpPower:  'sensor.blackbird_electrical_power',
     heatPumpCop:    'sensor.blackbird_cop',
-    // Honeywell (Evohome / Lyric) zones
-    climateDown:    'climate.beneden',
-    climateUp:      'climate.boven',
+    // Honeywell-thermostaat in de keuken (model nog onbekend; zie docs/02-architectuur.md)
+    thermostat:     'climate.honeywell',
+    // Weheat: aanvoertemperatuur (optioneel)
+    heatPumpFlow:   'sensor.blackbird_water_outlet_temperature',
     // Orcon ventilatiebox (zolder, technische ruimte) via RF: ramses_cc
     ventilation:    'fan.orcon',
     bathHumidity:   'sensor.badkamer_vochtigheid',
@@ -49,6 +50,24 @@ var HUB_CONFIG = {
     { id: 'light.toilet',       name: 'Toilet / bad', at: [3.90, 4.40] },
     { id: 'light.overloop',     name: 'Overloop',     at: [1.95, 3.90] }
   ],
+
+  // LG-aircos (multi-split, 1 buitenunit op het dak van de uitbouw) via de LG ThinQ-integratie.
+  // 'at' = plek van de binnenunit in de tekening (x, y van de wand), 'side' = kant van de kamer (1 = achter, -1 = voor),
+  // 'floor' = 1 (1e verdieping) of 2 (2e verdieping/zolder).
+  acs: [
+    { id: 'climate.airco_slaapkamer_4', name: 'Slaapkamer 4', floor: 2, at: [1.45, 5.46], side: 1 },
+    { id: 'climate.airco_slaapkamer_5', name: 'Slaapkamer 5', floor: 2, at: [3.75, 2.28], side: -1 },
+    { id: 'climate.airco_slaapkamer_1', name: 'Slaapkamer 1', floor: 1, at: [3.85, 4.80], side: 1 }
+  ],
+
+  // Somfy-screens aan de tuinzijde (cover-entiteiten; via TaHoma/Overkiz bij io, ESPSomfy-RTS bij RTS)
+  screens: [
+    { id: 'cover.screen_1', name: 'Screen 1' },
+    { id: 'cover.screen_2', name: 'Screen 2' },
+    { id: 'cover.screen_3', name: 'Screen 3' }
+  ],
+
+  screenMyPos: 60,   // stand van de Somfy 'my'-knop (procent dicht), alleen voor de weergave
 
   // Na zoveel seconden zonder aanraking dimt het scherm (klok-modus)
   dimAfterSec: 120

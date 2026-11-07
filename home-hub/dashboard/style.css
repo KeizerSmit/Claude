@@ -1,4 +1,4 @@
-/* Thuis - wandpaneel voor iPad 2 (1024x768 liggend, iOS 9 Safari)
+/* Thuis - wandpaneel voor een oude iPad (1024x768 punten liggend, iOS 9/10 Safari)
    Bewust zonder CSS grid / custom properties; flexbox met -webkit- prefix. */
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: rgba(0,0,0,0); }
@@ -27,7 +27,7 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 
 /* ---------- topbalk ---------- */
 .topbar {
-  height: 72px; padding: 14px 24px 0 28px;
+  height: 64px; padding: 10px 24px 0 28px;
   display: -webkit-box; display: -webkit-flex; display: flex;
   -webkit-box-align: center; -webkit-align-items: center; align-items: center;
 }
@@ -47,10 +47,10 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 
 /* ---------- hoofdindeling ---------- */
 .main {
-  height: 696px;
+  height: 704px;
   display: -webkit-box; display: -webkit-flex; display: flex;
 }
-.scene { width: 600px; height: 696px; position: relative; }
+.scene { width: 600px; height: 704px; position: relative; }
 #house { position: absolute; left: 0; top: 0; }
 #labels { position: absolute; left: 0; top: 0; width: 600px; height: 690px; }
 .side { width: 424px; padding: 4px 22px 16px 4px; }
@@ -61,7 +61,7 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 18px;
   padding: 11px 16px 11px;
-  margin-bottom: 9px;
+  margin-bottom: 7px;
   -webkit-transition: border-color .3s, box-shadow .3s; transition: border-color .3s, box-shadow .3s;
 }
 .card.flash { border-color: rgba(143,180,255,0.6); box-shadow: 0 0 0 3px rgba(143,180,255,0.15); }
@@ -79,10 +79,10 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 
 /* energie */
 .energy-main { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: end; -webkit-align-items: flex-end; align-items: flex-end; }
-.big { font-size: 44px; font-weight: 200; line-height: 44px; letter-spacing: -1px; color: #4fe0a5; }
+.big { font-size: 40px; font-weight: 200; line-height: 40px; letter-spacing: -1px; color: #4fe0a5; }
 .big.imp { color: #6fc8ff; }
 .big-unit { font-size: 15px; color: #a8b4c8; margin: 0 0 5px 10px; line-height: 18px; }
-.stats { display: -webkit-box; display: -webkit-flex; display: flex; margin: 8px 0 2px; }
+.stats { display: -webkit-box; display: -webkit-flex; display: flex; margin: 6px 0 0; }
 .stat { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; }
 .s-val { font-size: 20px; font-weight: 400; }
 .s-lbl { font-size: 11px; color: #7d8aa0; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 1px; }
@@ -102,7 +102,7 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 .z-name { font-size: 16px; font-weight: 500; }
 .z-sub { font-size: 12px; color: #7d8aa0; font-weight: 400; margin-left: 4px; }
 .z-now { margin-top: 2px; }
-.z-temp { font-size: 22px; font-weight: 300; margin-right: 8px; }
+.z-temp { font-size: 24px; font-weight: 300; margin-right: 8px; }
 .z-state { font-size: 12px; color: #7d8aa0; }
 .z-state.heating { color: #ff8a5c; }
 .z-ctrl { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center; }
@@ -118,7 +118,43 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 .seg button { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; font-size: 14px; color: #a8b4c8; border-radius: 9px; padding: 0 10px; height: 38px; }
 .seg button.on { background: #2b3b5c; color: #fff; font-weight: 600; }
 .seg-small button { height: 28px; font-size: 12px; padding: 0 9px; }
-.seg-full button { height: 40px; font-size: 16px; }
+.seg-full button { height: 38px; font-size: 16px; }
+
+/* tabs + panelen */
+.tabs button { padding: 0 11px; }
+.pane.hidden { display: none; }
+#pane-heat, #pane-ac { min-height: 120px; }
+#pane-lamps, #pane-screens { min-height: 108px; }
+.heat-row { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  -webkit-box-pack: justify; -webkit-justify-content: space-between; justify-content: space-between; padding: 6px 0 2px; border-top: 1px solid rgba(255,255,255,0.05); }
+.wh-info { font-size: 12px; color: #a8b4c8; }
+.wh-info b { color: #ff8a5c; font-weight: 600; }
+
+/* airco */
+.ac-row { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  height: 40px; border-top: 1px solid rgba(255,255,255,0.05); }
+.ac-row:first-child { border-top: 0; }
+.ac-info { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; }
+.ac-name { font-size: 15px; font-weight: 500; line-height: 17px; }
+.ac-now { font-size: 12px; color: #7d8aa0; }
+.ac-mode { width: 62px; height: 32px; border-radius: 10px; font-size: 13px; font-weight: 600; background: rgba(255,255,255,0.07); color: #7d8aa0; margin-right: 8px; }
+.ac-mode.cool { background: rgba(111,200,255,0.18); color: #6fc8ff; }
+.ac-mode.heat { background: rgba(255,138,92,0.18); color: #ff8a5c; }
+.ac-mode.auto { background: rgba(79,224,165,0.16); color: #4fe0a5; }
+.rb.sm { width: 34px; height: 34px; border-radius: 17px; line-height: 34px; font-size: 20px; }
+.ac-set { width: 50px; text-align: center; font-size: 17px; font-weight: 500; }
+.ac-set.off { color: #4d586b; }
+
+/* screens */
+.scr-row { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  height: 38px; border-top: 1px solid rgba(255,255,255,0.05); }
+.scr-row:first-child { border-top: 0; }
+.scr-info { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; }
+.scr-name { font-size: 15px; font-weight: 500; line-height: 16px; }
+.scr-st { font-size: 12px; color: #7d8aa0; }
+.scr-btn { width: 40px; height: 32px; border-radius: 9px; background: rgba(255,255,255,0.07); margin-left: 6px; font-size: 15px; color: #c8d2e2; }
+.scr-btn:active { background: rgba(143,180,255,0.35); }
+.scr-btn.my { font-size: 12px; font-weight: 600; }
 
 /* verlichting */
 .lights { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; margin: 0 -4px; }
@@ -126,7 +162,7 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
   width: 50%; padding: 4px;
 }
 .lamp-in {
-  border-radius: 12px; background: rgba(255,255,255,0.05); padding: 8px 11px; height: 48px;
+  border-radius: 12px; background: rgba(255,255,255,0.05); padding: 7px 11px; height: 44px;
   display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center;
   -webkit-transition: background .25s; transition: background .25s;
 }
@@ -174,9 +210,14 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 .app-top { fill: #f2f3f5; } .app-front { fill: #b6bac2; } .app-right { fill: #d6d9de; }
 .mv-top { fill: #9fe0ff; } .mv-front { fill: #5aa7cc; } .mv-right { fill: #78bfe2; }
 .rad-top { fill: #f6f6f6; } .rad-front { fill: #c4c4c4; } .rad-right { fill: #e0e0e0; }
-.hp-top { fill: #eceef1; } .hp-front { fill: #b3b8bf; } .hp-right { fill: #cdd1d7; }
-.hpcap-top { fill: #2b2f36; } .hpcap-front { fill: #1f2228; } .hpcap-right { fill: #25292f; }
-.hp-fan { fill: #3a4048; }
+.hp-top { fill: #3a3e45; } .hp-front { fill: #24272c; } .hp-right { fill: #2e3137; }
+.hp-fan { fill: #4b5058; stroke: #5d636c; stroke-width: 1; }
+.lgo-top { fill: #eceae4; } .lgo-front { fill: #b9b6af; } .lgo-right { fill: #d6d3cc; }
+.lgo-grill { fill: none; stroke: #8f8c86; stroke-width: 0.8; }
+.flatroof-top { fill: #6f6b63; } .flatroof-front { fill: #3d3d40; } .flatroof-right { fill: #46464a; }
+.ac-top { fill: #fafafa; } .ac-front { fill: #c9ccd1; } .ac-right { fill: #e3e5e8; }
+.acflow { fill: none; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 2 5; opacity: 0; }
+.acflow.cool { stroke: #6fc8ff; opacity: 1; } .acflow.heat { stroke: #ff8a5c; opacity: 1; } .acflow.auto { stroke: #4fe0a5; opacity: 1; }
 .glass-top, .glass-front, .glass-right { fill: rgba(150, 195, 220, 0.30); stroke: rgba(200, 230, 245, 0.45); stroke-width: 0.6; }
 .tile { fill: #3b414d; }
 .roofz { fill: #7b8086; stroke: #8d9298; stroke-width: 0.8; }

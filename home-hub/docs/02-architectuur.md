@@ -2,16 +2,16 @@
 
 ```
  ┌───────────────┐   wifi (http)   ┌──────────────────────────────┐
- │ iPad 2 (muur) │ ◄─────────────► │ Home Assistant               │
+ │ iPad 4 (muur) │ ◄─────────────► │ Home Assistant               │
  │ dashboard/    │   REST API      │ (Home Assistant Green of     │
  │ ES5 webpagina │                 │  Raspberry Pi 5 / mini-pc)   │
  └───────────────┘                 └──────────────┬───────────────┘
                                                   │ integraties
-     ┌──────────────┬──────────────┬──────────────┼──────────────┬───────────────┐
-     ▼              ▼              ▼              ▼              ▼               ▼
- HomeWizard     Honeywell      Weheat         Orcon MV-box   LUUMR-lampen     Buienradar
- P1 + kWh-      thermostaat    Blackbird      (RF 868 MHz,   (Zigbee,         (weer/regen)
- meters (lokaal)(cloud/lokaal) (cloud, lezen) lokaal)        lokaal)
+   ┌────────────┬────────────┬────────────┬───────┴─────┬────────────┬────────────┬────────────┐
+   ▼            ▼            ▼            ▼             ▼            ▼            ▼            ▼
+ HomeWizard   Honeywell    Weheat       Orcon MV-box  LUUMR-lampen LG-aircos    Somfy-screens Buienradar
+ P1 + kWh     thermostaat  Blackbird    RF 868 MHz    Zigbee       ThinQ        io of RTS    weer/regen
+ (lokaal)     (model?)     (cloud,lezen)(lokaal)      (lokaal)     (cloud)      (lokaal)
 ```
 
 **Waarom zo?** De iPad is te oud om zelf integraties te draaien. Home Assistant is gratis, Nederlands-vriendelijk en ondersteunt vrijwel alles wat je hebt. De iPad haalt elke 5 seconden alle waarden op uit Home Assistant en stuurt een opdracht als je ergens op tikt.
@@ -34,28 +34,46 @@ Optioneel: een **Zigbee-stick** (bijv. SMLIGHT SLZB-06 of Home Assistant Connect
 - Levert: vermogen (W) per fase, import/export (kWh), gas, en eventueel water.
 - Heb je een losse kWh-meter op de **zonnepanelen** en op de **warmtepomp**? Dan krijg je exact de cijfers die het dashboard toont. Zo niet, dan raad ik ze aan (± €30–50 per stuk, DIN-rail, laten plaatsen in de meterkast).
 
-### Honeywell thermostaat: welk model?
-Twee zones (vloerverwarming beneden en warmte boven) wijst bijna zeker op **Honeywell evohome**.
+### Honeywell-thermostaat in de keuken: welk model?
+Eén thermostaat in de keuken, met een Weheat: dan stuurt die thermostaat waarschijnlijk de warmtepomp aan (vloerverwarming beneden en radiatoren boven op hetzelfde systeem). **Stuur een foto van de voorkant van de thermostaat**, dan weet ik het zeker. Wat er kan:
 
-| Model | Integratie | Opmerking |
+| Als het is... | Koppeling | Opmerking |
 |---|---|---|
-| **evohome** | `evohome` (officieel) | Via de Honeywell TCC-cloud. Per zone temperatuur en setpoint, plus systeemmodus (Auto/Eco/Weg) |
-| Lyric T6 / T6R | `lyric` (officieel) | Via de Resideo-cloud. De T6 kan ook via HomeKit-koppeling **lokaal** |
-| Round Connected | `honeywell` (officieel) | Via de TCC-cloud |
+| **Honeywell T6 / Lyric T6(R)** (met wifi, app "Resideo") | `lyric` (officieel), of via HomeKit **lokaal** | Temperatuur aflezen én instellen vanaf het paneel |
+| **Round Connected / evohome** | `honeywell` / `evohome` (officieel) | Zelfde: aflezen en instellen |
+| **Zonder wifi** (bijv. T3, T4, Round Modulation, Chronotherm) | Niet direct | Twee opties: (1) een **OpenTherm Gateway** (Nederlands product, Nodo-shop, ± €70) tussen thermostaat en warmtepomp, met de officiële integratie `opentherm_gw`, lokaal: aflezen en een setpoint opleggen. Werkt alleen als de Honeywell met de Weheat praat via OpenTherm. (2) De thermostaat vervangen door een T6 of iets vergelijkbaars. |
+
+Het dashboard gaat nu uit van **één** thermostaat (keuken) met Thuis/Eco/Weg. Daaronder staat de Weheat-info (aanvoertemperatuur en COP).
 
 ### Warmtepomp: Weheat Blackbird
 - Officiële Home Assistant-integratie **[Weheat](https://www.home-assistant.io/integrations/weheat/)**. Die ondersteunt de Blackbird, Sparrow en Flint.
 - Je logt in met je Weheat-account. De Client ID en Client Secret staan in de kennisbank van Weheat.
 - Je krijgt onder meer elektrisch en thermisch vermogen, **COP**, aanvoer- en retourtemperatuur, buitentemperatuur, status en (optioneel) de temperatuur van het warmwatervat. Het dashboard toont vermogen en COP.
 - **Alleen uitlezen.** De integratie kan de warmtepomp niet aansturen. Dat is ook niet nodig: de thermostaat stuurt de warmtevraag. De gegevens komen via de cloud en ververst om de ±2 minuten.
-- In de tekening staat de buitenunit achter in de tuin, en het buffervat en het boilervat in de technische ruimte op zolder, zoals in het SketchUp-model. Staat de buitenunit ergens anders (bijv. op het dak van de uitbouw)? Dan verplaats ik hem.
+- De buitenunit staat op het **grinddak van de uitbouw**, naast de buitenunit van de LG-aircos (zoals op je foto). Het buffervat en het boilervat staan in de technische ruimte op zolder. Zo staan ze ook in de tekening.
 
 ### Ventilatie: Orcon-box op zolder, bediend met het kastje in de keuken
-- De MV-unit hangt in de technische ruimte op zolder, met afzuigpunten in keuken, toilet en badkamers. Het kastje bij de keuken is vrijwel zeker een **Orcon RF-afstandsbediening** (bijv. de 15RF, 868 MHz).
+- De MV-unit hangt in de technische ruimte op zolder (op je foto: een Orcon MVS-15-uitvoering), met afzuigpunten in keuken, toilet en badkamers.
+- Het kastje in de keuken heeft één knop en lampjes voor **timer / auto / 1 / 2 / 3**, plus een groen lampje. Dat lijkt de **Orcon RF-ruimtesensor/bediening (CO₂)**: draadloos op 868 MHz, en het groene lampje geeft waarschijnlijk de luchtkwaliteit aan. Draadloos is goed nieuws: dan kan Home Assistant meedoen.
+- Geen typeplaatje gevonden? Het zit bij de MVS-15 meestal aan de **zijkant of achterkant** van de box, of onder het deksel. Je kunt de stekker even uit het stopcontact halen, het deksel afnemen en kijken. Ook zonder plaatje kunnen we verder: de USB-stick hieronder "luistert" en laat zien welk apparaat het is.
 - Koppelen kan **lokaal** met een 868 MHz USB-stick (evofw3-type, ± €40–60) en de community-integratie **ramses_cc** (via HACS). Home Assistant doet zich dan voor als een tweede afstandsbediening. Op het forum werkt dat met de Orcon MVS-15, maar het instellen (binden) is wat priegelwerk ([forumdraad](https://community.home-assistant.io/t/honeywell-ch-dhw-via-rf-evohome-sundial-hometronics-chronotherm/151584?page=154)).
 - Mooie bijvangst: blijkt de Honeywell een **evohome** te zijn, dan leest dezelfde stick die ook lokaal uit (evohome gebruikt hetzelfde RF-protocol).
 - Alternatief zonder solderen of configuratiewerk: een RFXtrx 868 die de afstandsbediening nabootst.
 - Graag nog een foto van het kastje en van het typeplaatje van de box (merk en type, bijv. "MVS-15RHB").
+
+### Aircos: LG multi-split (3 binnenunits, 1 buitenunit)
+- Binnenunits in **slaapkamer 4 en 5 (zolder)** en **slaapkamer 1 (1e verdieping)**. De buitenunit staat op het dak van de uitbouw.
+- De afstandsbediening (Comfort Air, Energy Ctrl, UVnano, Jet Mode) hoort bij een recente LG-serie (DUALCOOL-familie). Die heeft vaak **ingebouwde wifi**. Kijk in de **LG ThinQ-app** of je ze kunt toevoegen.
+- Officiële Home Assistant-integratie **[LG ThinQ](https://www.home-assistant.io/integrations/lg_thinq/)**, met een "personal access token" van LG. Per binnenunit krijg je een eigen klimaatentiteit: aan/uit, koelen/verwarmen/auto, temperatuur en ventilatorstand. Dit gaat **via de LG-cloud**.
+- Geen wifi in de units? Dan kan een LG-wifimodule (PWFMDD200, ± €40 per unit) of een ESPHome-module op de bedrade bedieningsaansluiting (meer knutselwerk, wel lokaal).
+- Het dashboard heeft een tabblad **Klimaat → Airco**: per kamer de stand Uit/Koelt/Warmt/Auto (tikken wisselt de stand) en de temperatuur met − en +. In de tekening blaast een kleine lijn blauw (koelen) of oranje (verwarmen) onder de binnenunit.
+
+### Screens: Somfy (3× tuinzijde)
+- De Situo-afstandsbediening op je foto bestaat in twee varianten: **io** (io-homecontrol, met terugmelding) en **RTS** (alleen zenden). Aan de buitenkant zie je het verschil niet; kijk op het etiketje in het batterijvak of achterop: "io" of "RTS". Een tip: een io-afstandsbediening geeft na het indrukken met een **groen lampje** aan dat de screen het commando heeft ontvangen.
+- **io** → een Somfy-gateway nodig: **TaHoma Switch** (± €150–200), gekoppeld met de officiële **Overkiz**-integratie. Die heeft een **lokale API** (zet de ontwikkelaarsmodus aan op somfy.com). Je krijgt dan ook de echte stand van de screen.
+- **RTS** → goedkoop en lokaal met **[ESPSomfy-RTS](https://github.com/rstrouse/ESPSomfy-RTS)**: een ESP32 met een 433 MHz CC1101-radio (± €15–25). Die koppel je als extra afstandsbediening aan elke screen. Nadeel: RTS meldt niet terug, dus als iemand met de muurbediening schakelt, weet Home Assistant dat niet.
+- Het dashboard heeft een tabblad **Screens** met ▲ / my / ▼ per screen, net als de Situo.
+- De slimme schakelaar met drie lampjes naast de Situo: welk merk/welke app is dat? Die kan waarschijnlijk ook mee.
 
 ### Verlichting: LUUMR op de 2e verdieping
 - Lampen in slaapkamer 4, slaapkamer 5, toilet/badkamer en overloop.
