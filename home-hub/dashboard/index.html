@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Thuis">
 <meta name="format-detection" content="telephone=no">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <div id="app">
@@ -50,9 +50,10 @@
           <div class="big-unit">kW<br><span id="grid-word">naar het net</span></div>
         </div>
         <div class="stats">
-          <div class="stat"><div class="s-val c-sun" id="st-sun">0,0</div><div class="s-lbl">Zon kW</div></div>
-          <div class="stat"><div class="s-val c-home" id="st-home">0,0</div><div class="s-lbl">Huis kW</div></div>
-          <div class="stat"><div class="s-val c-heat" id="st-hp">0,0</div><div class="s-lbl">Warmtepomp kW</div></div>
+          <div class="stat"><div class="s-val c-sun" id="st-sun">0,0</div><div class="s-lbl">Zon</div></div>
+          <div class="stat"><div class="s-val c-home" id="st-home">0,0</div><div class="s-lbl">Huis</div></div>
+          <div class="stat"><div class="s-val c-heat" id="st-hp">0,0</div><div class="s-lbl">Warmtepomp</div></div>
+          <div class="stat"><div class="s-val c-imp" id="st-ac">0,0</div><div class="s-lbl">Airco</div></div>
         </div>
         <svg id="chart" width="380" height="42" viewBox="0 0 380 42"></svg>
         <div class="today">
@@ -125,7 +126,7 @@
   <div id="dim"><div class="dim-clock" id="dim-clock">--:--</div><div class="dim-sub" id="dim-sub"></div></div>
 </div>
 
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script src="config.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

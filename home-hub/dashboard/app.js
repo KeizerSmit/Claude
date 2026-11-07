@@ -11,7 +11,7 @@
    * 1. Model: alles wat het scherm toont zit in dit ene object.
    * ===================================================================== */
   var state = {
-    solar: 0, home: 0, hp: 0, grid: 0, cop: 4.1,         // kW (grid > 0 = afname, < 0 = teruglevering)
+    solar: 0, home: 0, hp: 0, ac: 0, grid: 0, cop: 4.1,         // kW (grid > 0 = afname, < 0 = teruglevering)
     todaySun: 0, todayUse: 0, todayNet: 0,     // kWh
     thermo: { temp: 20.6, set: 21.0, heating: true },   // Honeywell (keuken)
     flowTemp: 34,                               // Weheat aanvoertemperatuur
@@ -28,7 +28,14 @@
   for (i = 0; i < CFG.lights.length; i++) state.lights.push(i === 1 || i === 3);
   for (i = 0; i < 24; i++) state.history.push({ sun: 0, use: 0 });
   var ACS = CFG.acs || [], SCREENS = CFG.screens || [];
-  for (i = 0; i < ACS.length; i++) state.acs.push({ temp: 19 + i * 0.4, set: 20, mode: i === 1 ? 'heat' : 'off' });
+  var LIVE = CFG.mode === 'homeassistant';
+  // welke onderdelen leveren echte data? In demo-modus alles; live pas als de entiteit bestaat.
+  state.has = { solar: !LIVE, hp: !LIVE, ac: !LIVE, weheat: !LIVE, thermo: !LIVE, vent: !LIVE, screens: !LIVE, today: !LIVE, weather: !LIVE };
+  state.lightsHas = [];
+  for (i = 0; i < CFG.lights.length; i++) state.lightsHas.push(!LIVE);
+  if (LIVE) for (i = 0; i < CFG.lights.length; i++) state.lights[i] = false;
+  for (i = 0; i < ACS.length; i++) state.acs.push({ temp: LIVE ? NaN : 19 + i * 0.4, set: LIVE ? NaN : 20, mode: (!LIVE && i === 1) ? 'heat' : 'off', modes: null, has: !LIVE });
+  if (LIVE) { state.outTemp = NaN; state.weatherText = ''; state.rainText = ''; state.thermo.heating = false; }
   for (i = 0; i < SCREENS.length; i++) state.screens.push({ pos: 0, target: 0 });
 
   /* =====================================================================
@@ -36,8 +43,10 @@
    * ===================================================================== */
   function $(id) { return document.getElementById(id); }
   function nl(v, d) { // getal in Nederlandse notatie
+    if (v === null || v === undefined || isNaN(v)) return '&ndash;';
     return v.toFixed(d === undefined ? 1 : d).replace('.', ',');
   }
+  function nlIf(ok, v, d) { return ok ? nl(v, d) : '&ndash;'; }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
   function on(elm, ev, fn) { elm.addEventListener(ev, fn, false); }
   function closest(elm, attr) {
@@ -433,34 +442,37 @@
     $('grid-word').innerHTML = exp ? 'naar het net' : 'van het net';
     $('grid-chip').innerHTML = exp ? 'Teruglevering' : 'Afname';
     $('grid-chip').className = 'chip' + (exp ? '' : ' imp');
-    $('st-sun').innerHTML = nl(s.solar);
+    var H = s.has;
+    $('st-sun').innerHTML = nlIf(H.solar, s.solar);
     $('st-home').innerHTML = nl(s.home);
-    $('st-hp').innerHTML = nl(s.hp);
-    $('td-sun').innerHTML = nl(s.todaySun);
-    $('td-use').innerHTML = nl(s.todayUse);
-    $('td-net').innerHTML = (s.todayNet > 0 ? '+' : '') + nl(s.todayNet);
+    $('st-hp').innerHTML = nlIf(H.hp, s.hp);
+    $('st-ac').innerHTML = nlIf(H.ac, s.ac);
+    $('td-sun').innerHTML = nlIf(H.today && H.solar, s.todaySun);
+    $('td-use').innerHTML = nlIf(H.today, s.todayUse);
+    $('td-net').innerHTML = H.today ? (s.todayNet > 0 ? '+' : '') + nl(s.todayNet) : '&ndash;';
     renderChart();
 
     // klimaat: thermostaat + Weheat + airco's
     var th = s.thermo;
-    $('th-temp').innerHTML = nl(th.temp) + '°';
-    $('th-set').innerHTML = nl(th.set) + '°';
-    $('th-state').innerHTML = th.heating ? 'verwarmt' : 'op temperatuur';
-    $('th-state').className = 'z-state' + (th.heating ? ' heating' : '');
-    $('wh-info').innerHTML = 'Weheat &middot; aanvoer <b>' + Math.round(s.flowTemp) + '°</b> &middot; COP <b>' + nl(s.cop) + '</b>';
+    $('th-temp').innerHTML = nlIf(H.thermo, th.temp) + '°';
+    $('th-set').innerHTML = nlIf(H.thermo, th.set) + '°';
+    $('th-state').innerHTML = !H.thermo ? 'nog niet gekoppeld' : (th.heating ? 'verwarmt' : 'op temperatuur');
+    $('th-state').className = 'z-state' + (H.thermo && th.heating ? ' heating' : '');
+    $('wh-info').innerHTML = H.weheat ? 'Weheat &middot; aanvoer <b>' + Math.round(s.flowTemp) + '°</b> &middot; COP <b>' + nl(s.cop) + '</b>' :
+      (H.hp ? 'Warmtepomp &middot; <b>' + nl(s.hp) + ' kW</b>' : 'Weheat nog niet gekoppeld');
     segSelect('mode-seg', 'data-mode', s.mode);
     renderAcs();
     renderScreens();
 
     // ventilatie
-    segSelect('vent-seg', 'data-v', s.vent);
-    $('vent-info').innerHTML = 'Vocht badkamer ' + Math.round(s.humidity) + '%';
+    segSelect('vent-seg', 'data-v', H.vent ? s.vent : null);
+    $('vent-info').innerHTML = H.vent ? 'Vocht badkamer ' + Math.round(s.humidity) + '%' : 'nog niet gekoppeld';
 
     // verlichting (LUUMR, 2e verdieping)
     var lampEls = $('lights').children, nOn = 0;
     for (k = 0; k < lampEls.length; k++) {
       lampEls[k].className = 'lamp' + (s.lights[k] ? ' on' : '');
-      lampEls[k].querySelector('.lamp-st').innerHTML = s.lights[k] ? 'Aan' : 'Uit';
+      lampEls[k].querySelector('.lamp-st').innerHTML = !s.lightsHas[k] ? 'niet gekoppeld' : (s.lights[k] ? 'Aan' : 'Uit');
       if (s.lights[k]) nOn++;
       if (refs.glows[k]) refs.glows[k].setAttribute('opacity', s.lights[k] ? '1' : '0');
       if (refs.bulbs[k]) refs.bulbs[k].setAttribute('fill', s.lights[k] ? '#ffc94d' : '#3a4660');
@@ -484,22 +496,23 @@
       refs.ufh[k].style.webkitAnimationDuration = '3s'; refs.ufh[k].style.animationDuration = '3s';
     }
     refs.thermo.setAttribute('class', 'thermo' + (th.heating ? ' on' : ''));
-    setClass(refs.duct, 'duct anim-fwd');
+    setClass(refs.duct, H.vent ? 'duct anim-fwd' : 'duct');
     refs.duct.style.webkitAnimationDuration = VENT_SPEED[s.vent] + 's';
     refs.duct.style.animationDuration = VENT_SPEED[s.vent] + 's';
 
     // labels
-    tags.sun.innerHTML = '<span class="t-k">Zonnepanelen</span><span class="t-v c-sun">' + nl(s.solar) + ' kW</span>';
-    tags.zolder.innerHTML = '<span class="t-k">2e verdieping</span><span class="t-v"><small>Ventilatie</small> ' + VENT_TXT[s.vent] + '</span>' +
+    tags.sun.innerHTML = '<span class="t-k">Zonnepanelen</span><span class="t-v c-sun">' + nlIf(H.solar, s.solar) + ' kW</span>';
+    tags.zolder.innerHTML = '<span class="t-k">2e verdieping</span><span class="t-v"><small>Ventilatie</small> ' + (H.vent ? VENT_TXT[s.vent] : '&ndash;') + '</span>' +
       '<span class="t-k" style="color:' + (nOn || acOnUp ? '#ffc94d' : '#7d8aa0') + '">' + nOn + ' lamp' + (nOn === 1 ? '' : 'en') + ' &middot; ' + acOnUp + ' airco</span>';
     var sk1 = -1;
     for (k = 0; k < ACS.length; k++) if (ACS[k].floor === 1) sk1 = k;
     tags.floor1.innerHTML = '<span class="t-k">1e verdieping</span>' + (sk1 >= 0 ?
       '<span class="t-v"><small>' + ACS[sk1].name + '</small> ' + nl(s.acs[sk1].temp) + '°</span>' +
       '<span class="t-k" style="color:' + AC_COL[s.acs[sk1].mode] + '">airco ' + AC_TXT[s.acs[sk1].mode].toLowerCase() + '</span>' : '');
-    tags.floor0.innerHTML = '<span class="t-k">Begane grond</span><span class="t-v">' + nl(th.temp) + '° <small>&rarr; ' + nl(th.set) + '°</small></span>' +
-      '<span class="t-k" style="color:' + (th.heating ? '#ff8a5c' : '#7d8aa0') + '">' + (th.heating ? 'vloer verwarmt' : 'vloer uit') + '</span>';
-    tags.hp.innerHTML = '<span class="t-k">Weheat Blackbird</span><span class="t-v c-heat">' + nl(s.hp) + ' kW <small>' + (heating ? 'COP ' + nl(s.cop) : 'stand-by') + '</small></span>';
+    tags.floor0.innerHTML = '<span class="t-k">Begane grond</span><span class="t-v">' + (H.thermo ? nl(th.temp) + '° <small>&rarr; ' + nl(th.set) + '°</small>' : '<small>thermostaat</small> &ndash;') + '</span>' +
+      '<span class="t-k" style="color:' + (H.thermo && th.heating ? '#ff8a5c' : '#7d8aa0') + '">' + (!H.thermo ? 'nog niet gekoppeld' : (th.heating ? 'vloer verwarmt' : 'vloer uit')) + '</span>';
+    tags.hp.innerHTML = '<span class="t-k">Weheat Blackbird</span><span class="t-v c-heat">' + nlIf(H.hp, s.hp) + ' kW <small>' +
+      (H.weheat ? (s.hp > 0.15 ? 'COP ' + nl(s.cop) : 'stand-by') : (H.hp ? (s.hp > 0.15 ? 'draait' : 'stand-by') : '')) + '</small></span>';
     tags.grid.className = 'tag ' + (exp ? 'exp' : 'imp');
     tags.grid.innerHTML = '<span class="t-k">Net</span><span class="t-v ' + (exp ? 'c-exp' : 'c-imp') + '">' + (exp ? '&uarr; ' : '&darr; ') + nl(Math.abs(s.grid)) + ' kW</span>';
 
@@ -532,7 +545,8 @@
         var top = f.z + FAR, bot = top - (FAR - 0.74) * sc.pos / 100, w = f.win;
         f.setAttribute('points', sc.pos > 0 ? ptsM([[w[0], 9.24, top], [w[1], 9.24, top], [w[1], 9.24, bot], [w[0], 9.24, bot]]) : '');
       }
-      if (sc.pos !== sc.target) t = sc.target > sc.pos ? 'Gaat omlaag&hellip;' : 'Gaat omhoog&hellip;';
+      if (!state.has.screens) t = 'niet gekoppeld';
+      else if (sc.pos !== sc.target) t = sc.target > sc.pos ? 'Gaat omlaag&hellip;' : 'Gaat omhoog&hellip;';
       else if (sc.pos <= 0) t = 'Open';
       else if (sc.pos >= 100) t = 'Dicht';
       else t = Math.round(sc.pos) + '% dicht';
@@ -615,7 +629,9 @@
       var am = closest(e.target, 'data-acmode');
       if (am) {
         var ai = parseInt(am.getAttribute('data-acmode'), 10), ac = state.acs[ai];
-        ac.mode = AC_ORDER[(AC_ORDER.indexOf(ac.mode) + 1) % AC_ORDER.length];
+        var order = [], q;
+        for (q = 0; q < AC_ORDER.length; q++) if (!ac.modes || ac.modes.indexOf(AC_ORDER[q]) >= 0) order.push(AC_ORDER[q]);
+        ac.mode = order[(order.indexOf(ac.mode) + 1) % order.length];
         backend.setAcMode(ai, ac.mode); render(); return;
       }
       var ad = closest(e.target, 'data-acd');
@@ -790,30 +806,77 @@
     },
     call: function (domain, service, data) { ha.req('POST', '/api/services/' + domain + '/' + service, data, function () { setTimeout(ha.poll, 800); }); },
     num: function (map, id, div) { var e = map[id]; var v = e ? parseFloat(e.state) : NaN; return isNaN(v) ? 0 : v / (div || 1); },
+    ok: function (map, id) { var e = id && map[id]; return !!(e && e.state !== 'unavailable' && e.state !== 'unknown'); },
+    // tellerstanden om middernacht ophalen (voor "vandaag")
+    base0: null, baseDay: null,
+    loadBase: function () {
+      var E = CFG.entities, ids = [], d = new Date(), q;
+      var list = [E.gridImportTotal, E.gridExportTotal, E.solarEnergyTotal];
+      for (q = 0; q < list.length; q++) if (list[q]) ids.push(list[q]);
+      ha.baseDay = d.getDate();
+      var start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 5), end = new Date(start.getTime() + 10 * 60000);
+      ha.req('GET', '/api/history/period/' + encodeURIComponent(start.toISOString()) + '?filter_entity_id=' + ids.join(',') +
+        '&end_time=' + encodeURIComponent(end.toISOString()) + '&minimal_response&no_attributes', null, function (res) {
+        var b = {}, r, v;
+        for (r = 0; r < res.length; r++) if (res[r].length) {
+          v = parseFloat(res[r][0].state);
+          if (!isNaN(v)) b[res[r][0].entity_id] = v;
+        }
+        ha.base0 = b;
+      });
+    },
+    // grafiek: uurgemiddelden, bewaard op de iPad zodat herladen ze niet wist
+    histKey: function () { var d = new Date(); return 'thuis_hist_' + d.getFullYear() + '_' + d.getMonth() + '_' + d.getDate(); },
+    loadHist: function () {
+      try { var j = JSON.parse(window.localStorage.getItem(ha.histKey()) || 'null'); if (j && j.length === 24) state.history = j; } catch (e) {}
+    },
+    addSample: function () {
+      var hh = state.history[new Date().getHours()], n = hh.n || 0;
+      hh.sun = (hh.sun * n + state.solar) / (n + 1);
+      hh.use = (hh.use * n + state.home) / (n + 1);
+      hh.n = Math.min(n + 1, 720);
+      try { window.localStorage.setItem(ha.histKey(), JSON.stringify(state.history)); } catch (e) {}
+    },
     poll: function () {
       ha.req('GET', '/api/states', null, function (list) {
         var map = {}, E = CFG.entities, k;
         for (k = 0; k < list.length; k++) map[list[k].entity_id] = list[k];
+        var H = state.has;
+        H.solar = ha.ok(map, E.solarPower); H.hp = ha.ok(map, E.heatPumpPower); H.ac = ha.ok(map, E.acPower);
+        H.weheat = ha.ok(map, E.heatPumpCop); H.thermo = ha.ok(map, E.thermostat); H.vent = ha.ok(map, E.ventilation);
         state.grid = ha.num(map, E.gridPower, 1000);
         state.solar = Math.abs(ha.num(map, E.solarPower, 1000));
-        state.hp = ha.num(map, E.heatPumpPower, 1000);
+        state.hp = Math.abs(ha.num(map, E.heatPumpPower, 1000));
+        state.ac = Math.abs(ha.num(map, E.acPower, 1000));
         state.cop = ha.num(map, E.heatPumpCop) || state.cop;
         state.home = Math.max(0, state.grid + state.solar);
-        state.todaySun = ha.num(map, E.solarToday);
-        state.todayNet = ha.num(map, E.gridExportToday) - ha.num(map, E.gridImportToday);
-        state.todayUse = state.todaySun - state.todayNet;
+        // vandaag = tellerstand nu - tellerstand om middernacht (uit de geschiedenis van Home Assistant)
+        if (ha.baseDay !== new Date().getDate()) ha.loadBase();
+        var B = ha.base0 || {};
+        if (B[E.gridImportTotal] !== undefined && ha.ok(map, E.gridImportTotal)) {
+          var imp = ha.num(map, E.gridImportTotal) - B[E.gridImportTotal];
+          var exq = ha.num(map, E.gridExportTotal) - (B[E.gridExportTotal] !== undefined ? B[E.gridExportTotal] : ha.num(map, E.gridExportTotal));
+          state.todaySun = (B[E.solarEnergyTotal] !== undefined) ? Math.abs(ha.num(map, E.solarEnergyTotal) - B[E.solarEnergyTotal]) : 0;
+          state.todayNet = exq - imp;
+          state.todayUse = state.todaySun + imp - exq;
+          H.today = true;
+        }
         ha.zone(map[E.thermostat], state.thermo);
         state.flowTemp = ha.num(map, E.heatPumpFlow) || state.flowTemp;
         for (k = 0; k < ACS.length; k++) {
           var ac = map[ACS[k].id], a = state.acs[k];
-          if (!ac || !ac.attributes) continue;
+          a.has = !!(ac && ac.attributes && ac.state !== 'unavailable');
+          if (!a.has) continue;
+          a.modes = ac.attributes.hvac_modes || null;
           a.temp = parseFloat(ac.attributes.current_temperature) || a.temp;
           a.set = parseFloat(ac.attributes.temperature) || a.set;
           a.mode = ac.state === 'heat_cool' ? 'auto' : (AC_TXT[ac.state] ? ac.state : (ac.state === 'off' ? 'off' : 'auto'));
         }
+        H.screens = false;
         for (k = 0; k < SCREENS.length; k++) {
           var cv = map[SCREENS[k].id], sc = state.screens[k];
           if (!cv) continue;
+          H.screens = true;
           var p = cv.attributes && cv.attributes.current_position;
           sc.pos = sc.target = (p !== undefined && p !== null) ? 100 - p : (cv.state === 'closed' ? 100 : 0);
           if (cv.state === 'opening') sc.target = 0;
@@ -822,7 +885,10 @@
         var fan = map[E.ventilation];
         if (fan && fan.attributes && fan.attributes.preset_mode) state.vent = ha.ventFromPreset(fan.attributes.preset_mode);
         state.humidity = ha.num(map, E.bathHumidity) || state.humidity;
-        for (k = 0; k < CFG.lights.length; k++) state.lights[k] = !!(map[CFG.lights[k].id] && map[CFG.lights[k].id].state === 'on');
+        for (k = 0; k < CFG.lights.length; k++) {
+          state.lightsHas[k] = ha.ok(map, CFG.lights[k].id);
+          state.lights[k] = !!(map[CFG.lights[k].id] && map[CFG.lights[k].id].state === 'on');
+        }
         // op afstand: paneel herladen (input_button) en scherm zwart (input_boolean)
         var rb = map[E.panelReload];
         if (rb) { if (reloadStamp !== null && rb.state !== reloadStamp) { location.reload(); return; } reloadStamp = rb.state; }
@@ -831,10 +897,13 @@
         if (panelOff && new Date().getTime() - lastTouch > 15000) $('dim').className = 'on black';
         if (!panelOff && $('dim').className === 'on black') $('dim').className = '';
         var w = map[E.weather];
-        if (w && w.attributes) { state.outTemp = parseFloat(w.attributes.temperature) || state.outTemp; state.weatherText = ha.weatherNl(w.state); }
-        var h = new Date().getHours();
-        state.history[h].sun = Math.max(state.history[h].sun, state.solar);
-        state.history[h].use = state.home;
+        if (w && w.attributes) {
+          var t = parseFloat(w.attributes.temperature);
+          if (!isNaN(t)) state.outTemp = t;
+          state.weatherText = ha.weatherNl(w.state);
+          state.rainText = /rainy|pouring|lightning|snowy|hail/.test(w.state) ? 'Nu neerslag' : 'Nu droog';
+        }
+        ha.addSample();
         render(); tickClock();
       });
     },
@@ -850,16 +919,23 @@
       var m = { sunny: 'Zonnig', 'clear-night': 'Helder', partlycloudy: 'Half bewolkt', cloudy: 'Bewolkt', rainy: 'Regen', pouring: 'Zware regen', fog: 'Mist', snowy: 'Sneeuw', windy: 'Winderig', lightning: 'Onweer' };
       return m[s] || s;
     },
-    start: function () { ha.poll(); setInterval(ha.poll, CFG.homeassistant.pollMs || 5000); setInterval(tickClock, 10000); },
-    setTemp: function (t) { ha.call('climate', 'set_temperature', { entity_id: CFG.entities.thermostat, temperature: t }); },
-    setMode: function (m) { ha.call('climate', 'set_preset_mode', { entity_id: CFG.entities.thermostat, preset_mode: m }); },
-    setAcMode: function (k, m) { ha.call('climate', 'set_hvac_mode', { entity_id: ACS[k].id, hvac_mode: m }); },
-    setAcTemp: function (k, t) { ha.call('climate', 'set_temperature', { entity_id: ACS[k].id, temperature: t }); },
+    start: function () {
+      $('conn-text').innerHTML = 'Verbinden&hellip;';
+      ha.loadHist(); ha.loadBase(); ha.poll();
+      setInterval(ha.poll, CFG.homeassistant.pollMs || 5000);
+      // nieuwe dag: grafiek leeg
+      setInterval(function () { if (ha.baseDay !== new Date().getDate()) { for (var k = 0; k < 24; k++) state.history[k] = { sun: 0, use: 0 }; } }, 60000);
+    },
+    setTemp: function (t) { if (!state.has.thermo) return; ha.call('climate', 'set_temperature', { entity_id: CFG.entities.thermostat, temperature: t }); },
+    setMode: function (m) { if (!state.has.thermo) return; ha.call('climate', 'set_preset_mode', { entity_id: CFG.entities.thermostat, preset_mode: m }); },
+    setAcMode: function (k, m) { if (!state.acs[k].has) return; ha.call('climate', 'set_hvac_mode', { entity_id: ACS[k].id, hvac_mode: m }); },
+    setAcTemp: function (k, t) { if (!state.acs[k].has) return; ha.call('climate', 'set_temperature', { entity_id: ACS[k].id, temperature: t }); },
     setScreen: function (k, cmd) {
+      if (!state.has.screens) return;
       ha.call('cover', cmd === 'up' ? 'open_cover' : (cmd === 'down' ? 'close_cover' : 'stop_cover'), { entity_id: SCREENS[k].id });
     },
-    setVent: function (v) { ha.call('fan', 'set_preset_mode', { entity_id: CFG.entities.ventilation, preset_mode: ha.PRESETS[v] }); },
-    setLight: function (k, onOff) { ha.call('light', onOff ? 'turn_on' : 'turn_off', { entity_id: CFG.lights[k].id }); }
+    setVent: function (v) { if (!state.has.vent) return; ha.call('fan', 'set_preset_mode', { entity_id: CFG.entities.ventilation, preset_mode: ha.PRESETS[v] }); },
+    setLight: function (k, onOff) { if (!state.lightsHas[k]) return; ha.call('light', onOff ? 'turn_on' : 'turn_off', { entity_id: CFG.lights[k].id }); }
   };
 
   var backend = CFG.mode === 'homeassistant' ? ha : demo;
