@@ -1021,14 +1021,15 @@
     lastTouch = new Date().getTime();
     door.open = true; door.until = new Date().getTime() + 120000;
     $('door-wrap').className = '';
+    arcBuild(); arcTab('live');
     $('door-img').style.display = 'none';
     doorMsg(!LIVE ? 'Demo-modus: hier komt het beeld van de voordeur.' : (state.has.door ? 'Beeld laden&hellip;' : 'De deurbel is nog niet gekoppeld in Home Assistant.'));
     doorNext();
   }
-  function doorClose() { door.open = false; clearTimeout(door.timer); $('door-wrap').className = 'hidden'; $('door-img').src = ''; }
+  function doorClose() { door.open = false; clearTimeout(door.timer); $('door-wrap').className = 'hidden'; $('door-img').src = ''; arcStop(); }
   function doorNext() {
     clearTimeout(door.timer);
-    if (!door.open) return;
+    if (!door.open || arc.tab !== 'live') return;
     if (new Date().getTime() > door.until) { doorClose(); return; }
     if (!state.has.door || !door.pic) { door.timer = setTimeout(doorNext, 2000); return; }
     var img = new Image(), t0 = new Date().getTime();
@@ -1262,6 +1263,145 @@
     $('en-box').innerHTML = html;
   }
   function hpOpen() { en.view = 'hp'; enOpen(); }
+
+  /* =====================================================================
+   * 5f. Archief (Frigate): terugkijken per 10 minuten en stukjes bewaren.
+   *     Beeld komt rechtstreeks van Frigate (poort 5000), bewaren en
+   *     verwijderen gaat via Home Assistant (rest_command, homeassistant/frigate.yaml).
+   * ===================================================================== */
+  var arc = { built: false, tab: 'live', day: 0, hour: -1, start: 0, saved: [], hasPkg: false, playing: '' };
+  var ARC_CAM = 'voordeur', ARC_BLK = 600;
+  function fBase() { return 'http://' + location.hostname + ':5000'; }
+  function arcBuild() {
+    if (arc.built) return;
+    arc.built = true;
+    var box = document.querySelector('#door-wrap .door-box');
+    var tabs = document.createElement('div');
+    tabs.className = 'seg arc-tabs'; tabs.id = 'arc-tabs';
+    tabs.innerHTML = '<button data-arct="live">Live</button><button data-arct="arch">Terugkijken</button><button data-arct="saved">Bewaard</button>';
+    box.insertBefore(tabs, $('door-img'));
+    var a = document.createElement('div');
+    a.id = 'arc'; a.style.display = 'none';
+    a.innerHTML = '<div id="arc-pick"></div><div class="arc-player"><video id="arc-video" controls playsinline webkit-playsinline preload="none"></video>' +
+      '<div id="arc-cap" class="arc-cap"></div><div id="arc-bar" class="arc-bar"></div></div><div id="arc-msg" class="arc-msg"></div>';
+    box.appendChild(a);
+    on(tabs, 'click', function (e) { var b = closest(e.target, 'data-arct'); if (b) arcTab(b.getAttribute('data-arct')); });
+    on(a, 'click', arcClick);
+    on($('arc-video'), 'error', function () {
+      if (arc.playing) arcMsg('Deze opname kan niet worden afgespeeld. Is er toen opgenomen, en staat poort 5000 aan bij Frigate?');
+    });
+  }
+  function arcMsg(t) { $('arc-msg').innerHTML = t || ''; }
+  function arcStop() {
+    var v = $('arc-video');
+    if (v) { try { v.pause(); } catch (e) {} v.removeAttribute('src'); try { v.load(); } catch (e2) {} }
+    arc.playing = '';
+  }
+  function arcTab(t) {
+    arc.tab = t;
+    segSelect('arc-tabs', 'data-arct', t);
+    var live = t === 'live';
+    $('door-img').style.display = live && $('door-img').getAttribute('src') ? '' : 'none';
+    $('door-msg').style.display = live ? '' : 'none';
+    $('arc').style.display = live ? 'none' : '';
+    if (live) { arcStop(); door.until = new Date().getTime() + 120000; doorNext(); }
+    else { clearTimeout(door.timer); arcMsg(''); arcRender(); }
+  }
+  function dayStart(off) { var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - off); return d; }
+  function arcLabel(ts) {
+    var d = new Date(ts * 1000);
+    return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function arcRender() {
+    if (!arc.built) return;
+    var h = '', k, now = new Date().getTime() / 1000;
+    if (arc.tab === 'arch') {
+      var base = dayStart(arc.day).getTime() / 1000;
+      h += '<div class="arc-row">';
+      for (k = 0; k < 2; k++) h += '<button class="arc-chip' + (arc.day === k ? ' on' : '') + '" data-arcday="' + k + '">' + (k ? 'Gisteren' : 'Vandaag') + '</button>';
+      h += '<span class="arc-hint">Tik op een uur en daarna op een stukje van 10 minuten.</span></div><div class="arc-hours">';
+      for (k = 0; k < 24; k++) {
+        var past = base + k * 3600 < now;
+        h += '<button class="arc-h' + (arc.hour === k ? ' on' : '') + (past ? '' : ' off') + '" data-arch="' + k + '">' + pad(k) + '</button>';
+      }
+      h += '</div>';
+      if (arc.hour >= 0) {
+        h += '<div class="arc-blocks">';
+        for (k = 0; k < 6; k++) {
+          var st = base + arc.hour * 3600 + k * ARC_BLK, ok = st < now - 20;
+          h += '<button class="arc-b' + (arc.start === st ? ' on' : '') + (ok ? '' : ' off') + '" data-arcs="' + st + '">' + pad(arc.hour) + ':' + pad(k * 10) + '</button>';
+        }
+        h += '</div>';
+      }
+    } else {
+      if (!arc.hasPkg && LIVE) h += '<div class="arc-hint">Bewaarde stukjes verschijnen hier zodra het Frigate-pakket in Home Assistant staat (zie handleiding).</div>';
+      else if (!arc.saved.length) h += '<div class="arc-hint">Nog niets bewaard. Ga naar <b>Terugkijken</b>, speel een stukje af en tik op <b>Bewaren</b>.</div>';
+      h += '<div class="arc-list">';
+      for (k = 0; k < arc.saved.length; k++) {
+        var it = arc.saved[k];
+        h += '<div class="arc-item"><button class="arc-play" data-arcf="' + it.file + '" data-arcn="' + (it.name || '') + '">&#9654; ' + (it.name || it.file) +
+          (it.busy ? ' <small>(wordt opgeslagen&hellip;)</small>' : '') + '</button><button class="arc-del" data-arcdel="' + it.id + '">Verwijderen</button></div>';
+      }
+      h += '</div>';
+    }
+    $('arc-pick').innerHTML = h;
+    var bar = '';
+    if (arc.playing === 'clip') bar = '<button class="arc-nav" data-arcstep="-1">&lsaquo; 10 min</button><button class="arc-save" data-arcsave="1">Bewaren</button><button class="arc-nav" data-arcstep="1">10 min &rsaquo;</button>';
+    $('arc-bar').innerHTML = bar;
+  }
+  function arcPlay(url, cap, kind) {
+    var v = $('arc-video');
+    arc.playing = kind; arcMsg('');
+    v.src = url; $('arc-cap').innerHTML = cap;
+    try { v.load(); var pr = v.play(); if (pr && pr['catch']) pr['catch'](function () {}); } catch (e) {}
+    arcRender();
+  }
+  function arcPlayBlock(st) {
+    var now = new Date().getTime() / 1000;
+    if (st >= now - 20) return;
+    arc.start = st;
+    arc.hour = new Date(st * 1000).getHours();
+    var end = Math.min(st + ARC_BLK, Math.floor(now) - 10);
+    arcPlay(fBase() + '/api/' + ARC_CAM + '/start/' + st + '/end/' + end + '/clip.mp4', arcLabel(st) + ' &ndash; ' + arcLabel(end).slice(-5), 'clip');
+  }
+  function arcClick(e) {
+    lastTouch = new Date().getTime();
+    var b;
+    if ((b = closest(e.target, 'data-arcday'))) { arc.day = parseInt(b.getAttribute('data-arcday'), 10); arc.hour = -1; arcRender(); return; }
+    if ((b = closest(e.target, 'data-arch'))) { if (b.className.indexOf('off') < 0) { arc.hour = parseInt(b.getAttribute('data-arch'), 10); arcRender(); } return; }
+    if ((b = closest(e.target, 'data-arcs'))) { if (b.className.indexOf('off') < 0) arcPlayBlock(parseInt(b.getAttribute('data-arcs'), 10)); return; }
+    if ((b = closest(e.target, 'data-arcstep'))) {
+      var ns = arc.start + parseInt(b.getAttribute('data-arcstep'), 10) * ARC_BLK;
+      if (ns < dayStart(1).getTime() / 1000) return;
+      arc.day = ns < dayStart(0).getTime() / 1000 ? 1 : 0;
+      arcPlayBlock(ns); return;
+    }
+    if ((b = closest(e.target, 'data-arcsave'))) {
+      if (!LIVE) { arcMsg('Demo-modus: bewaren werkt alleen met Home Assistant.'); return; }
+      var end = Math.min(arc.start + ARC_BLK, Math.floor(new Date().getTime() / 1000) - 10);
+      ha.call('rest_command', 'frigate_bewaren', { start: arc.start, end: end, name: 'Voordeur ' + arcLabel(arc.start) });
+      arcMsg('Bewaard: <b>' + arcLabel(arc.start) + '</b>. Je vindt het onder <b>Bewaard</b> (het opslaan duurt even).');
+      return;
+    }
+    if ((b = closest(e.target, 'data-arcf'))) {
+      arcPlay(fBase() + '/exports/' + b.getAttribute('data-arcf'), b.getAttribute('data-arcn'), 'saved'); return;
+    }
+    if ((b = closest(e.target, 'data-arcdel'))) {
+      if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.innerHTML = 'Zeker weten?'; return; }
+      ha.call('rest_command', 'frigate_verwijderen', { id: b.getAttribute('data-arcdel') });
+      for (var k = 0; k < arc.saved.length; k++) if (arc.saved[k].id === b.getAttribute('data-arcdel')) { arc.saved.splice(k, 1); break; }
+      arcStop(); $('arc-cap').innerHTML = ''; arcRender();
+    }
+  }
+  function arcRead(map) {
+    var e = map['sensor.frigate_bewaard'];
+    arc.hasPkg = !!e;
+    var items = e && e.attributes && e.attributes.items;
+    if (items && items.length !== undefined) {
+      arc.saved = items.slice().sort(function (a, b) { return (b.date || 0) - (a.date || 0); });
+      if (arc.tab === 'saved' && door.open && !arc.playing) arcRender();
+    }
+  }
 
   /* =====================================================================
    * 6. Bediening
@@ -1538,6 +1678,7 @@
         }
         ha.zone(map[E.thermostat], state.thermo);
         enRead(map);
+        arcRead(map);
         wpRead(map);
         H.weheat = !!wp.pre;
         if (!isNaN(wp.cop)) state.cop = wp.cop;

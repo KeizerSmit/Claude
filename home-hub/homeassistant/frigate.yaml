@@ -1,0 +1,33 @@
+# Camera-archief op het wandpaneel: stukjes bewaren en verwijderen via Frigate.
+# Frigate draait als app; Home Assistant bereikt die intern op http://ccab4aaf-frigate:5000.
+# Bewaren = een export in Frigate. Exports worden nooit automatisch verwijderd (de gewone opnames na 2 dagen wel).
+#
+# Installatie: dit bestand komt in /config/packages/ (zie docs/08-alles-in-een-keer.md).
+
+rest_command:
+  frigate_bewaren:
+    url: "http://ccab4aaf-frigate:5000/api/export/voordeur/start/{{ start | int }}/end/{{ end | int }}"
+    method: POST
+    content_type: "application/json"
+    payload: '{"source": "recordings", "name": {{ name | tojson }}}'
+    timeout: 30
+  frigate_verwijderen:
+    url: "http://ccab4aaf-frigate:5000/api/exports/delete"
+    method: POST
+    content_type: "application/json"
+    payload: '{"ids": [{{ id | tojson }}]}'
+    timeout: 30
+
+command_line:
+  - sensor:
+      name: Frigate bewaard
+      unique_id: frigate_bewaard
+      scan_interval: 30
+      command_timeout: 20
+      command: >-
+        python3 -c "import json,urllib.request as u;
+        d=json.load(u.urlopen('http://ccab4aaf-frigate:5000/api/exports',timeout=10));
+        print(json.dumps({'n':len(d),'items':[{'id':x.get('id'),'name':x.get('name'),'date':x.get('date'),'file':str(x.get('video_path','')).split('/')[-1],'busy':bool(x.get('in_progress'))} for x in d]}))"
+      value_template: "{{ value_json.n }}"
+      json_attributes:
+        - items

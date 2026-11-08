@@ -34,6 +34,17 @@ C=/config; [ -f $C/configuration.yaml ] || C=/homeassistant; cd $C; B=https://ra
 4. Je komt op de inlogpagina van Weheat. Log in met je **Weheat-account** (hetzelfde als in de Weheat-app) en klik op **Link account**.
 5. Klaar. Op het paneel staat in de Klimaat-kaart nu wat de warmtepomp doet (verwarmt, boiler, ontdooit, ...). Tik erop voor alle gegevens: temperaturen, boilervat boven en onder, COP, vermogen en compressor.
 
+## 2d. Camera-archief (Frigate)
+- **Opnemen:** Frigate neemt de voordeur altijd op in lage kwaliteit en bewaart dat 2 dagen. Installeren gaat met `frigate/installeer-camera.sh`; het camera-account haalt het script uit de deurbel-koppeling.
+- **Terugkijken op het paneel:** tik op **Voordeur** en kies:
+  - **Terugkijken:** kies Vandaag of Gisteren, dan een uur, dan een stukje van 10 minuten;
+  - **Bewaren:** zet dat stukje apart; het blijft staan tot je het zelf verwijdert;
+  - **Bewaard:** daar staat alles wat je apart hebt gezet.
+- **Eenmalig nodig:**
+  1. Ga naar **Instellingen → Apps → Frigate → Configuratie → Netwerk** en vul bij **5000/tcp** `5000` in. Klik op **Opslaan** en herstart Frigate.
+  2. Zet het pakket `homeassistant/frigate.yaml` in `/config/packages/` en herstart Home Assistant.
+- **Let op:** poort 5000 heeft geen wachtwoord. Iedereen op je eigen wifi die het adres kent, kan de opnames bekijken. Zet bezoek daarom op het gastnetwerk. Van buitenaf kan niemand erbij: daarvoor is Tailscale nodig.
+
 ## 3. Somfy-screens (als de LilyGO binnen is)
 Alles staat klaar. Volg [09-screens-installeren.md](09-screens-installeren.md).
 

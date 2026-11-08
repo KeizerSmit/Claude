@@ -369,9 +369,9 @@ html.mobile #app, html.mobile #dim, html.mobile #lamp-sheet { display: none !imp
 
 /* voordeur-camera */
 .door-btn { margin-left: 8px; vertical-align: 4px; height: 26px; padding: 0 12px; border-radius: 13px; background: rgba(143,180,255,0.16); color: #8fb4ff; font-size: 13px; font-weight: 600; }
-#door-wrap { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(5,8,14,0.97); z-index: 60; }
+#door-wrap { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(5,8,14,0.97); z-index: 60; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 #door-wrap.hidden { display: none; }
-.door-box { position: absolute; left: 50%; top: 50%; width: 880px; max-width: 94%; -webkit-transform: translate(-50%, -50%); transform: translate(-50%, -50%); }
+.door-box { position: relative; width: 880px; max-width: 94%; margin: 18px auto 24px; }
 .door-head { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-pack: justify; -webkit-justify-content: space-between; justify-content: space-between;
   -webkit-box-align: center; -webkit-align-items: center; align-items: center; margin-bottom: 12px; }
 .door-title { font-size: 24px; font-weight: 600; }
@@ -428,3 +428,33 @@ html.img3d .room-name { fill: #4b5568; font-weight: 600; font-size: 8.5px; }
 html.img3d .panel { fill: rgba(255,214,110,0); stroke: none; }
 html.img3d .panel.active { fill: rgba(255,214,110,0.20); }
 html.img3d .ufh { stroke-width: 1.8; }
+
+/* camera-archief */
+.arc-tabs { margin: 0 0 12px; }
+.arc-tabs button { height: 44px; font-size: 17px; }
+.arc-row { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center; margin-bottom: 10px; }
+.arc-chip { height: 40px; padding: 0 18px; margin-right: 8px; border-radius: 12px; background: rgba(255,255,255,0.08); color: #c9d3e3; font-size: 16px; }
+.arc-chip.on, .arc-h.on, .arc-b.on { background: #2b3b5c; color: #fff; font-weight: 600; }
+.arc-hint { font-size: 14px; color: #8d9ab0; margin-left: 8px; }
+.arc-hours { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; margin: 0 -3px 8px; }
+.arc-h { width: 8.33%; height: 38px; font-size: 15px; color: #c9d3e3; background: rgba(255,255,255,0.05); border-radius: 8px; margin: 0 0 6px; box-sizing: border-box; -webkit-box-sizing: border-box; border: 3px solid #05080e; }
+.arc-h.off, .arc-b.off { opacity: 0.3; }
+.arc-blocks { display: -webkit-box; display: -webkit-flex; display: flex; margin-bottom: 10px; }
+.arc-b { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; height: 44px; margin-right: 6px; border-radius: 10px; background: rgba(143,180,255,0.14); color: #8fb4ff; font-size: 16px; font-weight: 600; }
+.arc-b:last-child { margin-right: 0; }
+#arc-video { display: block; width: 100%; height: 40vh; max-height: 430px; background: #000; border-radius: 12px; }
+.arc-cap { font-size: 15px; color: #c9d3e3; margin: 8px 2px 0; min-height: 18px; }
+.arc-bar { display: -webkit-box; display: -webkit-flex; display: flex; margin-top: 8px; }
+.arc-nav { height: 44px; padding: 0 18px; border-radius: 12px; background: rgba(255,255,255,0.08); color: #fff; font-size: 16px; }
+.arc-save { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; height: 44px; margin: 0 8px; border-radius: 12px; background: #ff8a5c; color: #1b1208; font-size: 17px; font-weight: 700; }
+.arc-msg { font-size: 15px; color: #c9d3e3; margin-top: 8px; }
+.arc-msg b { color: #fff; }
+.arc-list { max-height: 170px; overflow-y: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }
+.arc-item { display: -webkit-box; display: -webkit-flex; display: flex; margin-bottom: 6px; }
+.arc-play { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; text-align: left; height: 44px; padding: 0 14px; border-radius: 10px; background: rgba(255,255,255,0.06); color: #e8edf5; font-size: 16px; }
+.arc-del { height: 44px; padding: 0 14px; margin-left: 6px; border-radius: 10px; background: rgba(255,90,90,0.14); color: #ff8a8a; font-size: 14px; }
+@media (max-width: 700px) {
+  .arc-h { width: 16.66%; }
+  .arc-hint { display: block; margin: 6px 0 0; }
+  .arc-row { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+}
