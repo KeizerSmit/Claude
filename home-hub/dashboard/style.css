@@ -193,7 +193,7 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 .sheet input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; border-radius: 15px; background: #fff; margin-top: -11px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
 
 /* thermostaatschema */
-.sch-btn { height: 30px; padding: 0 12px; border-radius: 10px; background: rgba(255,255,255,0.06); font-size: 13px; color: #a8b4c8; }
+.sch-btn { white-space: nowrap; height: 30px; padding: 0 12px; border-radius: 10px; background: rgba(255,255,255,0.06); font-size: 13px; color: #a8b4c8; }
 .sch-btn b { color: #e8edf5; font-weight: 600; margin-right: 4px; }
 .sch-btn.on span { color: #ff8a5c; font-weight: 600; }
 #sch-wrap { position: absolute; left: 0; top: 0; width: 1024px; height: 768px; background: rgba(5,8,14,0.6); z-index: 30; }
@@ -419,3 +419,6 @@ html.mobile #app, html.mobile #dim, html.mobile #lamp-sheet { display: none !imp
   .en-row { font-size: 19px; }
   .en-tabs button { font-size: 13px; padding: 0 4px; }
 }
+
+#wh-info { cursor: pointer; }
+.m-hp { background: rgba(255,138,92,0.14); color: #ff8a5c; }

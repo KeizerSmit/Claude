@@ -486,8 +486,8 @@
     $('th-set').innerHTML = nlIf(H.thermo, th.set) + '°';
     $('th-state').innerHTML = !H.thermo ? 'nog niet gekoppeld' : (th.heating ? 'verwarmt' : 'op temperatuur');
     $('th-state').className = 'z-state' + (H.thermo && th.heating ? ' heating' : '');
-    $('wh-info').innerHTML = H.weheat ? 'Weheat &middot; aanvoer <b>' + Math.round(s.flowTemp) + '°</b> &middot; COP <b>' + nl(s.cop) + '</b>' :
-      (H.hp ? 'Warmtepomp &middot; <b>' + nl(s.hp) + ' kW</b>' : 'Weheat nog niet gekoppeld');
+    $('wh-info').innerHTML = (H.weheat && wp.state ? 'Warmtepomp: <b>' + wpShort(wp.state) + '</b>' + (isNaN(wp.cop) || s.hp < 0.15 ? '' : ' &middot; COP <b>' + nl(s.cop) + '</b>') :
+      (H.hp ? 'Warmtepomp &middot; <b>' + nl(s.hp) + ' kW</b>' : 'Warmtepomp')) + ' <span class="card-more">details &rsaquo;</span>';
     segSelect('mode-seg', 'data-mode', s.mode);
     // Thuis/Eco/Weg alleen tonen als de thermostaat die standen kent (via HomeKit vaak niet)
     $('mode-seg').style.display = (th.presets && th.presets.length) ? '' : 'none';
@@ -550,9 +550,10 @@
       '<span class="t-v"><small>' + ACS[sk1].name + '</small> ' + nl(s.acs[sk1].temp) + '°</span>' +
       '<span class="t-k" style="color:' + AC_COL[s.acs[sk1].mode] + '">airco ' + AC_TXT[s.acs[sk1].mode].toLowerCase() + '</span>' : '');
     tags.floor0.innerHTML = '<span class="t-k">Begane grond</span><span class="t-v">' + (H.thermo ? nl(th.temp) + '° <small>&rarr; ' + nl(th.set) + '°</small>' : '<small>thermostaat</small> &ndash;') + '</span>' +
-      '<span class="t-k" style="color:' + (H.thermo && th.heating ? '#ff8a5c' : '#7d8aa0') + '">' + (!H.thermo ? 'nog niet gekoppeld' : (th.heating ? 'vloer verwarmt' : 'vloer uit')) + '</span>';
+      '<span class="t-k" style="color:' + (H.thermo && th.heating ? '#ff8a5c' : '#7d8aa0') + '">' + (!H.thermo ? 'nog niet gekoppeld' : (th.heating ? 'vloer verwarmt' : 'vloer uit')) + '</span>' +
+      (H.weheat && wp.state && wp.state !== 'standby' && wp.state !== 'heating' ? '<span class="t-k" style="color:#ff8a5c">warmtepomp: ' + wpShort(wp.state) + '</span>' : '');
     tags.hp.innerHTML = '<span class="t-k">Weheat Blackbird</span><span class="t-v c-heat">' + nlIf(H.hp, s.hp) + ' kW <small>' +
-      (H.weheat ? (s.hp > 0.15 ? 'COP ' + nl(s.cop) : 'stand-by') : (H.hp ? (s.hp > 0.15 ? 'draait' : 'stand-by') : '')) + '</small></span>';
+      (H.weheat && wp.state ? wpShort(wp.state) : (H.hp ? (s.hp > 0.15 ? 'draait' : 'stand-by') : '')) + '</small></span>';
     tags.grid.className = 'tag ' + (exp ? 'exp' : 'imp');
     tags.grid.innerHTML = '<span class="t-k">Net</span><span class="t-v ' + (exp ? 'c-exp' : 'c-imp') + '">' + (exp ? '&uarr; ' : '&darr; ') + nl(Math.abs(s.grid)) + ' kW</span>';
 
@@ -623,6 +624,7 @@
       '<div class="m-ac-ctrl"><span class="m-setlbl">Instellen op</span><button class="m-btn" data-m="th" data-d="-0.5">&minus;</button><div class="m-set">' + nlIf(H.thermo, th.set) + '°</div>' +
       '<button class="m-btn" data-m="th" data-d="0.5">+</button></div>' +
       (H.sched && state.schedOn ? '<div class="m-line">Schema &middot; volgende: <b>' + schInfo() + '</b></div>' : '') + '</div></div>';
+    html += '<button class="m-door m-hp" data-m="hp">Warmtepomp' + (H.weheat && wp.state ? ': ' + wpLabel(wp.state) : (H.hp ? ' &middot; ' + nl(s.hp) + ' kW' : '')) + ' &rsaquo;</button>';
     // airco's
     html += '<div class="m-card"><div class="m-h">Airco\'s</div>';
     for (k = 0; k < ACS.length; k++) {
@@ -659,7 +661,8 @@
       else if (m === 'acset') mAcSet(k, d);
       else if (m === 'lamp') mLamp(k);
       else if (m === 'door') doorOpen();
-      else if (m === 'energy') enOpen();
+      else if (m === 'energy') { en.view = 'energy'; enOpen(); }
+      else if (m === 'hp') hpOpen();
     });
   }
 
@@ -1005,7 +1008,7 @@
    * ===================================================================== */
   var EN_SRC = ['afname', 'teruglevering', 'zon', 'warmtepomp', 'airco'];
   var EN_PER = [['vandaag', 'Vandaag'], ['gisteren', 'Gisteren'], ['maand', 'Deze maand'], ['vorigemaand', 'Vorige maand'], ['jaar', 'Dit jaar']];
-  var en = { open: false, per: 'vandaag', has: false, p: {}, price: 0.27, feed: 0.27, hasPrice: false, phases: null };
+  var en = { view: 'energy', open: false, per: 'vandaag', has: false, p: {}, price: 0.27, feed: 0.27, hasPrice: false, phases: null };
   function enNum(x) { var f = parseFloat(x); return isNaN(f) ? NaN : f; }
   function enRead(map) {
     var P = { vandaag: {}, gisteren: {}, maand: {}, vorigemaand: {}, jaar: {} }, k, e, src, any = false, q, ph = [];
@@ -1080,6 +1083,7 @@
   }
   function renderEnergy() {
     if (!en.open) return;
+    if (en.view === 'hp') { renderHp(); return; }
     var s = state, H = s.has, r = enStats(en.per), k, html = '', d = new Date();
     var exp = s.grid < 0, other = s.home - (H.hp ? s.hp : 0) - (H.ac ? s.ac : 0);
     html += '<div class="en-head"><span class="en-title">Energie</span><button class="door-x" data-en="close">Sluiten</button></div>';
@@ -1115,14 +1119,15 @@
     html += '<div class="en-sec">Tarieven</div>' +
       '<div class="en-price"><span>Stroomprijs per kWh</span><button class="rb" data-enp="price" data-d="-0.01">&minus;</button><b>' + eur(en.price) + '</b><button class="rb" data-enp="price" data-d="0.01">+</button></div>' +
       '<div class="en-price"><span>Terugleververgoeding per kWh</span><button class="rb" data-enp="feed" data-d="-0.01">&minus;</button><b>' + eur(en.feed) + '</b><button class="rb" data-enp="feed" data-d="0.01">+</button></div>' +
-      '<div class="en-note">Inclusief belasting en btw, zonder vaste kosten. Tot en met 2026 geldt de salderingsregeling: teruglevering is dan evenveel waard als afname. ' +
+      '<div class="en-note">Inclusief belasting en btw, zonder vaste kosten. Terugleververgoeding = wat teruggeleverde stroom je oplevert: tot en met 2026 (saldering) is dat de stroomprijs min de terugleverkosten van je leverancier. ' +
       (LIVE && !en.has ? '<br><b>Nog niet alles zichtbaar:</b> installeer het energie-pakket (zie handleiding, stap &ldquo;Energie&rdquo;).' : '') + '</div>';
     $('en-box').innerHTML = html;
   }
   function enOpen() { lastTouch = new Date().getTime(); en.open = true; $('en-wrap').className = ''; $('en-wrap').scrollTop = 0; renderEnergy(); }
   function enClose() { en.open = false; $('en-wrap').className = 'hidden'; }
   function bindEnergy() {
-    on($('card-energy'), 'click', enOpen);
+    on($('card-energy'), 'click', function () { en.view = 'energy'; enOpen(); });
+    on($('wh-info'), 'click', function (e) { e.stopPropagation(); hpOpen(); });
     on($('en-wrap'), 'click', function (e) {
       if (closest(e.target, 'data-en')) { enClose(); return; }
       var t = closest(e.target, 'data-enper');
@@ -1137,6 +1142,75 @@
       }
     });
   }
+
+  /* =====================================================================
+   * 5e. Warmtepomp (Weheat Blackbird) - alle gegevens uit de Weheat-integratie.
+   *     Entiteiten worden automatisch gevonden via de COP-sensor; de rest
+   *     heeft hetzelfde voorvoegsel (bijv. sensor.blackbird_p80_...).
+   * ===================================================================== */
+  var wp = { pre: null, items: [], state: null, cop: NaN, flow: NaN, dev: '' };
+  var WP_STATE = { standby: 'stand-by', water_check: 'watercontrole', heating: 'verwarmt het huis', cooling: 'koelt',
+    dhw: 'maakt warm water (boiler)', legionella_prevention: 'legionellapreventie (boiler extra heet)', defrosting: 'ontdooit de buitenunit',
+    self_test: 'zelftest', manual_control: 'handmatige bediening', on: 'aan', off: 'uit' };
+  var WP_SHORT = { standby: 'stand-by', heating: 'verwarmt', cooling: 'koelt', dhw: 'boiler', legionella_prevention: 'boiler extra heet',
+    defrosting: 'ontdooit', water_check: 'controle', self_test: 'zelftest', manual_control: 'handmatig' };
+  function wpShort(st) { return WP_SHORT[st] || wpLabel(st); }
+  function wpLabel(st) { return WP_STATE[st] || (st || '').replace(/_/g, ' '); }
+  function wpRead(map) {
+    var k, pre = CFG.entities.weheatPrefix || null, obj, it, a, u, nm, low, items = [], cop;
+    if (!pre) for (k in map) if (/^sensor\..+_cop$/.test(k) && k.indexOf('energie') < 0) { pre = k.slice(7, -4); break; }
+    wp.pre = pre; wp.items = items; wp.state = null; wp.cop = NaN; wp.flow = NaN;
+    if (!pre) return;
+    cop = map['sensor.' + pre + '_cop'];
+    wp.dev = cop && cop.attributes && cop.attributes.friendly_name ? cop.attributes.friendly_name.replace(/\s*COP\s*$/i, '') : '';
+    for (k in map) {
+      obj = k.split('.');
+      if ((obj[0] !== 'sensor' && obj[0] !== 'binary_sensor') || obj[1].indexOf(pre + '_') !== 0) continue;
+      a = map[k].attributes || {}; u = a.unit_of_measurement || '';
+      nm = (a.friendly_name || obj[1]).replace(wp.dev, '').replace(/^\s+/, '');
+      nm = nm.charAt(0).toUpperCase() + nm.slice(1);
+      low = (k + ' ' + nm).toLowerCase();
+      it = { id: k, name: nm, unit: u, st: map[k].state, v: parseFloat(map[k].state), bin: obj[0] === 'binary_sensor', low: low };
+      it.grp = it.bin ? 'parts' : (/dhw|tapwater|boiler|warm water|warmwater/.test(low) ? 'dhw' :
+        (u === 'W' || u === 'kW' || /_cop$/.test(k) || u === '%' ? 'now' : (u === '°C' ? 'temp' : (u === 'kWh' ? 'tot' : (isNaN(it.v) ? 'status' : 'other')))));
+      if (/_cop$/.test(k)) wp.cop = it.v;
+      if (u === '°C' && /water/.test(low) && /outlet|uitlaat|aanvoer|uitgang/.test(low)) wp.flow = it.v;
+      if (!u && isNaN(it.v) && /state|status|toestand/.test(low) && !/cool|koel|dhw|control|methode/.test(low)) wp.state = it.st;
+      if (it.st === 'unavailable' || it.st === 'unknown') continue;
+      items.push(it);
+    }
+    items.sort(function (x, y) { return x.name < y.name ? -1 : 1; });
+  }
+  function wpVal(it) {
+    if (it.bin) return it.st === 'on' ? 'aan' : 'uit';
+    if (isNaN(it.v) || /^\d{4}-\d\d-\d\d/.test(it.st)) return wpLabel(it.st);
+    var d = it.unit === 'W' || it.unit === '%' || /rpm/i.test(it.unit) ? 0 : (it.unit === 'kWh' && it.v >= 100 ? 0 : 1);
+    return nl(it.v, d) + (it.unit ? ' ' + (it.unit === '°C' ? '°' : it.unit) : '');
+  }
+  function renderHp() {
+    var s = state, H = s.has, html = '', g, k, it, r = enStats('vandaag'), any = false;
+    var GR = [['now', 'Nu'], ['temp', 'Temperaturen'], ['dhw', 'Boiler (warm water)'], ['status', 'Status'], ['parts', 'Onderdelen binnenunit'], ['other', 'Overig'], ['tot', 'Tellerstanden (totaal sinds installatie)']];
+    html += '<div class="en-head"><span class="en-title">Warmtepomp</span><button class="door-x" data-en="close">Sluiten</button></div>';
+    html += '<div class="en-tiles">' +
+      enTile('stroom nu (kWh-meter)', H.hp ? nl(s.hp, 2) + ' kW' : '&ndash;', '#ff8a5c') +
+      enTile(wp.state ? wpLabel(wp.state) : 'wat hij doet', wp.state ? wpShort(wp.state) : (H.hp ? (s.hp > 0.15 ? 'draait' : 'stand-by') : '&ndash;'), '#e8edf5') +
+      enTile('COP nu', isNaN(wp.cop) ? '&ndash;' : nl(wp.cop), '#4fe0a5') +
+      enTile('verbruik vandaag', kwh(r.hp), '#ff8a5c') +
+      enTile('kosten vandaag', isNaN(r.hp) ? '&ndash;' : eur(r.hp * en.price), '#ffc94d') +
+      enTile('vloer (thermostaat)', H.thermo ? (s.thermo.heating ? 'vraagt warmte' : 'geen vraag') : '&ndash;', '#8fb4ff') + '</div>';
+    if (!wp.pre) {
+      html += '<div class="en-note">Koppel de <b>Weheat</b>-integratie in Home Assistant om te zien wat de warmtepomp precies doet: verwarmen, boiler, ontdooien, temperaturen van de vaten, COP en meer (zie handleiding, stap &ldquo;Weheat&rdquo;).</div>';
+    } else {
+      for (g = 0; g < GR.length; g++) {
+        var rows = '';
+        for (k = 0; k < wp.items.length; k++) { it = wp.items[k]; if (it.grp === GR[g][0]) rows += enRow(it.name, wpVal(it)); }
+        if (rows) { any = true; html += '<div class="en-sec">' + GR[g][1] + '</div>' + rows; }
+      }
+      if (!any) html += '<div class="en-note">Weheat is gekoppeld, maar er komen (nog) geen gegevens binnen.</div>';
+    }
+    $('en-box').innerHTML = html;
+  }
+  function hpOpen() { en.view = 'hp'; enOpen(); }
 
   /* =====================================================================
    * 6. Bediening
@@ -1392,12 +1466,11 @@
         for (k = 0; k < list.length; k++) map[list[k].entity_id] = list[k];
         var H = state.has;
         H.solar = ha.ok(map, E.solarPower); H.hp = ha.ok(map, E.heatPumpPower); H.ac = ha.ok(map, E.acPower);
-        H.weheat = ha.ok(map, E.heatPumpCop); H.thermo = ha.ok(map, E.thermostat); H.vent = ha.ok(map, E.ventilation);
+        H.thermo = ha.ok(map, E.thermostat); H.vent = ha.ok(map, E.ventilation);
         state.grid = ha.num(map, E.gridPower, 1000);
         state.solar = Math.abs(ha.num(map, E.solarPower, 1000));
         state.hp = Math.abs(ha.num(map, E.heatPumpPower, 1000));
         state.ac = Math.abs(ha.num(map, E.acPower, 1000));
-        state.cop = ha.num(map, E.heatPumpCop) || state.cop;
         state.home = Math.max(0, state.grid + state.solar);
         // vandaag = tellerstand nu - tellerstand om middernacht (uit de geschiedenis van Home Assistant)
         if (ha.baseDay !== new Date().getDate()) ha.loadBase();
@@ -1413,6 +1486,10 @@
         }
         ha.zone(map[E.thermostat], state.thermo);
         enRead(map);
+        wpRead(map);
+        H.weheat = !!wp.pre;
+        if (!isNaN(wp.cop)) state.cop = wp.cop;
+        if (!isNaN(wp.flow)) state.flowTemp = wp.flow;
         door.id = doorFind(map);
         door.pic = door.id && map[door.id].attributes ? map[door.id].attributes.entity_picture : null;
         H.door = !!door.pic;
@@ -1420,7 +1497,6 @@
         H.sched = !!(es && eo);
         state.sched = es ? (schParse(usePend('sched', es.state)) || schDefault()) : null;
         state.schedOn = eo ? usePend('schon', eo.state === 'on') : false;
-        state.flowTemp = ha.num(map, E.heatPumpFlow) || state.flowTemp;
         for (k = 0; k < ACS.length; k++) {
           var ac = map[ACS[k].id], a = state.acs[k];
           a.has = !!(ac && ac.attributes && ac.state !== 'unavailable');

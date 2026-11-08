@@ -27,6 +27,13 @@ C=/config; [ -f $C/configuration.yaml ] || C=/homeassistant; cd $C; B=https://ra
 - De tellers beginnen bij nul op het moment dat je dit installeert. "Gisteren" en "Vorige maand" vullen zich dus pas na een dag of een maand.
 - Zet je eigen **stroomprijs** en **terugleververgoeding** onderaan het overzicht met de −/+ knoppen. Die staan op je energierekening of in de app van je energieleverancier.
 
+## 2c. Weheat-warmtepomp (gratis, ± 5 min)
+1. Open in je browser het Weheat-artikel [Is er een officiële Home Assistant-integratie?](https://support.weheat.nl/s/article/Is-er-een-offici%C3%ABle-Home-Assistant-integratie). Daar staan een **Client ID** en een **Client Secret**.
+2. Ga in Home Assistant naar **Instellingen → Apparaten & diensten → + Integratie toevoegen** en kies **Weheat**.
+3. Vul in: Naam `Weheat`, plus de Client ID en het Client Secret uit stap 1.
+4. Je komt op de inlogpagina van Weheat. Log in met je **Weheat-account** (hetzelfde als in de Weheat-app) en klik op **Link account**.
+5. Klaar. Op het paneel staat in de Klimaat-kaart nu wat de warmtepomp doet (verwarmt, boiler, ontdooit, ...). Tik erop voor alle gegevens: temperaturen, boilervat boven en onder, COP, vermogen en compressor.
+
 ## 3. Somfy-screens (als de LilyGO binnen is)
 Zie [06-screens-en-ventilatie.md](06-screens-en-ventilatie.md). Claude maakt de ESPHome-configuratie klaar.
 
