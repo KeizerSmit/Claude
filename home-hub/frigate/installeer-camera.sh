@@ -1,20 +1,33 @@
 #!/bin/bash
 # Zet de Frigate-instellingen voor de voordeurcamera klaar: altijd opnemen in lage kwaliteit, 2 dagen bewaren.
-# Draai dit in de Terminal van Home Assistant, NA het installeren (en 1x starten) van de app Frigate:
+# Draai dit in de Terminal van Home Assistant, NA het installeren van de app Frigate:
 #   curl -fsSL https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub/frigate/installeer-camera.sh -o /tmp/f.sh && bash /tmp/f.sh
+# Het camera-account wordt overgenomen uit de deurbel-koppeling (ONVIF) in Home Assistant; lukt dat niet, dan vraagt het script erom.
 set -e
+CAM=192.168.178.217
 B=/addon_configs; [ -d $B ] || B=/app_configs
 D=$(ls -d $B/*_frigate 2>/dev/null | head -1)
 [ -n "$D" ] || D=$B/ccab4aaf_frigate
 mkdir -p "$D"
-echo "Gebruik het camera-account uit de Tapo-app (Geavanceerde instellingen > Camera-account)."
-read -r -p "Camera-gebruikersnaam: " CU </dev/tty
-read -r -s -p "Camera-wachtwoord (je ziet niets, dat is normaal): " CP </dev/tty; echo
-export CU CP D
-python3 - <<'PY'
-import os, urllib.parse
-u = urllib.parse.quote(os.environ['CU'], safe=''); p = urllib.parse.quote(os.environ['CP'], safe='')
-cfg = f"""# Frigate - voordeurcamera (Tapo D235). Gemaakt door installeer-camera.sh
+C=/config; [ -f $C/configuration.yaml ] || C=/homeassistant
+E=$C/.storage/core.config_entries
+CU=""; CP=""
+if [ -f "$E" ] && command -v jq >/dev/null 2>&1; then
+  Q='[.data.entries[] | select(.domain=="onvif")] | (map(select(.data.host=="'$CAM'")) + .)[0].data'
+  CU=$(jq -r "$Q.username // empty" "$E" 2>/dev/null || true)
+  CP=$(jq -r "$Q.password // empty" "$E" 2>/dev/null || true)
+fi
+if [ -n "$CU" ] && [ -n "$CP" ]; then
+  echo "Camera-account gevonden in de deurbel-koppeling (gebruiker: $CU)."
+else
+  echo "Gebruik het camera-account uit de Tapo-app (Geavanceerde instellingen > Camera-account)."
+  read -r -p "Camera-gebruikersnaam: " CU </dev/tty
+  read -r -s -p "Camera-wachtwoord (je ziet niets, dat is normaal): " CP </dev/tty; echo
+fi
+urlenc() { local s="$1" o="" c i; for ((i = 0; i < ${#s}; i++)); do c=${s:i:1}; case "$c" in [a-zA-Z0-9.~_-]) o+="$c" ;; *) o+=$(printf '%%%02X' "'$c") ;; esac; done; printf '%s' "$o"; }
+U=$(urlenc "$CU"); P=$(urlenc "$CP")
+cat > "$D/config.yml" <<EOF
+# Frigate - voordeurcamera (Tapo D235). Gemaakt door installeer-camera.sh
 mqtt:
   enabled: false
 
@@ -36,16 +49,13 @@ cameras:
   voordeur:
     ffmpeg:
       inputs:
-        - path: rtsp://{u}:{p}@192.168.178.217:554/stream2   # lage kwaliteit (substream)
+        - path: rtsp://$U:$P@$CAM:554/stream2   # lage kwaliteit (substream)
           roles:
             - detect
             - record
     detect:
       enabled: false   # geen objectherkenning: scheelt rekenkracht
-"""
-path = os.path.join(os.environ['D'], 'config.yml')
-open(path, 'w').write(cfg)
-os.chmod(path, 0o600)
-print('OK ' + path)
-PY
+EOF
+chmod 600 "$D/config.yml"
+echo "OK $D/config.yml"
 echo "Klaar. Herstart nu de app Frigate (Instellingen > Apps > Frigate > Opnieuw starten)."
