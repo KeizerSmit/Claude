@@ -192,6 +192,37 @@ button { font-family: inherit; color: inherit; border: 0; background: none; padd
 .sheet input[type=range].ct::-webkit-slider-runnable-track { background: -webkit-linear-gradient(left, #ffb04a, #fff1d6, #cfe2ff); }
 .sheet input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; border-radius: 15px; background: #fff; margin-top: -11px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
 
+/* thermostaatschema */
+.sch-btn { height: 30px; padding: 0 12px; border-radius: 10px; background: rgba(255,255,255,0.06); font-size: 13px; color: #a8b4c8; }
+.sch-btn b { color: #e8edf5; font-weight: 600; margin-right: 4px; }
+.sch-btn.on span { color: #ff8a5c; font-weight: 600; }
+#sch-wrap { position: absolute; left: 0; top: 0; width: 1024px; height: 768px; background: rgba(5,8,14,0.6); z-index: 30; }
+#sch-wrap.hidden { display: none; }
+.sheet.sch { left: 182px; top: 64px; width: 660px; padding: 20px 26px 22px; }
+.sch-quick { margin-bottom: 10px; }
+.sch-quick .link { margin-right: 22px; font-size: 15px; }
+.sch-days { display: -webkit-box; display: -webkit-flex; display: flex; margin-bottom: 14px; }
+.sch-day { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; height: 46px; margin-right: 8px; border-radius: 12px; background: rgba(255,255,255,0.06); font-size: 17px; color: #a8b4c8; }
+.sch-day:last-child { margin-right: 0; }
+.sch-day.on { background: #2b3b5c; color: #fff; font-weight: 600; }
+.sch-cols { display: -webkit-box; display: -webkit-flex; display: flex; font-size: 12px; color: #7d8aa0; text-transform: uppercase; letter-spacing: 1px; padding-bottom: 4px; }
+.sch-c1 { width: 170px; text-align: center; }
+.sch-c2 { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; text-align: right; padding-right: 32px; }
+.sch-row { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  height: 64px; border-top: 1px solid rgba(255,255,255,0.06); }
+.sch-name { width: 130px; font-size: 18px; font-weight: 500; }
+.sch-time { width: 86px; text-align: center; font-size: 22px; font-weight: 500; }
+.sch-gap { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; }
+.sch-temp { width: 80px; text-align: center; font-size: 22px; font-weight: 500; color: #ff8a5c; }
+.sch-note { font-size: 14px; color: #a8b4c8; margin: 12px 0 0; min-height: 20px; }
+.sch-note b { color: #e8edf5; }
+.sch-foot { text-align: right; margin-top: 14px; }
+.sch-b1, .sch-b2 { height: 46px; padding: 0 26px; border-radius: 12px; font-size: 17px; font-weight: 600; margin-left: 10px; }
+.sch-b1 { background: #ff8a5c; color: #1b1208; }
+.sch-b1.off { opacity: 0.35; }
+.sch-b2 { background: rgba(255,255,255,0.08); color: #e8edf5; }
+.m-line b { color: #ff8a5c; }
+
 /* ---------- labels op de 3D-scene ---------- */
 .tag {
   position: absolute; white-space: nowrap;

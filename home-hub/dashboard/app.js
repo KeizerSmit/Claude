@@ -40,6 +40,7 @@
   }
   if (LIVE) for (i = 0; i < CFG.lights.length; i++) state.lights[i] = false;
   for (i = 0; i < ACS.length; i++) state.acs.push({ temp: LIVE ? NaN : 19 + i * 0.4, set: LIVE ? NaN : 20, mode: (!LIVE && i === 1) ? 'heat' : 'off', modes: null, has: !LIVE });
+  state.has.sched = !LIVE; state.schedOn = !LIVE; state.sched = null;
   if (LIVE) { state.outTemp = NaN; state.weatherText = ''; state.rainText = ''; state.thermo.heating = false; }
   for (i = 0; i < SCREENS.length; i++) state.screens.push({ pos: 0, target: 0 });
 
@@ -480,7 +481,10 @@
       (H.hp ? 'Warmtepomp &middot; <b>' + nl(s.hp) + ' kW</b>' : 'Weheat nog niet gekoppeld');
     segSelect('mode-seg', 'data-mode', s.mode);
     // Thuis/Eco/Weg alleen tonen als de thermostaat die standen kent (via HomeKit vaak niet)
-    $('mode-seg').style.visibility = (!LIVE || (th.presets && th.presets.length)) ? 'visible' : 'hidden';
+    $('mode-seg').style.display = (th.presets && th.presets.length) ? '' : 'none';
+    $('sch-info').innerHTML = schInfo();
+    $('sch-open').className = 'sch-btn' + (H.sched && state.schedOn ? ' on' : '');
+    schRender();
     renderAcs();
     renderScreens();
     renderSheet();
@@ -605,7 +609,8 @@
       '<div class="m-thermo"><div><div class="m-now">' + nlIf(H.thermo, th.temp) + '°</div><div class="m-sub" style="color:' + (H.thermo && th.heating ? '#ff8a5c' : '#a8b4c8') + '">' +
       (!H.thermo ? 'nog niet gekoppeld' : (th.heating ? 'verwarmt' : 'op temperatuur')) + '</div></div>' +
       '<div class="m-ac-ctrl"><span class="m-setlbl">Instellen op</span><button class="m-btn" data-m="th" data-d="-0.5">&minus;</button><div class="m-set">' + nlIf(H.thermo, th.set) + '°</div>' +
-      '<button class="m-btn" data-m="th" data-d="0.5">+</button></div></div></div>';
+      '<button class="m-btn" data-m="th" data-d="0.5">+</button></div>' +
+      (H.sched && state.schedOn ? '<div class="m-line">Schema &middot; volgende: <b>' + schInfo() + '</b></div>' : '') + '</div></div>';
     // airco's
     html += '<div class="m-card"><div class="m-h">Airco\'s</div>';
     for (k = 0; k < ACS.length; k++) {
@@ -785,6 +790,148 @@
         '<button class="scr-btn" data-scr="' + k + '" data-cmd="down">&#9660;</button>';
       box.appendChild(d);
     }
+  }
+
+  /* =====================================================================
+   * 5b. Thermostaatschema
+   *     Het weekschema staat in Home Assistant (input_text.thermostaat_schema) en
+   *     een automatisering daar zet de thermostaat op elke wisseltijd op de juiste
+   *     temperatuur. Opslag: 7 dagen (ma t/m zo) gescheiden door ';', per dag
+   *     4 wissels 'HHMM-TTT' (TTT = graden x 10), bijv. 0630-205.
+   * ===================================================================== */
+  var SCH_E = CFG.entities.heatSchedule || 'input_text.thermostaat_schema';
+  var SCH_ON_E = CFG.entities.heatScheduleOn || 'input_boolean.thermostaat_schema_aan';
+  var SCH_NAMES = ['Opstaan', 'Weg', 'Thuis', 'Slapen'];
+  var SCH_DAYS = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
+  var SCH_DAYS_LONG = ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'];
+  function schParse(str) {
+    var days = (str || '').split(';'), out = [], d, q, ps, p, m;
+    if (days.length !== 7) return null;
+    for (d = 0; d < 7; d++) {
+      ps = days[d].split(','); p = [];
+      for (q = 0; q < ps.length; q++) {
+        m = /^(\d\d)(\d\d)-(\d{2,3})$/.exec(ps[q]);
+        if (m) p.push({ m: parseInt(m[1], 10) * 60 + parseInt(m[2], 10), v: parseInt(m[3], 10) / 10 });
+      }
+      if (p.length !== 4) return null;
+      out.push(p);
+    }
+    return out;
+  }
+  function schDefault() {
+    var a = [], d;
+    for (d = 0; d < 7; d++) a.push(d < 5 ? '0630-200,0830-180,1700-200,2230-160' : '0800-200,1200-200,1700-200,2300-160');
+    return schParse(a.join(';'));
+  }
+  function schStr(sc) {
+    var days = [], d, q, p, t;
+    for (d = 0; d < 7; d++) {
+      p = [];
+      for (q = 0; q < 4; q++) { t = Math.round(sc[d][q].v * 10); p.push(pad(Math.floor(sc[d][q].m / 60)) + pad(sc[d][q].m % 60) + '-' + (t < 100 ? '0' : '') + t); }
+      days.push(p.join(','));
+    }
+    return days.join(';');
+  }
+  function hhmm(m) { return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
+  function schNext() {
+    var sc = state.sched; if (!sc) return null;
+    var d = new Date(), wd = (d.getDay() + 6) % 7, now = d.getHours() * 60 + d.getMinutes(), q;
+    for (q = 0; q < 4; q++) if (sc[wd][q].m > now) return { m: sc[wd][q].m, v: sc[wd][q].v, tomorrow: false };
+    return { m: sc[(wd + 1) % 7][0].m, v: sc[(wd + 1) % 7][0].v, tomorrow: true };
+  }
+  function schInfo() {
+    if (!state.has.sched) return 'instellen';
+    if (!state.schedOn) return 'uit';
+    var n = schNext();
+    return n ? (n.tomorrow ? 'morgen ' : '') + hhmm(n.m) + ' &rarr; ' + nl(n.v) + '°' : 'aan';
+  }
+
+  var schSel = [], schEdit = null, schIsOpen = false;
+  function schLoad(d) {
+    var sc = state.sched || schDefault(), q;
+    schEdit = [];
+    for (q = 0; q < 4; q++) schEdit.push({ m: sc[d][q].m, v: sc[d][q].v });
+  }
+  function schOpen() {
+    var d = (new Date().getDay() + 6) % 7;
+    schSel = d < 5 ? [0, 1, 2, 3, 4] : [5, 6];
+    schLoad(d); schIsOpen = true; schRender();
+    $('sch-wrap').className = '';
+  }
+  function schClose() { schIsOpen = false; $('sch-wrap').className = 'hidden'; }
+  function schRender() {
+    if (!schIsOpen) return;
+    var h = '', d, q, p, names = [];
+    for (d = 0; d < 7; d++) {
+      h += '<button class="sch-day' + (schSel.indexOf(d) >= 0 ? ' on' : '') + '" data-schday="' + d + '">' + SCH_DAYS[d] + '</button>';
+      if (schSel.indexOf(d) >= 0) names.push(SCH_DAYS_LONG[d]);
+    }
+    $('sch-days').innerHTML = h;
+    h = '';
+    for (q = 0; q < 4; q++) {
+      p = schEdit[q];
+      h += '<div class="sch-row"><div class="sch-name">' + SCH_NAMES[q] + '</div>' +
+        '<button class="rb" data-scht="' + q + '" data-d="-15">&minus;</button><div class="sch-time">' + hhmm(p.m) + '</div>' +
+        '<button class="rb" data-scht="' + q + '" data-d="15">+</button><div class="sch-gap"></div>' +
+        '<button class="rb" data-schv="' + q + '" data-d="-0.5">&minus;</button><div class="sch-temp">' + nl(p.v) + '°</div>' +
+        '<button class="rb" data-schv="' + q + '" data-d="0.5">+</button></div>';
+    }
+    $('sch-rows').innerHTML = h;
+    segSelect('sch-onoff', 'data-schon', state.schedOn ? '1' : '0');
+    $('sch-note').innerHTML = !state.has.sched ? 'Het schema is nog niet ingesteld in Home Assistant (zie de handleiding, stap &ldquo;Thermostaatschema&rdquo;).' :
+      (names.length ? 'Opslaan geldt voor: <b>' + names.join(', ') + '</b>' : 'Kies minstens &eacute;&eacute;n dag.');
+    $('sch-save').className = 'sch-b1' + (!names.length || !state.has.sched ? ' off' : '');
+  }
+  function bindSched() {
+    on($('sch-open'), 'click', schOpen);
+    on($('sch-cancel'), 'click', schClose);
+    on($('sch-sheet'), 'click', function (e) {
+      var b = closest(e.target, 'data-schday'), i, p;
+      if (b) {
+        var d = parseInt(b.getAttribute('data-schday'), 10);
+        i = schSel.indexOf(d);
+        if (i >= 0) schSel.splice(i, 1); else schSel.push(d);
+        schSel.sort();
+        if (schSel.length === 1) schLoad(schSel[0]);
+        schRender(); return;
+      }
+      var qk = closest(e.target, 'data-schq');
+      if (qk) {
+        var w = qk.getAttribute('data-schq');
+        schSel = w === 'wd' ? [0, 1, 2, 3, 4] : (w === 'we' ? [5, 6] : [0, 1, 2, 3, 4, 5, 6]);
+        schLoad(schSel[0]); schRender(); return;
+      }
+      var t = closest(e.target, 'data-scht');
+      if (t) {
+        p = schEdit[parseInt(t.getAttribute('data-scht'), 10)];
+        p.m = clamp(Math.round((p.m + parseInt(t.getAttribute('data-d'), 10)) / 15) * 15, 0, 23 * 60 + 45);
+        schRender(); return;
+      }
+      var v = closest(e.target, 'data-schv');
+      if (v) {
+        p = schEdit[parseInt(v.getAttribute('data-schv'), 10)];
+        p.v = clamp(Math.round((p.v + parseFloat(v.getAttribute('data-d'))) * 2) / 2, 5, 28);
+        schRender(); return;
+      }
+      var o = closest(e.target, 'data-schon');
+      if (o && state.has.sched) {
+        state.schedOn = o.getAttribute('data-schon') === '1';
+        setPend('schon', state.schedOn); backend.setSchedOn(state.schedOn);
+        schRender(); render();
+      }
+    });
+    on($('sch-save'), 'click', function () {
+      if (!schSel.length || !state.has.sched) return;
+      var sc = state.sched || schDefault(), k, q, ed = schEdit.slice().sort(function (a, b) { return a.m - b.m; });
+      for (k = 0; k < schSel.length; k++) {
+        sc[schSel[k]] = [];
+        for (q = 0; q < 4; q++) sc[schSel[k]].push({ m: ed[q].m, v: ed[q].v });
+      }
+      state.sched = sc;
+      var str = schStr(sc);
+      setPend('sched', str); backend.setSched(str);
+      schClose(); render();
+    });
   }
 
   /* =====================================================================
@@ -972,7 +1119,7 @@
       state.humidity = clamp(state.humidity + (Math.random() - 0.5) * 2 - (state.vent === 'boost' ? 1 : 0), 40, 80);
       render(); tickClock();
     },
-    setTemp: function () {}, setMode: function () {}, setVent: function () {}, setLight: function () {},
+    setTemp: function () {}, setMode: function () {}, setVent: function () {}, setLight: function () {}, setSched: function () {}, setSchedOn: function () {},
     setAcMode: function () {}, setAcTemp: function () {}, setScreen: function () {}, setLightLevel: function () {}
   };
   // demo: screens bewegen zichtbaar
@@ -1061,6 +1208,10 @@
           H.today = true;
         }
         ha.zone(map[E.thermostat], state.thermo);
+        var es = map[SCH_E], eo = map[SCH_ON_E];
+        H.sched = !!(es && eo);
+        state.sched = es ? (schParse(usePend('sched', es.state)) || schDefault()) : null;
+        state.schedOn = eo ? usePend('schon', eo.state === 'on') : false;
         state.flowTemp = ha.num(map, E.heatPumpFlow) || state.flowTemp;
         for (k = 0; k < ACS.length; k++) {
           var ac = map[ACS[k].id], a = state.acs[k];
@@ -1135,6 +1286,8 @@
       // nieuwe dag: grafiek leeg
       setInterval(function () { if (ha.baseDay !== new Date().getDate()) { for (var k = 0; k < 24; k++) state.history[k] = { sun: 0, use: 0 }; } }, 60000);
     },
+    setSched: function (str) { if (!state.has.sched) return; ha.call('input_text', 'set_value', { entity_id: SCH_E, value: str }); },
+    setSchedOn: function (v) { if (!state.has.sched) return; ha.call('input_boolean', v ? 'turn_on' : 'turn_off', { entity_id: SCH_ON_E }); },
     setTemp: function (t) { if (!state.has.thermo) return; ha.call('climate', 'set_temperature', { entity_id: CFG.entities.thermostat, temperature: t }); },
     setMode: function (m) { if (!state.has.thermo || !state.thermo.presets || state.thermo.presets.indexOf(m) < 0) return; ha.call('climate', 'set_preset_mode', { entity_id: CFG.entities.thermostat, preset_mode: m }); },
     setAcMode: function (k, m) {
@@ -1182,6 +1335,8 @@
   buildScreens();
   bindControls();
   bindSheet();
+  bindSched();
+  if (!LIVE) state.sched = schDefault();
   bindMobile();
   bindDim();
   render();

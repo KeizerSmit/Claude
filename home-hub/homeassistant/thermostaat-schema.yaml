@@ -1,0 +1,87 @@
+# Thermostaatschema voor het wandpaneel ("Thuis").
+#
+# Het paneel bewaart het weekschema in input_text.thermostaat_schema:
+#   7 dagen (ma t/m zo) gescheiden door ';', per dag 4 wissels 'HHMM-TTT'
+#   (TTT = graden x 10). Voorbeeld voor één dag: 0630-200,0830-180,1700-200,2230-160
+# Deze automatisering zet de thermostaat op elke wisseltijd op de juiste temperatuur.
+# Wie tussendoor aan de thermostaat draait, houdt die temperatuur tot de volgende wissel.
+#
+# Belangrijk: zet het eigen schema op de Honeywell T6 zelf UIT, anders werken ze elkaar tegen.
+#
+# Installatie: dit bestand komt in /config/packages/ en configuration.yaml heeft
+#   homeassistant:
+#     packages: !include_dir_named packages
+
+input_text:
+  thermostaat_schema:
+    name: Thermostaat schema
+    max: 255
+
+input_boolean:
+  thermostaat_schema_aan:
+    name: Thermostaat schema aan
+    icon: mdi:calendar-clock
+
+automation:
+  - id: thermostaat_schema_uitvoeren
+    alias: Thermostaat schema uitvoeren
+    description: Zet de thermostaat op de wisseltijden uit het schema van het wandpaneel.
+    mode: queued
+    triggers:
+      # elke minuut kijken of er nu een wissel is
+      - trigger: time_pattern
+        minutes: "/1"
+        id: tick
+      # na een herstart, een nieuw schema of schema aan: meteen de temperatuur van nu zetten
+      - trigger: homeassistant
+        event: start
+        id: nu
+      - trigger: state
+        entity_id: input_text.thermostaat_schema
+        id: nu
+      - trigger: state
+        entity_id: input_boolean.thermostaat_schema_aan
+        to: "on"
+        id: nu
+    variables:
+      doel: >-
+        {% set s = states('input_text.thermostaat_schema').split(';') %}
+        {% set ns = namespace(wissel=0, nu=0) %}
+        {% if s | length == 7 %}
+          {% set d = now().weekday() %}
+          {% set hm = now().hour * 100 + now().minute %}
+          {% for p in s[(d + 6) % 7].split(',') if p | length >= 7 %}{% set ns.nu = (p[5:] | int) / 10 %}{% endfor %}
+          {% for p in s[d].split(',') if p | length >= 7 %}
+            {% if (p[:4] | int) <= hm %}{% set ns.nu = (p[5:] | int) / 10 %}{% endif %}
+            {% if (p[:4] | int) == hm %}{% set ns.wissel = (p[5:] | int) / 10 %}{% endif %}
+          {% endfor %}
+        {% endif %}
+        {{ ns.wissel if trigger.id == 'tick' else ns.nu }}
+    conditions:
+      - condition: state
+        entity_id: input_boolean.thermostaat_schema_aan
+        state: "on"
+      - condition: template
+        value_template: "{{ doel | float(0) >= 5 }}"
+    actions:
+      - action: climate.set_temperature
+        target:
+          entity_id: climate.tstat_287065_t6_thermostat
+        data:
+          temperature: "{{ doel | float }}"
+
+  - id: thermostaat_schema_standaard
+    alias: Thermostaat schema standaardwaarde
+    description: Vult een standaardschema in als er nog niets staat (het schema zelf blijft uit tot je het aanzet).
+    triggers:
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - condition: template
+        value_template: "{{ states('input_text.thermostaat_schema') | length < 60 }}"
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.thermostaat_schema
+        data:
+          value: "0630-200,0830-180,1700-200,2230-160;0630-200,0830-180,1700-200,2230-160;0630-200,0830-180,1700-200,2230-160;0630-200,0830-180,1700-200,2230-160;0630-200,0830-180,1700-200,2230-160;0800-200,1200-200,1700-200,2300-160;0800-200,1200-200,1700-200,2300-160"

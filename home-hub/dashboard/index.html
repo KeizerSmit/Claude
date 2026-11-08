@@ -94,6 +94,7 @@
             </div>
           </div>
           <div class="heat-row">
+            <button class="sch-btn" id="sch-open"><b>Schema</b> <span id="sch-info">&ndash;</span></button>
             <div class="seg seg-small" id="mode-seg">
               <button data-mode="home" class="on">Thuis</button><button data-mode="eco">Eco</button><button data-mode="away">Weg</button>
             </div>
@@ -142,6 +143,21 @@
       <div class="sl-row"><span class="sl-lbl">Warmte</span><span class="sl-val" id="ls-ct-v">2700 K</span></div>
       <input type="range" id="ls-ct" class="ct" min="2700" max="6500" step="100" value="2700">
       <div class="sl-ends"><span>warm</span><span>koel</span></div>
+    </div>
+  </div>
+
+  <div id="sch-wrap" class="hidden">
+    <div id="sch-sheet" class="sheet sch">
+      <div class="sheet-head">
+        <span class="sheet-title">Schema verwarming</span>
+        <div class="seg seg-small" id="sch-onoff"><button data-schon="1">Aan</button><button data-schon="0">Uit</button></div>
+      </div>
+      <div class="sch-quick"><button class="link" data-schq="wd">Werkdagen</button><button class="link" data-schq="we">Weekend</button><button class="link" data-schq="all">Hele week</button></div>
+      <div class="sch-days" id="sch-days"></div>
+      <div class="sch-cols"><span class="sch-name"></span><span class="sch-c1">Vanaf</span><span class="sch-c2">Temperatuur</span></div>
+      <div id="sch-rows"></div>
+      <div class="sch-note" id="sch-note"></div>
+      <div class="sch-foot"><button class="sch-b2" id="sch-cancel">Annuleer</button><button class="sch-b1" id="sch-save">Opslaan</button></div>
     </div>
   </div>
 
