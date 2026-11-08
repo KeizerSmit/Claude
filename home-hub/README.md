@@ -17,6 +17,8 @@ Een oude iPad (4e generatie, iOS 10.3.3) als mooi, rustig bedieningspaneel aan d
 | [`docs/06-screens-en-ventilatie.md`](docs/06-screens-en-ventilatie.md) | Somfy io-screens en Orcon-ventilatie zonder TaHoma: alle opties uitgezocht |
 | [`docs/07-thermostaatschema.md`](docs/07-thermostaatschema.md) | Weekschema van de thermostaat instellen op het wandpaneel |
 | [`docs/08-alles-in-een-keer.md`](docs/08-alles-in-een-keer.md) | Checklist: thermostaatschema, deurbel, screens en ventilatie in één keer koppelen |
+| [`docs/09-screens-installeren.md`](docs/09-screens-installeren.md) | Somfy-screens koppelen met de LilyGO (stap voor stap) |
+| [`tools/render-woning/`](tools/render-woning/) | Hoe de 3D-render van het huis uit het SketchUp-model wordt gemaakt |
 
 ## Het ontwerp in het kort
 - **Links: de woning op maat**, getekend uit het SketchUp-model (verbouwing zolder). Het huis is opengewerkt: de verdiepingen en het dak zweven los, zodat je erin kijkt.

@@ -1,0 +1,83 @@
+# Somfy io-screens (Situo 1 io) bedienen vanuit Home Assistant, zonder TaHoma.
+# Hardware: LilyGO TTGO T3 LoRa32 868 MHz V1.6.1.
+# Software: https://github.com/danielpetrovic/somfy-io-bridge (open source, 1W = als extra afstandsbediening).
+# Dit bestand staat in /config/esphome/ samen met somfy-io-cover.yaml (van het project) en secrets.yaml.
+#
+# Na het installeren: per screen eenmalig koppelen.
+#   1. Houd PROG op de Situo van die screen ingedrukt tot de screen kort op en neer beweegt.
+#   2. Druk binnen 10 minuten in Home Assistant op "Program (1W)" van die screen.
+#   3. De screen beweegt nog eens: klaar. De Situo blijft gewoon werken.
+
+esphome:
+  name: thuis-screens
+  friendly_name: Somfy screens
+  libraries:
+    - SPI
+    - Preferences
+  areas:
+    - id: slaapkamers_area
+      name: "Slaapkamers"
+  devices:
+    - id: screen_slaapkamer_1_device
+      name: "Screen slaapkamer 1"
+      area_id: slaapkamers_area
+    - id: screen_slaapkamer_3_device
+      name: "Screen slaapkamer 3"
+      area_id: slaapkamers_area
+    - id: screen_slaapkamer_4_device
+      name: "Screen slaapkamer 4"
+      area_id: slaapkamers_area
+
+esp32:
+  board: ttgo-lora32-v1
+  framework:
+    type: arduino
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+  encryption:
+    key: !secret io_bridge_api_key
+
+ota:
+  - platform: esphome
+
+logger:
+  level: INFO
+
+external_components:
+  - source: github://danielpetrovic/somfy-io-bridge
+    refresh: 1d
+
+iohc:
+  id: iohc_hub
+  controller_address: !secret io_bridge_2w_controller_address
+  system_key: !secret io_bridge_2w_system_key
+
+packages:
+  screen_slaapkamer_1: !include
+    file: somfy-io-cover.yaml
+    vars:
+      cover_id: screen_slaapkamer_1
+      cover_name: "Screen slaapkamer 1"
+      device_class: "shade"
+      node: !secret io_screen_slaapkamer_1_node
+      key: !secret io_screen_slaapkamer_1_key
+  screen_slaapkamer_3: !include
+    file: somfy-io-cover.yaml
+    vars:
+      cover_id: screen_slaapkamer_3
+      cover_name: "Screen slaapkamer 3"
+      device_class: "shade"
+      node: !secret io_screen_slaapkamer_3_node
+      key: !secret io_screen_slaapkamer_3_key
+  screen_slaapkamer_4: !include
+    file: somfy-io-cover.yaml
+    vars:
+      cover_id: screen_slaapkamer_4
+      cover_name: "Screen slaapkamer 4"
+      device_class: "shade"
+      node: !secret io_screen_slaapkamer_4_node
+      key: !secret io_screen_slaapkamer_4_key

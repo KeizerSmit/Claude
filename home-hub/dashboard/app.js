@@ -329,7 +329,7 @@
     face([[0.12, 0.4, z + 0.01], [2.42, 0.4, z + 0.01], [2.42, 3.03, z + 0.01], [0.12, 3.03, z + 0.01]], 'tile', g);
     text(1.27, 1.6, z + 0.02, 'Badkamer', g);
     text(3.87, 2.4, z + 0.02, 'Slaapkamer 2', g);
-    text(3.87, 6.9, z + 0.02, 'Slaapkamer 1', g);
+    text(3.87, 6.9, z + 0.02, 'Kamer Muriel', g);
     text(1.27, 7.5, z + 0.02, 'Slaapkamer 3', g);
     var it = [];
     it = it.concat(partition([
@@ -368,9 +368,9 @@
       var at = CFG.lights[k].at || [2.7, 1.3];
       refs.glows.push(el('polygon', { points: ptsM(circleFlat(at[0], at[1], z + 0.02, 1.1)), fill: 'url(#glowGrad)', opacity: '0' }, g));
     }
-    text(2.7, 1.35, z + 0.02, 'Slaapkamer 5', g);
+    text(2.7, 1.35, z + 0.02, 'Kamer Margje', g);
     text(3.9, 4.75, z + 0.02, 'Badkamer', g);
-    text(2.7, 7.5, z + 0.02, 'Slaapkamer 4', g);
+    text(2.7, 7.5, z + 0.02, 'Kamer Julius', g);
     var it = [];
     it = it.concat(partition([
       [0.12, 5.25, 2.28, 2.38], [0.12, 5.25, 5.36, 5.46], [1.32, 1.42, 3.43, 5.36], [2.48, 2.57, 2.38, 5.36],

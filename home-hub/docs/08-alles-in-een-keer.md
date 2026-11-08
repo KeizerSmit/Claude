@@ -35,7 +35,7 @@ C=/config; [ -f $C/configuration.yaml ] || C=/homeassistant; cd $C; B=https://ra
 5. Klaar. Op het paneel staat in de Klimaat-kaart nu wat de warmtepomp doet (verwarmt, boiler, ontdooit, ...). Tik erop voor alle gegevens: temperaturen, boilervat boven en onder, COP, vermogen en compressor.
 
 ## 3. Somfy-screens (als de LilyGO binnen is)
-Zie [06-screens-en-ventilatie.md](06-screens-en-ventilatie.md). Claude maakt de ESPHome-configuratie klaar.
+Alles staat klaar. Volg [09-screens-installeren.md](09-screens-installeren.md).
 
 ## 4. Orcon-ventilatie (als de onderdelen binnen zijn)
 Het kastje in de keuken is een **Orcon CO2-bedieningssensor 15RF**. Die werkt op 230 V en stuurt de box **draadloos** aan. De box kan dus via de radio-route (RAMSES II, 868 MHz) bediend worden. Zie [06-screens-en-ventilatie.md](06-screens-en-ventilatie.md).
