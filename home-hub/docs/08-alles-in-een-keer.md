@@ -19,6 +19,14 @@ In **Home Assistant**:
 
 Het beeld springt **niet** vanzelf aan; je kijkt alleen als je op de knop tikt. Na 2 minuten sluit het vanzelf.
 
+## 2b. Energie-overzicht (Terminal, 1 commando)
+Tik op het paneel op de **energiekaart**, dan zie je alle details: het verbruik nu per onderdeel, de kosten per dag, maand en jaar, het sluipverbruik en je tarieven. Zodat dag, maand en jaar worden bijgehouden, plak je dit in de **Terminal**:
+```
+C=/config; [ -f $C/configuration.yaml ] || C=/homeassistant; cd $C; B=https://raw.githubusercontent.com/keizersmit/claude/claude/blissful-archimedes-2uuo74/home-hub; for f in index.html style.css app.js; do curl -fsSL "$B/dashboard/$f?$(date +%s)" -o www/thuis/$f && echo "OK $f"; done; mkdir -p packages && curl -fsSL "$B/homeassistant/energie.yaml?$(date +%s)" -o packages/energie.yaml && echo "OK energie"; grep -q "packages:" configuration.yaml && echo "OK packages" || echo "LET OP: packages staat niet aan, doe eerst stap 1"; ha core check && ha core restart
+```
+- De tellers beginnen bij nul op het moment dat je dit installeert. "Gisteren" en "Vorige maand" vullen zich dus pas na een dag of een maand.
+- Zet je eigen **stroomprijs** en **terugleververgoeding** onderaan het overzicht met de −/+ knoppen. Die staan op je energierekening of in de app van je energieleverancier.
+
 ## 3. Somfy-screens (als de LilyGO binnen is)
 Zie [06-screens-en-ventilatie.md](06-screens-en-ventilatie.md). Claude maakt de ESPHome-configuratie klaar.
 

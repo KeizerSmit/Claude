@@ -1,0 +1,99 @@
+# Energie-overzicht voor het wandpaneel ("Thuis").
+#
+# Tellers per dag / maand / jaar voor afname, teruglevering, zonnepanelen,
+# warmtepomp en airco's. De vorige periode (gisteren, vorige maand) staat in
+# het attribuut last_period. De tellers beginnen bij nul op het moment dat je
+# dit installeert: de eerste dag/maand/jaar is dus nog niet compleet.
+#
+# De prijzen stel je in op het paneel (Energie -> Tarieven).
+#
+# Installatie: dit bestand komt in /config/packages/ (zie docs/08-alles-in-een-keer.md).
+
+utility_meter:
+  energie_afname_dag:
+    source: sensor.p1_meter_energie_import
+    cycle: daily
+  energie_afname_maand:
+    source: sensor.p1_meter_energie_import
+    cycle: monthly
+  energie_afname_jaar:
+    source: sensor.p1_meter_energie_import
+    cycle: yearly
+
+  energie_teruglevering_dag:
+    source: sensor.p1_meter_energie_export
+    cycle: daily
+  energie_teruglevering_maand:
+    source: sensor.p1_meter_energie_export
+    cycle: monthly
+  energie_teruglevering_jaar:
+    source: sensor.p1_meter_energie_export
+    cycle: yearly
+
+  energie_zon_dag:
+    source: sensor.zonnepanelen_energie_export
+    cycle: daily
+  energie_zon_maand:
+    source: sensor.zonnepanelen_energie_export
+    cycle: monthly
+  energie_zon_jaar:
+    source: sensor.zonnepanelen_energie_export
+    cycle: yearly
+
+  energie_warmtepomp_dag:
+    source: sensor.warmtepomp_energie_import
+    cycle: daily
+  energie_warmtepomp_maand:
+    source: sensor.warmtepomp_energie_import
+    cycle: monthly
+  energie_warmtepomp_jaar:
+    source: sensor.warmtepomp_energie_import
+    cycle: yearly
+
+  energie_airco_dag:
+    source: sensor.airco_energie_import
+    cycle: daily
+  energie_airco_maand:
+    source: sensor.airco_energie_import
+    cycle: monthly
+  energie_airco_jaar:
+    source: sensor.airco_energie_import
+    cycle: yearly
+
+input_number:
+  stroomprijs:
+    name: Stroomprijs (per kWh, incl. belasting en btw)
+    min: 0
+    max: 1
+    step: 0.01
+    unit_of_measurement: "€/kWh"
+    mode: box
+  terugleververgoeding:
+    name: Terugleververgoeding (per kWh)
+    min: 0
+    max: 1
+    step: 0.01
+    unit_of_measurement: "€/kWh"
+    mode: box
+
+automation:
+  - id: energie_prijzen_standaard
+    alias: Energieprijzen standaardwaarde
+    description: Vult een standaardprijs in als er nog niets is ingesteld (pas aan op het paneel).
+    triggers:
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - condition: template
+        value_template: "{{ states('input_number.stroomprijs') | float(0) == 0 }}"
+    actions:
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.stroomprijs
+        data:
+          value: 0.27
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.terugleververgoeding
+        data:
+          value: 0.27

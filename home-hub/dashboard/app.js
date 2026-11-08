@@ -484,6 +484,7 @@
     $('mode-seg').style.display = (th.presets && th.presets.length) ? '' : 'none';
     $('sch-info').innerHTML = schInfo();
     $('door-open').style.display = (H.door || !LIVE) ? '' : 'none';
+    renderEnergy();
     $('sch-open').className = 'sch-btn' + (H.sched && state.schedOn ? ' on' : '');
     schRender();
     renderAcs();
@@ -598,7 +599,7 @@
       '<div><div class="m-clock">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</div><div class="m-weather">' + nl(s.outTemp) + '° &middot; ' + (s.weatherText || '') + '</div></div></div>';
     if (H.door || !LIVE) html += '<button class="m-door" data-m="door">Voordeur bekijken</button>';
     // energie
-    html += '<div class="m-card"><div class="m-h">Energie nu &middot; kW</div>' +
+    html += '<div class="m-card m-tap" data-m="energy"><div class="m-h">Energie nu &middot; kW <span class="m-more">Details &rsaquo;</span></div>' +
       '<div class="m-big" style="color:' + (exp ? '#4fe0a5' : '#6fc8ff') + '">' + nl(Math.abs(s.grid)) + '<small>kW ' + (exp ? 'naar het net' : 'van het net') + '</small></div>' +
       '<div class="m-grid">' +
       '<div class="m-cell"><div class="m-cell-in"><div class="m-val c-sun">' + nlIf(H.solar, s.solar) + '</div><div class="m-lbl">Zon</div></div></div>' +
@@ -649,6 +650,7 @@
       else if (m === 'acset') mAcSet(k, d);
       else if (m === 'lamp') mLamp(k);
       else if (m === 'door') doorOpen();
+      else if (m === 'energy') enOpen();
     });
   }
 
@@ -988,6 +990,146 @@
   }
 
   /* =====================================================================
+   * 5d. Energie-overzicht (tik op de energiekaart)
+   *     Dag/maand/jaar-tellers komen uit Home Assistant (utility_meter,
+   *     homeassistant/energie.yaml). Prijzen staan in input_number-helpers.
+   * ===================================================================== */
+  var EN_SRC = ['afname', 'teruglevering', 'zon', 'warmtepomp', 'airco'];
+  var EN_PER = [['vandaag', 'Vandaag'], ['gisteren', 'Gisteren'], ['maand', 'Deze maand'], ['vorigemaand', 'Vorige maand'], ['jaar', 'Dit jaar']];
+  var en = { open: false, per: 'vandaag', has: false, p: {}, price: 0.27, feed: 0.27, hasPrice: false, phases: null };
+  function enNum(x) { var f = parseFloat(x); return isNaN(f) ? NaN : f; }
+  function enRead(map) {
+    var P = { vandaag: {}, gisteren: {}, maand: {}, vorigemaand: {}, jaar: {} }, k, e, src, any = false, q, ph = [];
+    for (k = 0; k < EN_SRC.length; k++) {
+      src = EN_SRC[k];
+      e = map['sensor.energie_' + src + '_dag'];
+      if (e) { any = true; P.vandaag[src] = enNum(e.state); P.gisteren[src] = enNum(e.attributes && e.attributes.last_period); }
+      e = map['sensor.energie_' + src + '_maand'];
+      if (e) { P.maand[src] = enNum(e.state); P.vorigemaand[src] = enNum(e.attributes && e.attributes.last_period); }
+      e = map['sensor.energie_' + src + '_jaar'];
+      if (e) P.jaar[src] = enNum(e.state);
+    }
+    en.has = any; en.p = P;
+    var pr = map['input_number.stroomprijs'], fd = map['input_number.terugleververgoeding'];
+    en.hasPrice = !!(pr && fd);
+    if (pr && !isNaN(enNum(pr.state))) en.price = usePend('enprice', enNum(pr.state));
+    if (fd && !isNaN(enNum(fd.state))) en.feed = usePend('enfeed', enNum(fd.state));
+    for (q = 1; q <= 3; q++) { e = map['sensor.p1_meter_vermogen_fase_' + q]; if (e && !isNaN(enNum(e.state))) ph.push(enNum(e.state)); }
+    en.phases = ph.length === 3 ? ph : null;
+  }
+  function enStats(per) {
+    var s = state, P = en.p[per] || {}, r;
+    if (!LIVE) {
+      var f = { vandaag: 1, gisteren: 1.1, maand: 9, vorigemaand: 26, jaar: 310 }[per];
+      r = { imp: (s.todayUse - s.todaySun + (s.todayExp || 0)) * f, exp: (s.todayExp || 0) * f, sun: s.todaySun * f, hp: 4.2 * f, ac: 0.6 * f };
+    } else if (en.has) {
+      r = { imp: P.afname, exp: P.teruglevering, sun: P.zon, hp: P.warmtepomp, ac: P.airco };
+    } else if (per === 'vandaag' && s.has.today) {
+      r = { imp: s.todayUse - s.todaySun + (s.todayExp || 0), exp: s.todayExp || 0, sun: s.todaySun, hp: NaN, ac: NaN };
+    } else {
+      r = { imp: NaN, exp: NaN, sun: NaN, hp: NaN, ac: NaN };
+    }
+    if (isNaN(r.exp)) r.exp = 0;
+    if (isNaN(r.sun) || !s.has.solar) r.sun = isNaN(r.sun) ? 0 : r.sun;
+    r.use = r.imp + r.sun - r.exp;
+    r.rest = r.use - (isNaN(r.hp) ? 0 : r.hp) - (isNaN(r.ac) ? 0 : r.ac);
+    r.self = r.sun >= 0.3 ? clamp((r.sun - r.exp) / r.sun, 0, 1) : NaN;
+    r.cost = r.imp * en.price - r.exp * en.feed;
+    return r;
+  }
+  function eur(v) {
+    if (v === null || v === undefined || isNaN(v)) return '&ndash;';
+    return (v < -0.004 ? '&minus;' : '') + '&euro;&nbsp;' + Math.abs(v).toFixed(2).replace('.', ',');
+  }
+  function kwh(v) { return isNaN(v) ? '&ndash;' : nl(v, v >= 100 ? 0 : 1) + ' kWh'; }
+  function enRow(label, val, extra, cls) {
+    if (extra === '&ndash;') extra = '';
+    return '<div class="en-row' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><span>' + val + (extra ? ' <small>' + extra + '</small>' : '') + '</span></div>';
+  }
+  function enTile(label, val, col) {
+    return '<div class="en-tile"><div class="en-tv" style="color:' + col + '">' + val + '</div><div class="en-tl">' + label + '</div></div>';
+  }
+  function enChart() {
+    var h = state.history, k, max = 0.3, n = 0, out = '', x, bh;
+    for (k = 0; k < 24; k++) { if (h[k].n) n++; if (h[k].use > max) max = h[k].use; if (h[k].sun > max) max = h[k].sun; }
+    if (LIVE && n < 2) return '';
+    out = '<div class="en-sec">Vandaag per uur <small><span class="c-home">&#9632;</span> verbruik &nbsp;<span class="c-sun">&#9632;</span> zon</small></div>' +
+      '<svg class="en-chart" viewBox="0 0 480 130" preserveAspectRatio="none">';
+    for (k = 0; k < 24; k++) {
+      x = k * 20;
+      bh = h[k].use / max * 100; out += '<rect x="' + (x + 2) + '" y="' + (108 - bh) + '" width="7.5" height="' + bh + '" fill="#8fb4ff" rx="1.5"/>';
+      bh = h[k].sun / max * 100; out += '<rect x="' + (x + 10) + '" y="' + (108 - bh) + '" width="7.5" height="' + bh + '" fill="#ffc94d" rx="1.5"/>';
+      if (k % 3 === 0) out += '<text x="' + (x + 2) + '" y="125" fill="#7d8aa0" font-size="11">' + k + 'u</text>';
+    }
+    return out + '</svg>';
+  }
+  function enBase() {
+    var h = state.history, k, min = NaN;
+    for (k = 1; k <= 5; k++) if (h[k].n && (isNaN(min) || h[k].use < min)) min = h[k].use;
+    if (!LIVE) min = 0.18;
+    return min;
+  }
+  function renderEnergy() {
+    if (!en.open) return;
+    var s = state, H = s.has, r = enStats(en.per), k, html = '', d = new Date();
+    var exp = s.grid < 0, other = s.home - (H.hp ? s.hp : 0) - (H.ac ? s.ac : 0);
+    html += '<div class="en-head"><span class="en-title">Energie</span><button class="door-x" data-en="close">Sluiten</button></div>';
+    html += '<div class="en-sec">Nu</div><div class="en-tiles">' +
+      enTile(exp ? 'naar het net' : 'van het net', nl(Math.abs(s.grid), 2) + ' kW', exp ? '#4fe0a5' : '#6fc8ff') +
+      enTile('zonnepanelen', H.solar ? nl(s.solar, 2) + ' kW' : '&ndash;', '#ffc94d') +
+      enTile('huis totaal', nl(s.home, 2) + ' kW', '#8fb4ff') +
+      enTile('warmtepomp', H.hp ? nl(s.hp, 2) + ' kW' : '&ndash;', '#ff8a5c') +
+      enTile('airco\'s', H.ac ? nl(s.ac, 2) + ' kW' : '&ndash;', '#6fc8ff') +
+      enTile('rest van het huis', nl(Math.max(0, other), 2) + ' kW', '#e8edf5') + '</div>';
+    if (en.phases) html += '<div class="en-note">Per fase: L1 ' + Math.round(en.phases[0]) + ' W &middot; L2 ' + Math.round(en.phases[1]) + ' W &middot; L3 ' + Math.round(en.phases[2]) + ' W</div>';
+    html += '<div class="seg en-tabs">';
+    for (k = 0; k < EN_PER.length; k++) html += '<button data-enper="' + EN_PER[k][0] + '"' + (en.per === EN_PER[k][0] ? ' class="on"' : '') + '>' + EN_PER[k][1] + '</button>';
+    html += '</div>';
+    var pct = function (v) { return isNaN(v) || !(r.use > 0) ? '' : Math.round(v / r.use * 100) + '%'; };
+    html += '<div class="en-grid"><div class="en-col"><div class="en-sec">Kosten (schatting)</div>' +
+      enRow('Afgenomen van het net', kwh(r.imp), eur(r.imp * en.price)) +
+      enRow('Teruggeleverd', kwh(r.exp), r.exp > 0 ? '&minus;' + eur(r.exp * en.feed).replace('&minus;', '') : '') +
+      enRow('<b>Netto kosten</b>', '<b>' + eur(r.cost) + '</b>', '', 'en-total');
+    if (en.per === 'maand' && !isNaN(r.cost)) {
+      var dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(), el = d.getDate() - 1 + (d.getHours() + d.getMinutes() / 60) / 24;
+      if (el > 0.5) html += enRow('Verwachting hele maand', eur(r.cost / el * dim));
+    }
+    html += '</div><div class="en-col"><div class="en-sec">Verbruik</div>' +
+      enRow('Huis totaal', kwh(r.use), eur(r.use * en.price)) +
+      enRow('&nbsp;&nbsp;Warmtepomp', kwh(r.hp), pct(r.hp)) +
+      enRow('&nbsp;&nbsp;Airco\'s', kwh(r.ac), pct(r.ac)) +
+      enRow('&nbsp;&nbsp;Rest van het huis', kwh(r.rest), pct(r.rest)) +
+      enRow('Zonnepanelen opgewekt', kwh(r.sun), isNaN(r.self) ? '' : Math.round(r.self * 100) + '% zelf gebruikt') + '</div></div>';
+    if (en.per === 'vandaag') html += enChart();
+    var base = enBase();
+    if (!isNaN(base)) html += '<div class="en-note">Sluipverbruik (laagste uur vannacht): <b>' + Math.round(base * 1000) + ' W</b>, dat is ongeveer <b>' + eur(base * 8760 * en.price) + '</b> per jaar.</div>';
+    html += '<div class="en-sec">Tarieven</div>' +
+      '<div class="en-price"><span>Stroomprijs per kWh</span><button class="rb" data-enp="price" data-d="-0.01">&minus;</button><b>' + eur(en.price) + '</b><button class="rb" data-enp="price" data-d="0.01">+</button></div>' +
+      '<div class="en-price"><span>Terugleververgoeding per kWh</span><button class="rb" data-enp="feed" data-d="-0.01">&minus;</button><b>' + eur(en.feed) + '</b><button class="rb" data-enp="feed" data-d="0.01">+</button></div>' +
+      '<div class="en-note">Inclusief belasting en btw, zonder vaste kosten. Tot en met 2026 geldt de salderingsregeling: teruglevering is dan evenveel waard als afname. ' +
+      (LIVE && !en.has ? '<br><b>Nog niet alles zichtbaar:</b> installeer het energie-pakket (zie handleiding, stap &ldquo;Energie&rdquo;).' : '') + '</div>';
+    $('en-box').innerHTML = html;
+  }
+  function enOpen() { lastTouch = new Date().getTime(); en.open = true; $('en-wrap').className = ''; $('en-wrap').scrollTop = 0; renderEnergy(); }
+  function enClose() { en.open = false; $('en-wrap').className = 'hidden'; }
+  function bindEnergy() {
+    on($('card-energy'), 'click', enOpen);
+    on($('en-wrap'), 'click', function (e) {
+      if (closest(e.target, 'data-en')) { enClose(); return; }
+      var t = closest(e.target, 'data-enper');
+      if (t) { en.per = t.getAttribute('data-enper'); renderEnergy(); return; }
+      var p = closest(e.target, 'data-enp');
+      if (p) {
+        var key = p.getAttribute('data-enp'), v = clamp(Math.round(((key === 'price' ? en.price : en.feed) + parseFloat(p.getAttribute('data-d'))) * 100) / 100, 0, 1);
+        if (key === 'price') en.price = v; else en.feed = v;
+        setPend(key === 'price' ? 'enprice' : 'enfeed', v);
+        debounce('en' + key, function () { backend.setPrice(key, v); });
+        renderEnergy();
+      }
+    });
+  }
+
+  /* =====================================================================
    * 6. Bediening
    * ===================================================================== */
   function bindControls() {
@@ -1172,7 +1314,7 @@
       state.humidity = clamp(state.humidity + (Math.random() - 0.5) * 2 - (state.vent === 'boost' ? 1 : 0), 40, 80);
       render(); tickClock();
     },
-    setTemp: function () {}, setMode: function () {}, setVent: function () {}, setLight: function () {}, setSched: function () {}, setSchedOn: function () {},
+    setTemp: function () {}, setMode: function () {}, setVent: function () {}, setLight: function () {}, setSched: function () {}, setSchedOn: function () {}, setPrice: function () {},
     setAcMode: function () {}, setAcTemp: function () {}, setScreen: function () {}, setLightLevel: function () {}
   };
   // demo: screens bewegen zichtbaar
@@ -1261,6 +1403,7 @@
           H.today = true;
         }
         ha.zone(map[E.thermostat], state.thermo);
+        enRead(map);
         door.id = doorFind(map);
         door.pic = door.id && map[door.id].attributes ? map[door.id].attributes.entity_picture : null;
         H.door = !!door.pic;
@@ -1342,6 +1485,10 @@
       // nieuwe dag: grafiek leeg
       setInterval(function () { if (ha.baseDay !== new Date().getDate()) { for (var k = 0; k < 24; k++) state.history[k] = { sun: 0, use: 0 }; } }, 60000);
     },
+    setPrice: function (key, v) {
+      if (!en.hasPrice) return;
+      ha.call('input_number', 'set_value', { entity_id: key === 'price' ? 'input_number.stroomprijs' : 'input_number.terugleververgoeding', value: v });
+    },
     setSched: function (str) { if (!state.has.sched) return; ha.call('input_text', 'set_value', { entity_id: SCH_E, value: str }); },
     setSchedOn: function (v) { if (!state.has.sched) return; ha.call('input_boolean', v ? 'turn_on' : 'turn_off', { entity_id: SCH_ON_E }); },
     setTemp: function (t) { if (!state.has.thermo) return; ha.call('climate', 'set_temperature', { entity_id: CFG.entities.thermostat, temperature: t }); },
@@ -1393,6 +1540,7 @@
   bindSheet();
   bindSched();
   bindDoor();
+  bindEnergy();
   if (!LIVE) state.sched = schDefault();
   bindMobile();
   bindDim();
