@@ -5,6 +5,15 @@
 (function () {
   'use strict';
 
+  // Een app op het beginscherm (iPad/iPhone/Mac-Dock) houdt index.html soms lang in zijn geheugen.
+  // Past die oude index.html niet bij deze app.js, dan één keer vers laden (andere URL = geen cache).
+  // Verhoog HUB_V en data-hubv in index.html samen, telkens als index.html verandert.
+  var HUB_V = '6';
+  if (document.body.getAttribute('data-hubv') !== HUB_V && !/[?&]r=/.test(location.search)) {
+    location.replace(location.pathname + '?r=' + new Date().getTime());
+    return;
+  }
+
   var CFG = window.HUB_CONFIG;
   var CFG_ERROR = !CFG;   // config.js ontbreekt of bevat een typefout
   if (!CFG) CFG = { mode: 'demo', lights: [], entities: {}, acs: [], screens: [], dimAfterSec: 120 };
@@ -67,7 +76,7 @@
   // + en - snel achter elkaar: pas na een korte pauze één opdracht versturen
   var debounceT = {};
   function debounce(key, fn, ms) { clearTimeout(debounceT[key]); debounceT[key] = setTimeout(fn, ms || 1200); }
-  function on(elm, ev, fn) { elm.addEventListener(ev, fn, false); }
+  function on(elm, ev, fn) { if (elm) elm.addEventListener(ev, fn, false); }
   function closest(elm, attr) {
     while (elm && elm.getAttribute) {
       if (elm.getAttribute(attr) !== null) return elm;
