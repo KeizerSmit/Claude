@@ -18,6 +18,7 @@ Een oude iPad (4e generatie, iOS 10.3.3) als mooi, rustig bedieningspaneel aan d
 | [`docs/07-thermostaatschema.md`](docs/07-thermostaatschema.md) | Weekschema van de thermostaat instellen op het wandpaneel |
 | [`docs/08-alles-in-een-keer.md`](docs/08-alles-in-een-keer.md) | Checklist: thermostaatschema, deurbel, screens en ventilatie in één keer koppelen |
 | [`docs/09-screens-installeren.md`](docs/09-screens-installeren.md) | Somfy-screens koppelen met de LilyGO (stap voor stap) |
+| [`docs/10-nas-en-mediaserver.md`](docs/10-nas-en-mediaserver.md) | WD-schijf als gedeelde map (Samba NAS2) en mediaserver (Jellyfin) |
 | [`tools/render-woning/`](tools/render-woning/) | Hoe de 3D-render van het huis uit het SketchUp-model wordt gemaakt |
 
 ## Het ontwerp in het kort
