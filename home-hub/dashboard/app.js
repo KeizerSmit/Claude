@@ -1032,7 +1032,8 @@
     if (!door.open || arc.tab !== 'live') return;
     if (new Date().getTime() > door.until) { doorClose(); return; }
     // eerst het beeld van Frigate proberen (één verbinding met de deurbel), anders via Home Assistant
-    var useF = LIVE && door.frigate !== false;
+    // Frigate-beeld alleen als dat in config.js aan staat (doorFromFrigate: true); standaard via Home Assistant
+    var useF = LIVE && CFG.doorFromFrigate === true && door.frigate !== false;
     if (!useF && (!state.has.door || !door.pic)) { door.timer = setTimeout(doorNext, 2000); return; }
     var img = new Image(), t0 = new Date().getTime();
     img.onload = function () {
