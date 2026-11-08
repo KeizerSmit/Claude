@@ -1019,7 +1019,7 @@
   function doorMsg(t) { $('door-msg').innerHTML = t; $('door-msg').style.display = t ? '' : 'none'; }
   function doorOpen() {
     lastTouch = new Date().getTime();
-    door.open = true; door.until = new Date().getTime() + 120000;
+    door.open = true; door.until = new Date().getTime() + 120000; door.frigate = true;
     $('door-wrap').className = '';
     arcBuild(); arcTab('live');
     $('door-img').style.display = 'none';
@@ -1031,7 +1031,9 @@
     clearTimeout(door.timer);
     if (!door.open || arc.tab !== 'live') return;
     if (new Date().getTime() > door.until) { doorClose(); return; }
-    if (!state.has.door || !door.pic) { door.timer = setTimeout(doorNext, 2000); return; }
+    // eerst het beeld van Frigate proberen (één verbinding met de deurbel), anders via Home Assistant
+    var useF = LIVE && door.frigate !== false;
+    if (!useF && (!state.has.door || !door.pic)) { door.timer = setTimeout(doorNext, 2000); return; }
     var img = new Image(), t0 = new Date().getTime();
     img.onload = function () {
       if (!door.open) return;
@@ -1040,10 +1042,12 @@
     };
     img.onerror = function () {
       if (!door.open) return;
+      if (useF) { door.frigate = false; door.timer = setTimeout(doorNext, 50); return; }
       doorMsg('Even geen beeld. Staat &ldquo;Altijd aan&rdquo; aan in de Tapo-app?');
       door.timer = setTimeout(doorNext, 3000);
     };
-    img.src = ha.base() + door.pic + (door.pic.indexOf('?') >= 0 ? '&' : '?') + '_=' + t0;
+    img.src = useF ? fBase() + '/api/' + ARC_CAM + '/latest.jpg?h=720&_=' + t0 :
+      ha.base() + door.pic + (door.pic.indexOf('?') >= 0 ? '&' : '?') + '_=' + t0;
   }
   function bindDoor() {
     on($('door-open'), 'click', doorOpen);
