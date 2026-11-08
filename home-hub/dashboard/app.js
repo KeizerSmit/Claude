@@ -1219,11 +1219,14 @@
       nm = nm.charAt(0).toUpperCase() + nm.slice(1);
       low = (k + ' ' + nm).toLowerCase();
       it = { id: k, name: nm, unit: u, st: map[k].state, v: parseFloat(map[k].state), bin: obj[0] === 'binary_sensor', low: low };
-      it.grp = it.bin ? 'parts' : (/dhw|tapwater|boiler|warm water|warmwater/.test(low) ? 'dhw' :
+      it.grp = it.bin ? 'parts' : (/dhw|sww|sanitair|tapwater|boiler|warm water|warmwater/.test(low) ? 'dhw' :
         (u === 'W' || u === 'kW' || /_cop$/.test(k) || u === '%' ? 'now' : (u === '°C' ? 'temp' : (u === 'kWh' ? 'tot' : (isNaN(it.v) ? 'status' : 'other')))));
       if (/_cop$/.test(k)) wp.cop = it.v;
-      if (u === '°C' && /water/.test(low) && /outlet|uitlaat|aanvoer|uitgang/.test(low)) wp.flow = it.v;
-      if (!u && isNaN(it.v) && /state|status|toestand/.test(low) && !/cool|koel|dhw|control|methode/.test(low)) wp.state = it.st;
+      if (u === '°C' && /water/.test(low) && !/doel|target|huis|sww|dhw/.test(low) && /outlet|uitlaat|aanvoer|uitgang|temperatuur uit\b/.test(low)) wp.flow = it.v;
+      // toestand: de ruwe waarde is in elke taal hetzelfde (heating, dhw, standby, ...)
+      if (!it.bin && !u && WP_STATE[it.st] && it.st !== 'on' && it.st !== 'off' && !/cool|koel|control|methode|regel/.test(low)) {
+        if (!wp.state || /state|status|toestand/.test(low)) wp.state = it.st;
+      }
       if (it.st === 'unavailable' || it.st === 'unknown') continue;
       items.push(it);
     }
