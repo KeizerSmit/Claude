@@ -16,6 +16,7 @@ Een oude iPad (4e generatie, iOS 10.3.3) als mooi, rustig bedieningspaneel aan d
 | [`docs/05-telefoon-en-op-afstand.md`](docs/05-telefoon-en-op-afstand.md) | Telefoon van jou en je moeder, bediening op afstand via Tailscale (gratis), dashboard voor de app |
 | [`docs/06-screens-en-ventilatie.md`](docs/06-screens-en-ventilatie.md) | Somfy io-screens en Orcon-ventilatie zonder TaHoma: alle opties uitgezocht |
 | [`docs/07-thermostaatschema.md`](docs/07-thermostaatschema.md) | Weekschema van de thermostaat instellen op het wandpaneel |
+| [`docs/08-alles-in-een-keer.md`](docs/08-alles-in-een-keer.md) | Checklist: thermostaatschema, deurbel, screens en ventilatie in één keer koppelen |
 
 ## Het ontwerp in het kort
 - **Links: de woning op maat**, getekend uit het SketchUp-model (verbouwing zolder). Het huis is opengewerkt: de verdiepingen en het dak zweven los, zodat je erin kijkt.

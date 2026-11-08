@@ -366,3 +366,16 @@ html.mobile #app, html.mobile #dim, html.mobile #lamp-sheet { display: none !imp
 .m-lamp.on { background: rgba(255,201,77,0.25); color: #ffc94d; }
 .m-lamps { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; margin: 0 -5px; }
 .m-lamps .m-lamp { -webkit-box-flex: 0; -webkit-flex: 0 0 calc(50% - 10px); flex: 0 0 calc(50% - 10px); }
+
+/* voordeur-camera */
+.door-btn { margin-left: 8px; vertical-align: 4px; height: 26px; padding: 0 12px; border-radius: 13px; background: rgba(143,180,255,0.16); color: #8fb4ff; font-size: 13px; font-weight: 600; }
+#door-wrap { position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(5,8,14,0.97); z-index: 60; }
+#door-wrap.hidden { display: none; }
+.door-box { position: absolute; left: 50%; top: 50%; width: 880px; max-width: 94%; -webkit-transform: translate(-50%, -50%); transform: translate(-50%, -50%); }
+.door-head { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-pack: justify; -webkit-justify-content: space-between; justify-content: space-between;
+  -webkit-box-align: center; -webkit-align-items: center; align-items: center; margin-bottom: 12px; }
+.door-title { font-size: 24px; font-weight: 600; }
+.door-x { height: 48px; padding: 0 26px; border-radius: 14px; background: rgba(255,255,255,0.12); color: #fff; font-size: 18px; font-weight: 600; }
+#door-img { display: block; width: 100%; max-height: 620px; -o-object-fit: contain; object-fit: contain; border-radius: 14px; background: #000; }
+#door-msg { color: #a8b4c8; font-size: 19px; text-align: center; padding: 90px 20px; background: rgba(255,255,255,0.04); border-radius: 14px; }
+.m-door { display: block; width: 100%; height: 64px; border-radius: 18px; background: rgba(143,180,255,0.16); color: #8fb4ff; font-size: 21px; font-weight: 700; margin-bottom: 16px; }

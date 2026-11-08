@@ -21,11 +21,18 @@
 </head>
 <body>
 <div id="mobile" class="m-hidden"></div>
+<div id="door-wrap" class="hidden">
+  <div class="door-box">
+    <div class="door-head"><span class="door-title">Voordeur</span><button class="door-x" id="door-close">Sluiten</button></div>
+    <img id="door-img" alt="">
+    <div id="door-msg"></div>
+  </div>
+</div>
 <div id="app">
 
   <header class="topbar">
     <div class="tb-left">
-      <div class="home-name">Thuis</div>
+      <div class="home-name">Thuis <button class="door-btn" id="door-open">Voordeur</button></div>
       <div class="status"><span class="dot" id="conn-dot"></span><span id="conn-text">Demo-modus</span></div>
     </div>
     <div class="tb-center">

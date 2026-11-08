@@ -483,6 +483,7 @@
     // Thuis/Eco/Weg alleen tonen als de thermostaat die standen kent (via HomeKit vaak niet)
     $('mode-seg').style.display = (th.presets && th.presets.length) ? '' : 'none';
     $('sch-info').innerHTML = schInfo();
+    $('door-open').style.display = (H.door || !LIVE) ? '' : 'none';
     $('sch-open').className = 'sch-btn' + (H.sched && state.schedOn ? ' on' : '');
     schRender();
     renderAcs();
@@ -595,6 +596,7 @@
     var su = selfUse();
     html += '<div class="m-top"><div><div class="m-title">Thuis</div><div class="m-status">' + $('conn-text').innerHTML + '</div></div>' +
       '<div><div class="m-clock">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</div><div class="m-weather">' + nl(s.outTemp) + '° &middot; ' + (s.weatherText || '') + '</div></div></div>';
+    if (H.door || !LIVE) html += '<button class="m-door" data-m="door">Voordeur bekijken</button>';
     // energie
     html += '<div class="m-card"><div class="m-h">Energie nu &middot; kW</div>' +
       '<div class="m-big" style="color:' + (exp ? '#4fe0a5' : '#6fc8ff') + '">' + nl(Math.abs(s.grid)) + '<small>kW ' + (exp ? 'naar het net' : 'van het net') + '</small></div>' +
@@ -646,6 +648,7 @@
       else if (m === 'acmode') mAcMode(k);
       else if (m === 'acset') mAcSet(k, d);
       else if (m === 'lamp') mLamp(k);
+      else if (m === 'door') doorOpen();
     });
   }
 
@@ -935,6 +938,56 @@
   }
 
   /* =====================================================================
+   * 5c. Voordeur-camera (Tapo-deurbel): alleen kijken als je erop tikt.
+   *     Het beeld komt als losse foto's via Home Assistant (camera_proxy),
+   *     dat werkt ook op de oude iPad. Na 2 minuten sluit het vanzelf.
+   * ===================================================================== */
+  var door = { id: null, pic: null, open: false, timer: null, until: 0 };
+  state.has.door = false;
+  function doorFind(map) {
+    var want = CFG.entities.doorCamera, k, best = null;
+    if (want) return map[want] ? want : null;
+    for (k in map) {
+      if (k.indexOf('camera.') !== 0) continue;
+      if (k.indexOf('voordeur') >= 0) return k;
+      if (!best && /tapo|d235|deurbel/.test(k)) best = k;
+    }
+    return best;
+  }
+  function doorMsg(t) { $('door-msg').innerHTML = t; $('door-msg').style.display = t ? '' : 'none'; }
+  function doorOpen() {
+    lastTouch = new Date().getTime();
+    door.open = true; door.until = new Date().getTime() + 120000;
+    $('door-wrap').className = '';
+    $('door-img').style.display = 'none';
+    doorMsg(!LIVE ? 'Demo-modus: hier komt het beeld van de voordeur.' : (state.has.door ? 'Beeld laden&hellip;' : 'De deurbel is nog niet gekoppeld in Home Assistant.'));
+    doorNext();
+  }
+  function doorClose() { door.open = false; clearTimeout(door.timer); $('door-wrap').className = 'hidden'; $('door-img').src = ''; }
+  function doorNext() {
+    clearTimeout(door.timer);
+    if (!door.open) return;
+    if (new Date().getTime() > door.until) { doorClose(); return; }
+    if (!state.has.door || !door.pic) { door.timer = setTimeout(doorNext, 2000); return; }
+    var img = new Image(), t0 = new Date().getTime();
+    img.onload = function () {
+      if (!door.open) return;
+      $('door-img').src = img.src; $('door-img').style.display = ''; doorMsg('');
+      door.timer = setTimeout(doorNext, Math.max(300, 1000 - (new Date().getTime() - t0)));
+    };
+    img.onerror = function () {
+      if (!door.open) return;
+      doorMsg('Even geen beeld. Staat &ldquo;Altijd aan&rdquo; aan in de Tapo-app?');
+      door.timer = setTimeout(doorNext, 3000);
+    };
+    img.src = ha.base() + door.pic + (door.pic.indexOf('?') >= 0 ? '&' : '?') + '_=' + t0;
+  }
+  function bindDoor() {
+    on($('door-open'), 'click', doorOpen);
+    on($('door-close'), 'click', doorClose);
+  }
+
+  /* =====================================================================
    * 6. Bediening
    * ===================================================================== */
   function bindControls() {
@@ -1208,6 +1261,9 @@
           H.today = true;
         }
         ha.zone(map[E.thermostat], state.thermo);
+        door.id = doorFind(map);
+        door.pic = door.id && map[door.id].attributes ? map[door.id].attributes.entity_picture : null;
+        H.door = !!door.pic;
         var es = map[SCH_E], eo = map[SCH_ON_E];
         H.sched = !!(es && eo);
         state.sched = es ? (schParse(usePend('sched', es.state)) || schDefault()) : null;
@@ -1336,6 +1392,7 @@
   bindControls();
   bindSheet();
   bindSched();
+  bindDoor();
   if (!LIVE) state.sched = schDefault();
   bindMobile();
   bindDim();

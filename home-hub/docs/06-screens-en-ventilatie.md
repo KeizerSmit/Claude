@@ -34,7 +34,9 @@ Je hebt dus altijd een **zendertje** nodig. Maar dat hoeft geen dure TaHoma te z
 
 ## Orcon-ventilatie
 
-Eerst moet duidelijk zijn **welk type** je hebt:
+**Gevonden (foto 8 nov.):** het kastje bij de keuken is een **Orcon CO2-bedieningssensor 15RF** (art. 21800045, op 230 V). Die praat **draadloos** met de box. De radio-route werkt dus, en het paneel kan straks waarschijnlijk ook de **CO2-waarde** in de keuken laten zien.
+
+Ter info, de twee typen:
 - **Draadloze afstandsbediening** (op batterijen, de Orcon "15RF") → de radio-route hieronder.
 - **Vaste standenschakelaar in de muur** (met draden) → de radio-route werkt niet. Dan een printje in de box, of een slim relais achter de schakelaar.
 
@@ -57,5 +59,5 @@ Eerst moet duidelijk zijn **welk type** je hebt:
 Nee. Somfy io gebruikt een SX1276-radio (LilyGO) en Orcon een CC1101. Het zijn dus twee printjes, samen ± €40–70. Ter vergelijking: een TaHoma alleen kost al ± €150.
 
 ## Wat ik nodig heb om verder te gaan
-1. **Orcon**: een foto van het kastje bij de keuken, en het typeplaatje van de box op zolder.
+1. **Orcon**: niets meer. Het wordt de radio-route (ESP32 + CC1101 868 MHz).
 2. **Somfy**: niets. Bestel de **LilyGO TTGO T3 LoRa32 868 MHz V1.6.1**, dan maak ik de ESPHome-configuratie klaar voor de 3 screens en koppel ik ze aan het paneel.
