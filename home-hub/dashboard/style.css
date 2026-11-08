@@ -422,3 +422,9 @@ html.mobile #app, html.mobile #dim, html.mobile #lamp-sheet { display: none !imp
 
 #wh-info { cursor: pointer; }
 .m-hp { background: rgba(255,138,92,0.14); color: #ff8a5c; }
+
+/* woning als render van het SketchUp-model */
+html.img3d .room-name { fill: #4b5568; font-weight: 600; font-size: 8.5px; }
+html.img3d .panel { fill: rgba(255,214,110,0); stroke: none; }
+html.img3d .panel.active { fill: rgba(255,214,110,0.20); }
+html.img3d .ufh { stroke-width: 1.8; }

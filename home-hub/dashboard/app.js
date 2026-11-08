@@ -101,8 +101,12 @@
   var S = 21, OX = 296, OY = 436;              // schaal en oorsprong op scherm
 
   // verdiepingen: echte vloerhoogte -> hoogte in de opengewerkte tekening
-  var LV = [{ real: 0.00, off: 0.0 }, { real: 2.90, off: 4.6 }, { real: 5.78, off: 9.2 }];
-  var LIFT = 4.7;       // zoveel zweeft het dak boven de zolder
+  // De woning zelf is een render van het SketchUp-model (house.png, gemaakt met three.js).
+  // Daarboven tekenen we alleen de live onderdelen (lampen, vloerverwarming, stromen, labels).
+  // Verdiepingen in de render: 1e +3,2 m en zolder +6,4 m opgetild, dak +9,6 m.
+  var IMG = true;
+  var LV = [{ real: 0.00, off: 0.0 }, { real: 2.90, off: 6.1 }, { real: 5.78, off: 12.18 }];
+  var LIFT = 3.2;       // zoveel zweeft het dak boven de zolder
   var CUT = 6.40;       // boven deze hoogte hoort de gevel bij het dakdeel
   var EAVE = 7.31, RIDGE = 9.74, RIDGE_X = 2.685;
   var NEAR = 0.9, FAR = 2.0, PART = 1.0;       // hoogte waarop muren zijn "doorgezaagd"
@@ -112,7 +116,15 @@
   function roofZ(x) { return RIDGE - Math.abs(x - RIDGE_X) * 0.8663; }   // hoogte dakvlak (dakhelling ~41 graden)
 
   function P(X, Y, Z) { return [OX + (X - Y) * 0.866 * S, OY + (X + Y) * 0.5 * S - Z * S]; }
-  function Pm(x, y, z) { return P(x + 0.12, 12 - y, z); }   // model -> scherm (rechtshandig: niet gespiegeld)
+  // projectie van de render (wereld in meters, SketchUp-assen -> pixels; render is 2x, beeld 445x690)
+  var PJ = { ax: 40.23884946100009, bx: 33.76440374172328, cx: 0, dx: 116.8864821340985,
+    ay: 19.846218571833735, by: -23.651802282392776, cy: -42.49611538920617, dy: 1090.1514130921894 };
+  function Pm(x, y, z) {
+    if (!IMG) return P(x + 0.12, 12 - y, z);
+    return [(PJ.ax * x + PJ.bx * y + PJ.cx * z + PJ.dx) / 2, (PJ.ay * x + PJ.by * y + PJ.cy * z + PJ.dy) / 2];
+  }
+  // in de render zitten de muren, vloeren en apparaten al; die tekenen we dan niet nog eens
+  var KEEP_FACE = { panel: 1, 'floor-hit': 1 }, DROP_LINE = { pipe: 1, fascia: 1, gutter: 1, 'lgo-grill': 1 };
 
   function el(name, attrs, parent) {
     var e = document.createElementNS(NS, name), k;
@@ -125,8 +137,14 @@
     for (k = 0; k < list.length; k++) { p = Pm(list[k][0], list[k][1], list[k][2]); out.push(p[0].toFixed(1) + ',' + p[1].toFixed(1)); }
     return out.join(' ');
   }
-  function face(list, cls, parent) { return el('polygon', { points: ptsM(list), 'class': cls }, parent); }
-  function line(list, cls, parent) { return el('polyline', { points: ptsM(list), 'class': cls }, parent); }
+  function face(list, cls, parent) {
+    if (IMG && !KEEP_FACE[cls]) return document.createElementNS(NS, 'polygon');
+    return el('polygon', { points: ptsM(list), 'class': cls }, parent);
+  }
+  function line(list, cls, parent) {
+    if (IMG && DROP_LINE[cls]) return document.createElementNS(NS, 'polyline');
+    return el('polyline', { points: ptsM(list), 'class': cls }, parent);
+  }
   // blok in modelcoordinaten; zichtbare vlakken: boven (-top), straatkant (-right), rechterzijde (-front)
   function box(x0, x1, y0, y1, z0, z1, cls, parent) {
     var g = el('g', {}, parent);
@@ -175,9 +193,38 @@
     face([[0.12, 0.4, z0], [5.25, 0.4, z0], [5.25, y1, z0], [5.25, y1, z1], [0.12, y1, z1], [0.12, 0.4, z1]], 'floor-hit', g);
   }
 
+  // zonsopkomst en -ondergang (benadering, Tilburg 51,56 N / 5,09 O), in minuten na middernacht lokale tijd
+  function sunTimes(d) {
+    var rad = Math.PI / 180, lat = 51.56, lon = 5.09;
+    var start = new Date(d.getFullYear(), 0, 1), n = Math.floor((d - start) / 86400000) + 1;
+    var g = 2 * Math.PI / 365 * (n - 1);
+    var eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    var decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g);
+    var ha = Math.acos(Math.cos(90.833 * rad) / (Math.cos(lat * rad) * Math.cos(decl)) - Math.tan(lat * rad) * Math.tan(decl)) / rad;
+    var tz = -d.getTimezoneOffset();
+    return { rise: 720 - 4 * (lon + ha) - eq + tz, set: 720 - 4 * (lon - ha) - eq + tz };
+  }
+  function isDark() {
+    var d = new Date(), t = sunTimes(d), m = d.getHours() * 60 + d.getMinutes();
+    return m < t.rise - 15 || m > t.set + 15;
+  }
+  var imgDark = null;
+  function houseImg() {
+    if (!refs.img) return;
+    var dark = isDark();
+    if (dark === imgDark) return;
+    imgDark = dark;
+    refs.img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', (dark ? 'house-night.png' : 'house.png') + '?v=' + HUB_V);
+  }
+
   var refs = { floors: [], glows: [], bulbs: [], panels: [], ufh: [], acFlows: [], fabric: [] };
 
   function buildScene() {
+    if (IMG) {
+      refs.img = el('image', { x: 0, y: 0, width: 445, height: 690, preserveAspectRatio: 'none' });
+      houseImg();
+      document.documentElement.className += ' img3d';
+    }
     var defs = el('defs', {});
     var rg = el('radialGradient', { id: 'glowGrad' }, defs);
     el('stop', { offset: '0%', 'stop-color': '#ffc94d', 'stop-opacity': '0.8' }, rg);
@@ -195,9 +242,9 @@
     buildFlows();
 
     // labels: verdiepingen in een kolom rechts naast het huis
-    var COL = 446;
+    var COL = IMG ? 450 : 446;
     refs.anchor = {
-      sun: Pm(RIDGE_X, 5.5, ZR(RIDGE) + 2.2),
+      sun: IMG ? [86, 112] : Pm(RIDGE_X, 5.5, ZR(RIDGE) + 2.2),
       zolder: [COL, Pm(5.49, 9.5, ZZ(2, 6.6))[1]],
       floor1: [COL, Pm(5.49, 9.5, ZZ(1, 3.6))[1]],
       floor0: [COL, Pm(5.49, 0, 0)[1] - 18],
@@ -233,7 +280,7 @@
     it.push(item(0.12, 0.62, 10.25, 10.95, function () { box(0.12, 0.62, 10.25, 10.95, z + 1.5, z + 1.64, 'app', g); }));
     drawSorted(it);
     // thermostaat (Honeywell) op de wand hal/woonkamer
-    var th = Pm(2.53, 4.48, 1.56);
+    var th = Pm(2.53, 4.48, IMG ? 1.22 : 1.56);
     refs.thermo = el('circle', { cx: th[0], cy: th[1], r: 4, 'class': 'thermo' }, g);
     // nabije muren: voorgevel (met voordeuropening) en rechter bouwmuur
     box(0.12, 0.53, 0, 0.4, z, z + NEAR, 'brick', g);
@@ -368,7 +415,7 @@
       var a = ACS[i];
       if (a.floor !== floor) return;
       var x = a.at[0], w = a.at[1], s = a.side || 1, y0 = s > 0 ? w : w - 0.22, y1 = s > 0 ? w + 0.22 : w;
-      var yf = s > 0 ? y1 : y0, zb = z + 1.75;
+      var yf = s > 0 ? y1 : y0, zb = z + (IMG && floor === 2 ? 1.0 : 1.75);
       out.push(item(x - 0.45, x + 0.45, y0, y1, function () {
         box(x - 0.45, x + 0.45, y0, y1, zb, zb + 0.3, 'ac', g);
         refs.acFlows[i] = line([[x - 0.35, yf + s * 0.55, zb - 0.55], [x - 0.35, yf, zb], [x + 0.35, yf, zb], [x + 0.35, yf + s * 0.55, zb - 0.55]], 'acflow', g);
@@ -408,7 +455,8 @@
     var sunPts = [[5.16, 3.8, ZR(roofZ(5.16) + 0.07)], [5.49, 3.8, ZR(EAVE)], [5.49, -0.12, ZR(EAVE)], [5.62, -0.12, ZR(EAVE)],
       [5.62, -0.12, 0.25], HUB];
     var gridPts = [HUB, [2.0, -2.8, 0.25]];
-    var hpPts = [HUB, [2.0, -0.4, 0.25], [5.85, -0.4, 0.25], [5.85, 11.05, 0.25], [5.85, 11.05, 3.45], [5.15, 11.05, 3.45]];
+    var hpZ = IMG ? ZZ(1, 3.45) : 3.45;   // in de render staat de Weheat op het dak van de uitbouw (1e verdieping)
+    var hpPts = [HUB, [2.0, -0.4, 0.25], [5.85, -0.4, 0.25], [5.85, 11.05, 0.25], [5.85, 11.05, hpZ], [5.15, 11.05, hpZ]];
     refs.flowSun = flow(sunPts, 'f-sun');
     refs.flowGrid = flow(gridPts, 'f-exp');
     refs.flowHp = flow(hpPts, 'f-heat');
@@ -1310,6 +1358,7 @@
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function tickClock() {
     var d = new Date(), hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    houseImg();
     $('clock').innerHTML = hm; $('dim-clock').innerHTML = hm;
     $('date').innerHTML = DAYS[d.getDay()].charAt(0).toUpperCase() + DAYS[d.getDay()].slice(1) + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()];
     $('dim-sub').innerHTML = nl(state.outTemp) + '° buiten &middot; ' + (state.grid < 0 ? 'je levert ' : 'je neemt ') + nl(Math.abs(state.grid)) + ' kW ' + (state.grid < 0 ? 'terug' : 'af');
