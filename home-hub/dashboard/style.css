@@ -471,3 +471,23 @@ html.img3d .ufh { stroke-width: 1.8; }
 .m-htag.sun .t-v { color: #ffc94d; } .m-htag.heat .t-v { color: #ff8a5c; }
 
 .m-upd { color: #8fb4ff; text-decoration: underline; }
+
+/* warmtepomp-scherm */
+.hp-hero { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+  border: 1px solid; border-left-width: 6px; border-radius: 16px; padding: 14px 16px; margin: 14px 0 6px; background: rgba(255,255,255,0.04); }
+.hp-ico { font-size: 34px; margin-right: 14px; }
+.hp-st { font-size: 24px; font-weight: 700; }
+.hp-sub { font-size: 15px; color: #c9d3e3; margin-top: 2px; }
+.hp-sub b { color: #fff; }
+.hp-loop { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center; margin: 4px 0 8px; }
+.hp-pipe { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 8px 12px; text-align: center; min-width: 90px; }
+.hp-pipe span { display: block; font-size: 12px; color: #8d9ab0; text-transform: uppercase; letter-spacing: 0.6px; }
+.hp-pipe b { font-size: 24px; }
+.hp-arrow { -webkit-box-flex: 1; -webkit-flex: 1; flex: 1; text-align: center; color: #8d9ab0; font-size: 14px; }
+.hp-dhw { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center; margin: 4px 0; }
+.hp-tank { width: 70px; height: 150px; border-radius: 34px; border: 3px solid #4a5670; padding: 4px; margin-right: 18px; box-sizing: border-box; -webkit-box-sizing: border-box; }
+.hp-tank-in { width: 100%; height: 100%; border-radius: 28px; }
+.hp-dhw-t div { margin: 4px 0; }
+.hp-dhw-t span { display: inline-block; width: 60px; font-size: 13px; color: #8d9ab0; text-transform: uppercase; letter-spacing: 0.6px; }
+.hp-dhw-t b { font-size: 22px; }
+.hp-all { display: block; width: 100%; height: 46px; margin-top: 16px; border-radius: 12px; background: rgba(255,255,255,0.06); color: #c9d3e3; font-size: 16px; }

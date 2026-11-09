@@ -1203,6 +1203,7 @@
     on($('wh-info'), 'click', function (e) { e.stopPropagation(); hpOpen(); });
     on($('en-wrap'), 'click', function (e) {
       if (closest(e.target, 'data-en')) { enClose(); return; }
+      if (closest(e.target, 'data-hpall')) { wpAll = !wpAll; renderHp(); return; }
       var t = closest(e.target, 'data-enper');
       if (t) { en.per = t.getAttribute('data-enper'); renderEnergy(); return; }
       var p = closest(e.target, 'data-enp');
@@ -1224,9 +1225,9 @@
   var wp = { pre: null, items: [], state: null, cop: NaN, flow: NaN, dev: '' };
   var WP_STATE = { standby: 'stand-by', water_check: 'watercontrole', heating: 'verwarmt het huis', cooling: 'koelt',
     dhw: 'maakt warm water (boiler)', legionella_prevention: 'legionellapreventie (boiler extra heet)', defrosting: 'ontdooit de buitenunit',
-    self_test: 'zelftest', manual_control: 'handmatige bediening', on: 'aan', off: 'uit' };
+    self_test: 'zelftest', manual_control: 'handmatige bediening', offline: 'offline (geen verbinding)', updating: 'wordt bijgewerkt', on: 'aan', off: 'uit' };
   var WP_SHORT = { standby: 'stand-by', heating: 'verwarmt', cooling: 'koelt', dhw: 'boiler', legionella_prevention: 'boiler extra heet',
-    defrosting: 'ontdooit', water_check: 'controle', self_test: 'zelftest', manual_control: 'handmatig' };
+    defrosting: 'ontdooit', water_check: 'controle', self_test: 'zelftest', manual_control: 'handmatig', offline: 'offline', updating: 'update' };
   function wpShort(st) { return WP_SHORT[st] || wpLabel(st); }
   function wpLabel(st) { return WP_STATE[st] || (st || '').replace(/_/g, ' '); }
   function wpRead(map) {
@@ -1238,9 +1239,10 @@
     wp.dev = cop && cop.attributes && cop.attributes.friendly_name ? cop.attributes.friendly_name.replace(/\s*COP\s*$/i, '') : '';
     for (k in map) {
       obj = k.split('.');
-      if ((obj[0] !== 'sensor' && obj[0] !== 'binary_sensor') || obj[1].indexOf(pre + '_') !== 0) continue;
+      if ((obj[0] !== 'sensor' && obj[0] !== 'binary_sensor') || (obj[1] !== pre && obj[1].indexOf(pre + '_') !== 0)) continue;
       a = map[k].attributes || {}; u = a.unit_of_measurement || '';
       nm = (a.friendly_name || obj[1]).replace(wp.dev, '').replace(/^\s+/, '');
+      if (!nm) nm = 'Status';
       nm = nm.charAt(0).toUpperCase() + nm.slice(1);
       low = (k + ' ' + nm).toLowerCase();
       it = { id: k, name: nm, unit: u, st: map[k].state, v: parseFloat(map[k].state), bin: obj[0] === 'binary_sensor', low: low };
@@ -1250,7 +1252,7 @@
       if (u === '°C' && /water/.test(low) && !/doel|target|huis|sww|dhw/.test(low) && /outlet|uitlaat|aanvoer|uitgang|temperatuur uit\b/.test(low)) wp.flow = it.v;
       // toestand: de ruwe waarde is in elke taal hetzelfde (heating, dhw, standby, ...)
       if (!it.bin && !u && WP_STATE[it.st] && it.st !== 'on' && it.st !== 'off' && !/cool|koel|control|methode|regel/.test(low)) {
-        if (!wp.state || /state|status|toestand/.test(low)) wp.state = it.st;
+        if (!wp.state || /state|status|toestand/.test(low) || obj[1] === pre) wp.state = it.st;
       }
       if (it.st === 'unavailable' || it.st === 'unknown') continue;
       items.push(it);
@@ -1263,26 +1265,100 @@
     var d = it.unit === 'W' || it.unit === '%' || /rpm/i.test(it.unit) ? 0 : (it.unit === 'kWh' && it.v >= 100 ? 0 : 1);
     return nl(it.v, d) + (it.unit ? ' ' + (it.unit === '°C' ? '°' : it.unit) : '');
   }
+  // zoek een Weheat-waarde op trefwoorden (Engelse en Nederlandse namen)
+  function wpGet(unitRe, incl, excl) {
+    var k, it;
+    for (k = 0; k < wp.items.length; k++) {
+      it = wp.items[k];
+      if (it.bin || !unitRe.test(it.unit)) continue;
+      if (incl.test(it.low) && !(excl && excl.test(it.low))) return it;
+    }
+    return null;
+  }
+  // totaalteller: eerst het exacte id, anders op naam (zonder deeltellers voor verwarming/boiler/koelen)
+  function wpTot(suf, re) {
+    var k, it, part = /heating|verwarm|dhw|sww|boiler|cooling|koel|defrost|ontdooi/;
+    for (k = 0; k < wp.items.length; k++) if (wp.items[k].id === 'sensor.' + wp.pre + '_' + suf) return wp.items[k];
+    for (k = 0; k < wp.items.length; k++) { it = wp.items[k]; if (it.unit === 'kWh' && re.test(it.low) && !part.test(it.low)) return it; }
+    return null;
+  }
+  function wpNum(it) { return it && !isNaN(it.v) ? it.v : NaN; }
+  // tellerstanden om middernacht (voor warmte en COP van vandaag)
+  var wpDay = { day: -1, base: {} };
+  function wpLoadBase() {
+    var eIn = wpTot('electricity_used', /electricity|elektri|stroomverbruik/), eOut = wpTot('energy_output', /energy.?output|energie.?(output|opbrengst|afgegeven)|warmte.?(output|afgegeven)/);
+    var d = new Date();
+    if (!eIn || !eOut || wpDay.day === d.getDate() || !LIVE) return;
+    wpDay.day = d.getDate();
+    var start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 5), end = new Date(start.getTime() + 15 * 60000);
+    ha.req('GET', '/api/history/period/' + encodeURIComponent(start.toISOString()) + '?filter_entity_id=' + eIn.id + ',' + eOut.id +
+      '&end_time=' + encodeURIComponent(end.toISOString()) + '&minimal_response&no_attributes', null, function (res) {
+      var r, v;
+      for (r = 0; r < res.length; r++) if (res[r].length) { v = parseFloat(res[r][0].state); if (!isNaN(v)) wpDay.base[res[r][0].entity_id] = v; }
+      if (en.open && en.view === 'hp') renderHp();
+    });
+  }
+  var WP_ICON = { heating: '&#128293;', dhw: '&#128703;', legionella_prevention: '&#128703;', defrosting: '&#10052;', cooling: '&#10052;', standby: '&#128164;' };
+  var wpAll = false;
   function renderHp() {
     var s = state, H = s.has, html = '', g, k, it, r = enStats('vandaag'), any = false;
-    var GR = [['now', 'Nu'], ['temp', 'Temperaturen'], ['dhw', 'Boiler (warm water)'], ['status', 'Status'], ['parts', 'Onderdelen binnenunit'], ['other', 'Overig'], ['tot', 'Tellerstanden (totaal sinds installatie)']];
     html += '<div class="en-head"><span class="en-title">Warmtepomp</span><button class="door-x" data-en="close">Sluiten</button></div>';
-    html += '<div class="en-tiles">' +
-      enTile('stroom nu (kWh-meter)', H.hp ? nl(s.hp, 2) + ' kW' : '&ndash;', '#ff8a5c') +
-      enTile(wp.state ? wpLabel(wp.state) : 'wat hij doet', wp.state ? wpShort(wp.state) : (H.hp ? (s.hp > 0.15 ? 'draait' : 'stand-by') : '&ndash;'), '#e8edf5') +
-      enTile('COP nu', isNaN(wp.cop) ? '&ndash;' : nl(wp.cop), '#4fe0a5') +
-      enTile('verbruik vandaag', kwh(r.hp), '#ff8a5c') +
-      enTile('kosten vandaag', isNaN(r.hp) ? '&ndash;' : eur(r.hp * en.price), '#ffc94d') +
-      enTile('vloer (thermostaat)', H.thermo ? (s.thermo.heating ? 'vraagt warmte' : 'geen vraag') : '&ndash;', '#8fb4ff') + '</div>';
     if (!wp.pre) {
-      html += '<div class="en-note">Koppel de <b>Weheat</b>-integratie in Home Assistant om te zien wat de warmtepomp precies doet: verwarmen, boiler, ontdooien, temperaturen van de vaten, COP en meer (zie handleiding, stap &ldquo;Weheat&rdquo;).</div>';
-    } else {
+      html += '<div class="en-note">Koppel de <b>Weheat</b>-integratie in Home Assistant om te zien wat de warmtepomp precies doet (zie handleiding, stap &ldquo;Weheat&rdquo;).</div>';
+      $('en-box').innerHTML = html; return;
+    }
+    wpLoadBase();
+    var pIn = wpNum(wpGet(/^k?W$/, /input|vermogen in\b|opgenomen/)), pOut = wpNum(wpGet(/^k?W$/, /output|vermogen uit|afgegeven/));
+    var comp = wpNum(wpGet(/%/, /compressor/)), outT = wpNum(wpGet(/°C/, /outside|buitentemp/));
+    var room = wpNum(wpGet(/°C/, /kamertemp|room.?temp/, /setpoint|instelpunt|doel/)), roomSet = wpNum(wpGet(/°C/, /(kamer|room).*(setpoint|instelpunt)|(setpoint|instelpunt).*(kamer|room)/));
+    var wOut = wpNum(wpGet(/°C/, /water.?outlet|watertemperatuur uit/)), wIn = wpNum(wpGet(/°C/, /water.?inlet|watertemperatuur in\b/, /huis|central|ch_/));
+    var wSet = wpNum(wpGet(/°C/, /water.?(target|setpoint)|water doel/, /sww|dhw/)), chIn = wpNum(wpGet(/°C/, /ch_inlet|central heating inlet|huis in/));
+    var dTop = wpNum(wpGet(/°C/, /(dhw|sww).*(top|boven)/)), dBot = wpNum(wpGet(/°C/, /(dhw|sww).*(bottom|onder)/)), dSet = wpNum(wpGet(/°C/, /(dhw|sww).*(target|doel)/));
+    var meth = wpGet(/^$/, /control.?method|regelmethode|regeling/), methTxt = meth ? ({ weheat_intelligence: 'Weheat Intelligence', schedule: 'volgens schema', fixed: 'vaste temperatuur', boost: 'boost', none: 'geen' })[meth.st] || meth.st : '';
+    var kwIn = isNaN(pIn) ? NaN : pIn / 1000, kwOut = isNaN(pOut) ? NaN : pOut / 1000;
+    // vandaag: stroom en warmte uit de Weheat-tellers
+    var eIn = wpTot('electricity_used', /electricity|elektri|stroomverbruik/), eOut = wpTot('energy_output', /energy.?output|energie.?(output|opbrengst|afgegeven)|warmte.?(output|afgegeven)/);
+    var tIn = eIn && wpDay.base[eIn.id] !== undefined ? eIn.v - wpDay.base[eIn.id] : NaN, tOut = eOut && wpDay.base[eOut.id] !== undefined ? eOut.v - wpDay.base[eOut.id] : NaN;
+    var copDay = tIn > 0.2 ? tOut / tIn : NaN;
+    // 1. wat doet hij nu
+    var st = wp.state || (s.hp > 0.15 ? 'running' : 'standby');
+    var col = st === 'heating' ? '#ff8a5c' : (st === 'dhw' || st === 'legionella_prevention' ? '#6fc8ff' : (st === 'defrosting' ? '#a8d8ff' : '#a8b4c8'));
+    html += '<div class="hp-hero" style="border-color:' + col + '"><div class="hp-ico">' + (WP_ICON[st] || '&#9881;') + '</div><div><div class="hp-st" style="color:' + col + '">' +
+      (wp.state ? wpLabel(wp.state).charAt(0).toUpperCase() + wpLabel(wp.state).slice(1) : (s.hp > 0.15 ? 'Draait' : 'Stand-by')) + '</div><div class="hp-sub">' +
+      (isNaN(kwIn) ? '' : 'Neemt <b>' + nl(kwIn, 2) + ' kW</b> stroom op') + (isNaN(kwOut) || kwOut < 0.05 ? '' : ' en levert <b>' + nl(kwOut, 2) + ' kW</b> warmte') +
+      (isNaN(comp) ? '' : ' &middot; compressor ' + Math.round(comp) + '%') + '</div></div></div>';
+    // 2. kerncijfers
+    html += '<div class="en-tiles">' +
+      enTile('COP nu (rendement)', isNaN(wp.cop) ? '&ndash;' : nl(wp.cop), '#4fe0a5') +
+      enTile('COP vandaag', isNaN(copDay) ? '&ndash;' : nl(copDay), '#4fe0a5') +
+      enTile('stroom vandaag', kwh(isNaN(tIn) ? r.hp : tIn), '#ff8a5c') +
+      enTile('warmte vandaag', kwh(tOut), '#ffc94d') +
+      enTile('kosten vandaag', isNaN(tIn) && isNaN(r.hp) ? '&ndash;' : eur((isNaN(tIn) ? r.hp : tIn) * en.price), '#ffc94d') +
+      enTile('buiten', isNaN(outT) ? '&ndash;' : nl(outT) + '°', '#8fb4ff') + '</div>';
+    // 3. vloerverwarming en boiler naast elkaar
+    var fill = isNaN(dTop) || isNaN(dBot) || isNaN(dSet) ? NaN : clamp(((dTop + dBot) / 2 - 20) / (dSet - 20), 0, 1);
+    var tc = function (t) { return isNaN(t) ? '#3a4660' : (t >= 50 ? '#ff6b4a' : (t >= 40 ? '#ff9a5c' : (t >= 30 ? '#ffc56b' : '#6fc8ff'))); };
+    html += '<div class="en-grid"><div class="en-col"><div class="en-sec">Vloerverwarming</div>' +
+      '<div class="hp-loop"><div class="hp-pipe"><span>aanvoer</span><b style="color:' + tc(wOut) + '">' + (isNaN(wOut) ? '&ndash;' : nl(wOut) + '°') + '</b></div>' +
+      '<div class="hp-arrow">&rarr; vloer &rarr;</div><div class="hp-pipe"><span>retour</span><b style="color:' + tc(wIn) + '">' + (isNaN(wIn) ? '&ndash;' : nl(wIn) + '°') + '</b></div></div>' +
+      enRow('Doel watertemperatuur', isNaN(wSet) ? '&ndash;' : nl(wSet) + '°') +
+      enRow('Kamer (Weheat-thermostaat)', isNaN(room) ? '&ndash;' : nl(room) + '°', isNaN(roomSet) ? '' : 'ingesteld ' + nl(roomSet) + '°') +
+      enRow('Thermostaat keuken', H.thermo ? nl(s.thermo.temp) + '°' : '&ndash;', H.thermo ? (s.thermo.heating ? 'vraagt warmte' : 'geen vraag') : '') +
+      '</div><div class="en-col"><div class="en-sec">Boiler (warm water)</div><div class="hp-dhw">' +
+      '<div class="hp-tank"><div class="hp-tank-in" style="background:-webkit-linear-gradient(top,' + tc(dTop) + ',' + tc(dBot) + ');background:linear-gradient(to bottom,' + tc(dTop) + ',' + tc(dBot) + ')"></div></div>' +
+      '<div class="hp-dhw-t"><div><span>boven</span><b>' + (isNaN(dTop) ? '&ndash;' : nl(dTop) + '°') + '</b></div><div><span>onder</span><b>' + (isNaN(dBot) ? '&ndash;' : nl(dBot) + '°') + '</b></div>' +
+      '<div><span>doel</span><b>' + (isNaN(dSet) ? '&ndash;' : nl(dSet) + '°') + '</b></div></div></div>' +
+      '<div class="en-note">' + (st === 'dhw' ? 'Wordt nu opgewarmd. ' : '') + (isNaN(fill) ? '' : (fill > 0.85 ? 'Genoeg warm water.' : (fill > 0.5 ? 'Nog redelijk warm water.' : 'Weinig warm water over.'))) +
+      (methTxt ? ' Regeling: <b>' + methTxt + '</b>.' : '') + '</div></div></div>';
+    // 4. alle gegevens (inklapbaar)
+    html += '<button class="hp-all" data-hpall="1">' + (wpAll ? 'Verberg alle gegevens &and;' : 'Alle gegevens tonen &or;') + '</button>';
+    if (wpAll) {
+      var GR = [['now', 'Nu'], ['temp', 'Temperaturen'], ['dhw', 'Boiler (warm water)'], ['status', 'Status'], ['parts', 'Onderdelen binnenunit'], ['other', 'Overig'], ['tot', 'Tellerstanden (totaal sinds installatie)']];
       for (g = 0; g < GR.length; g++) {
         var rows = '';
         for (k = 0; k < wp.items.length; k++) { it = wp.items[k]; if (it.grp === GR[g][0]) rows += enRow(it.name, wpVal(it)); }
         if (rows) { any = true; html += '<div class="en-sec">' + GR[g][1] + '</div>' + rows; }
       }
-      if (!any) html += '<div class="en-note">Weheat is gekoppeld, maar er komen (nog) geen gegevens binnen.</div>';
     }
     $('en-box').innerHTML = html;
   }
