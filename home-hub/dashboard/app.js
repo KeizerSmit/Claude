@@ -658,10 +658,19 @@
     for (k = 0; k < list.length; k++) if (tags[list[k][0]]) out += '<div class="m-htag ' + list[k][1] + '">' + tags[list[k][0]].innerHTML + '</div>';
     return out + '</div></div>';
   }
+  // nieuwste versie ophalen via Home Assistant (homeassistant/paneel-bijwerken.yaml) en daarna herladen
+  var mUpd = false;
+  function mUpdate() {
+    if (mUpd) return;
+    mUpd = true; renderMobile();
+    ha.req('POST', '/api/services/shell_command/paneel_bijwerken', {}, function () {});
+    setTimeout(function () { location.replace(location.pathname + '?r=' + new Date().getTime()); }, 8000);
+  }
   function renderMobile() {
     var s = state, H = s.has, th = s.thermo, k, html = '', exp = s.grid < 0, d = new Date();
     var su = selfUse();
-    html += '<div class="m-top"><div><div class="m-title">Thuis</div><div class="m-status">' + $('conn-text').innerHTML + '</div></div>' +
+    html += '<div class="m-top"><div><div class="m-title">Thuis</div><div class="m-status">' + $('conn-text').innerHTML +
+      (LIVE ? ' &middot; <span class="m-upd" data-m="upd">' + (mUpd ? 'bijwerken&hellip;' : 'bijwerken') + '</span>' : '') + '</div></div>' +
       '<div><div class="m-clock">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</div><div class="m-weather">' + nl(s.outTemp) + '° &middot; ' + (s.weatherText || '') + '</div></div></div>';
     if (H.door || !LIVE) html += '<button class="m-door" data-m="door">Voordeur bekijken</button>';
     html += mHouse();
@@ -718,6 +727,7 @@
       else if (m === 'acset') mAcSet(k, d);
       else if (m === 'lamp') mLamp(k);
       else if (m === 'door') doorOpen();
+      else if (m === 'upd') mUpdate();
       else if (m === 'energy') { en.view = 'energy'; enOpen(); }
       else if (m === 'hp') hpOpen();
     });

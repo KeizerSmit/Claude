@@ -469,3 +469,5 @@ html.img3d .ufh { stroke-width: 1.8; }
 .m-htag .t-v { display: block; font-size: 19px; font-weight: 600; line-height: 1.3; }
 .m-htag .t-v small { font-size: 14px; font-weight: 400; color: #a8b4c8; }
 .m-htag.sun .t-v { color: #ffc94d; } .m-htag.heat .t-v { color: #ff8a5c; }
+
+.m-upd { color: #8fb4ff; text-decoration: underline; }

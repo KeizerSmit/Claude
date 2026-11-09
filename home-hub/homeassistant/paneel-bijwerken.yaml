@@ -1,0 +1,11 @@
+# Knop om het wandpaneel bij te werken zonder Terminal.
+# In de Home Assistant-app: zoek "Paneel bijwerken" en druk op Uitvoeren. Op het paneel (telefoon): tik op "bijwerken" bovenaan.
+shell_command:
+  paneel_bijwerken: "python3 /config/scripts/paneel_bijwerken.py"
+
+script:
+  paneel_bijwerken:
+    alias: Paneel bijwerken
+    icon: mdi:cellphone-arrow-down
+    sequence:
+      - action: shell_command.paneel_bijwerken
