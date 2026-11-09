@@ -650,12 +650,21 @@
     setPend('light' + k, state.lights[k], 10000);
     backend.setLight(k, state.lights[k]); render();
   }
+  // het huis (render van het SketchUp-model) met grote labels per verdieping ernaast
+  function mHouse() {
+    if (!IMG) return '';
+    var list = [['zolder', 'floor'], ['floor1', 'floor'], ['floor0', 'floor heat'], ['hp', 'heat'], ['sun', 'sun'], ['grid', 'grid']], k, out;
+    out = '<div class="m-card m-house"><img class="m-house-img" src="' + (isDark() ? 'house-night.png' : 'house.png') + '?v=' + HUB_V + '" alt=""><div class="m-hgrid">';
+    for (k = 0; k < list.length; k++) if (tags[list[k][0]]) out += '<div class="m-htag ' + list[k][1] + '">' + tags[list[k][0]].innerHTML + '</div>';
+    return out + '</div></div>';
+  }
   function renderMobile() {
     var s = state, H = s.has, th = s.thermo, k, html = '', exp = s.grid < 0, d = new Date();
     var su = selfUse();
     html += '<div class="m-top"><div><div class="m-title">Thuis</div><div class="m-status">' + $('conn-text').innerHTML + '</div></div>' +
       '<div><div class="m-clock">' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</div><div class="m-weather">' + nl(s.outTemp) + '° &middot; ' + (s.weatherText || '') + '</div></div></div>';
     if (H.door || !LIVE) html += '<button class="m-door" data-m="door">Voordeur bekijken</button>';
+    html += mHouse();
     // energie
     html += '<div class="m-card m-tap" data-m="energy"><div class="m-h">Energie nu &middot; kW <span class="m-more">Details &rsaquo;</span></div>' +
       '<div class="m-big" style="color:' + (exp ? '#4fe0a5' : '#6fc8ff') + '">' + nl(Math.abs(s.grid)) + '<small>kW ' + (exp ? 'naar het net' : 'van het net') + '</small></div>' +
