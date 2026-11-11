@@ -31,6 +31,11 @@ parse() {
     qi = m + 1; res = ""
     for (i = 1; i <= m; i++) { l = tolower(w[i]); if (res == "" && l ~ /^(480|576|720|1080|2160)p$/) res = l; if (l == "4k" && res == "") res = "2160p" }
     for (i = 2; i <= m; i++) if (tolower(w[i]) ~ q) { qi = i; break }
+    # "1992 - Aladdin": jaartal vooraan
+    if (m >= 3 && w[1] ~ /^(19[2-9][0-9]|20[0-3][0-9])$/ && w[2] == "-") {
+      title = ""; for (i = 3; i < qi; i++) title = title (i > 3 ? " " : "") w[i]
+      if (title != "") { print title "|" w[1] "|" res; exit }
+    }
     y = ""; yi = 0
     for (i = 2; i < qi; i++) if (w[i] ~ /^(19[2-9][0-9]|20[0-3][0-9])$/) { y = w[i] }
     if (y == "") exit
