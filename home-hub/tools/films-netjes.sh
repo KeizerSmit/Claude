@@ -19,6 +19,7 @@ DESK="${DESK:-$HOME/Desktop}"
 U="$DESK/films-terugzetten.sh"
 P=$(mktemp -t filmsplan.XXXXXX)
 VIDRE='\.(mkv|mp4|m4v|avi|ts|m2ts)$'
+JUNKRE='(\.parts$|/~utorrentpartfile[^/]*$|\.!qb$|\.!ut$|\.exe$|\.url$|/rarbg[^/]*\.txt$|/[^/]*(torrent|downloaded from)[^/]*\.txt$|/[^/]*(yts|yify)[^/]*\.(jpg|png|txt)$)'
 
 # titel en jaar uit een naam halen. Uitvoer: "Titel|jaar|resolutie" of niets
 parse() {
@@ -82,12 +83,28 @@ while IFS= read -r v; do
   echo "V|$rel|$T|$res" >> "$P"; NEW=$((NEW + 1)); SHOW="$SHOW\n  $T"
 done < <(find "$F" -type f ! -name '._*' 2>/dev/null | grep -Ei "$VIDRE" | sort)
 
+# losse torrent-rommel, waar die ook staat
+JNK=0
+while IFS= read -r j; do echo "G|${j#$F/}||" >> "$P"; JNK=$((JNK + 1)); done < <(find "$F" -type f 2>/dev/null | grep -Ei "$JUNKRE")
+
+leeg() { # _Opruimen definitief leegmaken (alleen na een duidelijk ja)
+  [ -d "$O" ] || return 0
+  local L sz; sz=$(du -sh "$O" 2>/dev/null | cut -f1)
+  echo
+  read -r -p "Map _Opruimen ($sz: dubbel, kapot en rommel) definitief weggooien? Dit kan niet terug. (j/n) " L </dev/tty
+  if [ "$L" = "j" ] || [ "$L" = "J" ]; then
+    chflags -R nouchg "$O" 2>/dev/null; rm -rf "$O" 2>/dev/null
+    if [ -d "$O" ]; then echo "Niet alles kon weg (geen rechten). Vraag Claude om hulp; je films zijn niet aangeraakt."; else echo "_Opruimen is weggegooid."; fi
+  else echo "_Opruimen blijft staan."; fi
+}
+
 echo "Films-map: $F"
 echo "Al goed: $SKIP films (blijven staan)"
-if [ "$NEW" -eq 0 ] && [ "$BAD" -eq 0 ]; then
-  echo "Niets te doen."; [ -n "$UNK" ] && printf "Niet herkend (zet zelf het jaartal in de naam):%b\n" "$UNK"; rm -f "$P"; exit 0
+if [ "$NEW" -eq 0 ] && [ "$BAD" -eq 0 ] && [ "$JNK" -eq 0 ]; then
+  echo "Niets nieuws te doen."; [ -n "$UNK" ] && printf "Niet herkend (zet zelf het jaartal in de naam):%b\n" "$UNK"; rm -f "$P"; leeg; exit 0
 fi
 printf "Wordt netjes gezet (%s):%b\n" "$NEW" "$SHOW"
+[ "$JNK" -gt 0 ] && echo "Torrent-rommel (naar _Opruimen/Rommel): $JNK bestanden"
 [ "$BAD" -gt 0 ] && echo "Kapot (0 bytes, naar _Opruimen/Kapot): $BAD"
 [ -n "$UNK" ] && printf "Niet herkend, blijft staan (zet zelf het jaartal in de naam):%b\n" "$UNK"
 read -r -p "Doorgaan? (j/n) " OK </dev/tty
@@ -102,6 +119,7 @@ while IFS='|' read -r a rel T res; do
   case "$a" in
     K) mv1 "$s" "$O/Kapot/$rel"; DIRS="$DIRS$sd\n"; continue ;;
     J) mv1 "$s" "$O/Rommel/$rel"; DIRS="$DIRS$sd\n"; continue ;;
+    G) mv1 "$s" "$O/Rommel/$rel"; continue ;;  # losse rommel: map verder ongemoeid laten
   esac
   dst="$F/$T/$T.$x"
   if [ -e "$dst" ]; then
@@ -126,6 +144,8 @@ done < "$P"
 # overgebleven rommel uit de oude mappen (geen films) naar _Opruimen/Rommel
 printf '%b' "$DIRS" | sort -u | while IFS= read -r sd; do
   [ -n "$sd" ] && [ -d "$sd" ] && [ "$sd" != "$F" ] || continue
+  # een nette filmmap ("Titel (jaar)") nooit leeghalen: daar staan ondertitels en posters
+  if [ "$(dirname "$sd")" = "$F" ] && basename "$sd" | grep -Eq '^.+ \([0-9]{4}\)( \[(tmdbid|imdbid)-[a-z0-9]+\])?$'; then continue; fi
   find "$sd" -maxdepth 2 -type f ! -name '.DS_Store' 2>/dev/null | grep -Eiv "$VIDRE" | while IFS= read -r j; do mv1 "$j" "$O/Rommel/${j#$F/}"; done
   # ook bovenliggende verzamelmappen (bijv. "Disney Movie Collection") als daar geen films meer in zitten
   p=$(dirname "$sd")
@@ -142,3 +162,4 @@ echo
 echo "Klaar: $n_v films netjes gezet, $n_s ondertitels meegenomen."
 echo "Laat Jellyfin nu de bibliotheek scannen (Dashboard > Bibliotheken > Films > Bibliotheek scannen)."
 echo "Rommel staat in _Opruimen (naast Films). Alles goed? Dan mag die map weg. Terugzetten: bash ~/Desktop/films-terugzetten.sh"
+leeg
