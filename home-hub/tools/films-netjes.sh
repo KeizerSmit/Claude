@@ -66,6 +66,7 @@ mv1() { # verplaats $1 naar $2 (nooit overschrijven) en onthoud hoe het terug ka
 size_of() { wc -c < "$1" | tr -d ' '; }
 
 # 1. plan maken
+echo "Bezig met zoeken in $F ... (thuis een paar seconden, via VPN soms een paar minuten)"
 NEW=0; SKIP=0; BAD=0; UNK=""; SHOW=""
 while IFS= read -r v; do
   rel="${v#$F/}"; d=$(dirname "$rel"); b=$(basename "$v"); x=$(printf '%s' "${b##*.}" | tr 'A-Z' 'a-z'); base="${b%.*}"
