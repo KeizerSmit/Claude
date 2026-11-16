@@ -264,7 +264,16 @@ export function enableEdgeBack() {
     }, 280);
   };
   document.addEventListener('touchend', end);
-  document.addEventListener('touchcancel', end);
+  // iOS neemt het gebaar zelf over (eigen terugvegen met het vorige scherm): dan niets doen, anders ga je dubbel terug.
+  document.addEventListener('touchcancel', () => {
+    if (!g) return;
+    const p = page();
+    if (p) { p.style.transition = ''; p.style.transform = ''; }
+    document.body.classList.remove('edge-back');
+    document.body.style.removeProperty('--edge');
+    g = null;
+    setTimeout(() => { window.__edgeBack = false; }, 50);
+  });
 }
 
 // ---------------------------------------------------------------- lang drukken: contextmenu
