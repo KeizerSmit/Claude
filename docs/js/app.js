@@ -5,7 +5,7 @@ import { driveLoad, driveSave, AuthError, tokenInfo, probe } from './api.js';
 import { computeAll, insights, recoveryColor, recoveryZone, strainLabel, bedtimeAdvice, lastDays, ZONES, strainFromTrimp, trimpForStrain, trimpPerMinute } from './metrics.js';
 import { e1rm, parseNotes, allExercises, exerciseHistory, newSession, mergeDocs, exKey, matchExercise, LIBRARY, GROUPS, UPPER, LOWER, templateBaselines, activeTemplates, findTemplate, currentSet, setText } from './strength.js';
 import { ring, bars, line, hrDay, hypnogram, stackBar, spark, liveLine, resetCharts, loadBand, waterfall, scale, sleepRange, calendar, sleepSpan, clk } from './charts.js';
-import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle } from './interact.js';
+import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, enableCollapsingTitle, haptic, enableEdgeBack, enableLongPress } from './interact.js';
 import { live as liveState, onLive, connect as liveConnect, disconnect as liveDisconnect, current as liveCurrent, liveRmssd, sessionStats as liveSession, bluetoothSupported } from './live.js';
 import { generateDemo } from './demo.js';
 import { I, INSIGHT_ICON, AI } from './icons.js';
@@ -18,8 +18,9 @@ import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit', strictness: 'streng' };
-const APP_VERSION = 'v53';
+const APP_VERSION = 'v55';
 const CHANGELOG = [
+  ['Meer iPhone-gevoel', 'Veeg vanaf de linkerrand om terug te gaan, voel een tikje bij afvinken, opslaan en wisselen, en druk lang op een training, activiteit of schema voor een menu (bewerken, kopiëren naar vandaag, verwijderen). Meldingen verschijnen nu bovenin, en knoppen en invoervelden zijn in iOS-stijl.'],
   ['Strengere scores', 'Herstel en slaap zijn nu streng zoals WHOOP: een gewone dag is ±50% (was ±60%), je hebt ±93% van je slaapbehoefte nodig voor een neutrale slaapscore, en slaapschuld en zware dagen verhogen je behoefte flink. Terug naar mild kan in Profiel.'],
   ['Melding als je Fitbit niet synchroniseert', 'Krijgt Google al uren niets nieuws van je tracker, dan zegt Vandaag dat en hoe je het oplost.'],
   ['Betrouwbaarder bijwerken', 'Een mislukte aanvraag wist je slaap of workouts niet meer, gaten in je hartslag van vandaag worden later aangevuld, tijdelijke Google-fouten worden opnieuw geprobeerd, en de status bovenaan zegt wat er mis is (tik voor details).'],
@@ -1313,6 +1314,67 @@ function volumeAboutSheet() {
   <p>Belangrijker dan het aantal sets is bij deze stijl dat elke set echt zwaar is én dat je topsets omhoog blijven gaan — kijk daarvoor naar je krachtindex en de ▲'s bij je oefeningen.</p>` : `<p><b>Richtlijn</b>: onderzoek (o.a. meta-analyses van Schoenfeld en Pelland) laat zien dat spiergroei toeneemt tot ongeveer <b>10–20 zware sets per spier per week</b>, met afnemende meerwaarde daarboven. Rond 5 sets per week behoud je vooral wat je hebt.</p>`}
   <p>Trainingsstijl wijzigen: Profiel → Kracht.</p>
   <p style="margin-bottom:0">Het blijft een schatting: tempo, rust tussen sets en hoe dicht je bij falen zit tellen ook mee.</p></div>`;
+}
+
+/** Acties met een voelbaar tikje (zoals iOS: schakelen, kiezen, bevestigen). */
+const HAPTIC_ACTS = new Set(['toggle-done', 'save-log', 'act-save', 'w-save', 'save-template', 'start-template', 'range', 'calm', 'cal', 'act-int', 'act-dur', 'use-template', 'flag', 'plus', 'rest-tap', 'rest-stop', 'imp-mode', 'msheet', 'do-import']);
+
+/** Contextmenu bij lang drukken op een training, activiteit, schema of oefening. */
+function contextItems(el) {
+  const go = el.dataset.go || '', sh = el.dataset.sheet || '';
+  const ic = (k) => `<span class="ctx-ic">${k}</span>`;
+  if (go.startsWith('#/session/')) {
+    const id = decodeURIComponent(go.slice(10));
+    const s = S.strength.sessions.find((x) => x.id === id && !x.deleted);
+    if (!s) return null;
+    return [
+      { label: 'Openen', icon: ic(I.chev), run: () => { location.hash = go; } },
+      { label: 'Bewerken', icon: ic(I.edit), run: () => { location.hash = `#/log/${id}`; } },
+      { label: 'Kopieer naar vandaag', icon: ic(I.copy), run: async () => {
+        const now = Date.now();
+        await saveStrength((doc) => doc.sessions.push({ id: uid(), date: today(), name: s.name, exercises: s.exercises.map((e) => ({ ...e })), createdAt: now, updatedAt: now }));
+        toast(`${s.name || 'Training'} gekopieerd naar vandaag`); softRender(true);
+      } },
+      { label: 'Verwijderen', danger: true, icon: ic(I.trash), run: async () => {
+        if (!confirm('Deze training verwijderen?')) return;
+        await saveStrength((doc) => { const x = doc.sessions.find((y) => y.id === id); if (x) { x.deleted = true; x.updatedAt = Date.now(); x.exercises = []; } });
+        toast('Training verwijderd'); if (location.hash === go) location.hash = '#/strength'; else softRender(true);
+      } },
+    ];
+  }
+  if (sh.startsWith('manual:')) {
+    const id = sh.slice(7);
+    const a = (S.strength.activities || []).find((x) => x.id === id && !x.deleted);
+    if (!a) return null;
+    return [
+      { label: 'Bewerken', icon: ic(I.edit), run: () => openActivityLog({ id }) },
+      { label: 'Kopieer naar vandaag', icon: ic(I.copy), run: async () => {
+        const t = new Date(a.start), now = Date.now();
+        const start = new Date(`${today()}T${pad(t.getHours())}:${pad(t.getMinutes())}:00`).getTime();
+        await saveStrength((doc) => { doc.activities ||= []; doc.activities.push({ ...a, id: uid(), date: today(), start, createdAt: now, updatedAt: now }); });
+        toast(`${typeById(a.typeId).name} gekopieerd naar vandaag`); softRender(true);
+      } },
+      { label: 'Verwijderen', danger: true, icon: ic(I.trash), run: async () => {
+        if (!confirm('Deze activiteit verwijderen?')) return;
+        await saveStrength((doc) => { const x = (doc.activities || []).find((y) => y.id === id); if (x) { x.deleted = true; x.updatedAt = Date.now(); } });
+        toast('Activiteit verwijderd'); softRender(true);
+      } },
+    ];
+  }
+  if (go.startsWith('#/template/')) {
+    const id = go.slice(11);
+    const t = activeTemplates(S.strength).find((x) => x.id === id);
+    if (!t) return null;
+    return [
+      { label: `Start ${t.name}`, icon: ic(I.dumbbell), run: () => actions['start-template']({ dataset: { id } }) },
+      { label: 'Bekijken', icon: ic(I.chev), run: () => { location.hash = go; } },
+      { label: 'Schema bewerken', icon: ic(I.edit), run: () => { location.hash = `#/template-edit/${id}`; } },
+    ];
+  }
+  if (go.startsWith('#/exercise/')) {
+    return [{ label: 'Voortgang bekijken', icon: ic(I.chart), run: () => { location.hash = go; } }];
+  }
+  return null;
 }
 
 let showAllSessions = false;
@@ -3221,6 +3283,8 @@ document.addEventListener('click', (ev) => {
   const go = ev.target.closest('[data-go]');
   const back = ev.target.closest('[data-back]');
   const act = ev.target.closest('[data-act]');
+  if (act && HAPTIC_ACTS.has(act.dataset.act)) haptic();
+  if (ev.target.closest('.tabbar a[data-tab]')) haptic();
   if (act && act.tagName !== 'SELECT' && act.tagName !== 'INPUT') {
     const fn = actions[act.dataset.act];
     if (fn) { ev.preventDefault(); fn(act); return; }
@@ -3346,6 +3410,8 @@ async function boot() {
     location.hash = `${area.dataset.base || '#/today'}/${d}`;
   });
   titleUpdate = enableCollapsingTitle();
+  enableEdgeBack();
+  enableLongPress('[data-go^="#/session/"], [data-sheet^="manual:"], [data-go^="#/template/"], [data-go^="#/exercise/"]', contextItems);
   const redirect = auth.handleRedirect();
   await loadAll();
   S.lastSyncAt = await store.kv.get('lastSyncAt');

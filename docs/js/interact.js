@@ -159,6 +159,8 @@ export function enableSwipe(onSwipe) {
   let s = null;
   document.addEventListener('touchstart', (e) => {
     const area = e.target.closest('[data-swipe]');
+    // Vanaf de linkerrand is het 'terugvegen', niet 'vorige dag'.
+    if (e.touches[0].clientX < 24 && document.querySelector('.navbar [data-back]')) { s = null; return; }
     if (!area || e.target.closest('.chartwrap,input,textarea,.weekstrip') || document.body.classList.contains('sheet-open')) { s = null; return; }
     s = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(), area };
   }, { passive: true });
@@ -186,4 +188,153 @@ export function enableCollapsingTitle() {
   };
   window.addEventListener('scroll', update, { passive: true });
   return update;
+}
+
+// ---------------------------------------------------------------- haptics (iOS 18+: via een verborgen schakelaar)
+
+let hapticLabel = null;
+/** Kort tikje voelbaar maken. Werkt op iPhone (iOS 18+) alleen tijdens een tik/aanraking van de gebruiker. */
+export function haptic() {
+  try {
+    if (navigator.vibrate && !/iPhone|iPad/.test(navigator.userAgent)) { navigator.vibrate(8); return; }
+    if (!hapticLabel) {
+      hapticLabel = document.createElement('label');
+      hapticLabel.setAttribute('aria-hidden', 'true');
+      hapticLabel.style.cssText = 'position:fixed;left:-200px;top:-200px;width:1px;height:1px;opacity:0;pointer-events:none';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.setAttribute('switch', '');
+      input.tabIndex = -1;
+      hapticLabel.appendChild(input);
+      hapticLabel.addEventListener('click', (e) => e.stopPropagation());
+      document.body.appendChild(hapticLabel);
+    }
+    hapticLabel.click();
+  } catch { /* geen haptics */ }
+}
+
+// ---------------------------------------------------------------- terugvegen vanaf de linkerrand
+
+/** iOS-gebaar: veeg vanaf de linkerrand naar rechts om terug te gaan (alleen op schermen met een terugknop). */
+export function enableEdgeBack() {
+  let g = null;
+  const page = () => document.querySelector('#app .page');
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    const back = document.querySelector('.navbar [data-back]');
+    if (!back || t.clientX > 24 || document.body.classList.contains('sheet-open') || e.touches.length > 1) { g = null; return; }
+    g = { x0: t.clientX, y0: t.clientY, t0: Date.now(), dx: 0, active: false, target: back.dataset.back, armed: false };
+    window.__edgeBack = true;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!g) return;
+    const t = e.touches[0];
+    const dx = t.clientX - g.x0, dy = t.clientY - g.y0;
+    if (!g.active) {
+      if (Math.abs(dy) > 12 && Math.abs(dy) > dx) { g = null; window.__edgeBack = false; return; }
+      if (dx < 10) return;
+      g.active = true;
+      document.body.classList.add('edge-back');
+      const p = page(); if (p) p.style.transition = 'none';
+    }
+    g.dx = Math.max(0, dx);
+    const p = page();
+    if (p) p.style.transform = `translateX(${g.dx}px)`;
+    document.body.style.setProperty('--edge', String(Math.min(1, g.dx / window.innerWidth)));
+    const armed = g.dx > window.innerWidth * 0.35;
+    if (armed !== g.armed) { g.armed = armed; if (armed) haptic(); }
+  }, { passive: true });
+  const end = () => {
+    if (!g) return;
+    const st = g; g = null;
+    setTimeout(() => { window.__edgeBack = false; }, 50);
+    if (!st.active) return;
+    const p = page();
+    const v = st.dx / Math.max(1, Date.now() - st.t0);
+    const go = st.dx > window.innerWidth * 0.35 || (v > 0.6 && st.dx > 40);
+    if (p) { p.style.transition = 'transform .28s cubic-bezier(.2,.8,.2,1)'; p.style.transform = go ? `translateX(${window.innerWidth}px)` : 'translateX(0)'; }
+    setTimeout(() => {
+      document.body.classList.remove('edge-back');
+      document.body.style.removeProperty('--edge');
+      if (go) {
+        document.body.classList.add('no-page-anim');
+        location.hash = st.target;
+        setTimeout(() => document.body.classList.remove('no-page-anim'), 400);
+      } else if (p) { p.style.transition = ''; p.style.transform = ''; }
+    }, 280);
+  };
+  document.addEventListener('touchend', end);
+  document.addEventListener('touchcancel', end);
+}
+
+// ---------------------------------------------------------------- lang drukken: contextmenu
+
+let menuEl = null;
+export function closeMenu() {
+  if (!menuEl) return;
+  const m = menuEl; menuEl = null;
+  m.classList.remove('in');
+  setTimeout(() => m.remove(), 220);
+}
+
+/**
+ * Lang drukken (±0,45 s) op een element waarvoor getItems(el) een lijst teruggeeft
+ * → iOS-contextmenu: wazige achtergrond, het item 'opgetild', menu eronder.
+ * items: [{ label, icon, danger, run }]
+ */
+export function enableLongPress(selector, getItems) {
+  let lp = null;
+  let suppress = 0;
+  document.addEventListener('touchstart', (e) => {
+    const el = e.target.closest(selector);
+    if (!el || e.touches.length > 1 || document.body.classList.contains('sheet-open')) { lp = null; return; }
+    const t = e.touches[0];
+    lp = { el, x: t.clientX, y: t.clientY, timer: setTimeout(() => {
+      if (!lp || window.__edgeBack) return;
+      const items = getItems(lp.el);
+      if (!items?.length) return;
+      suppress = Date.now();
+      haptic();
+      showMenu(lp.el, items);
+      lp = null;
+    }, 450) };
+    el.classList.add('lp-press');
+  }, { passive: true });
+  const cancel = () => { if (lp) { clearTimeout(lp.timer); lp.el.classList.remove('lp-press'); lp = null; } };
+  document.addEventListener('touchmove', (e) => { if (lp && (Math.abs(e.touches[0].clientX - lp.x) > 8 || Math.abs(e.touches[0].clientY - lp.y) > 8)) cancel(); }, { passive: true });
+  document.addEventListener('touchend', cancel);
+  document.addEventListener('touchcancel', cancel);
+  // De tik die bij het loslaten volgt mag niet alsnog de rij openen.
+  document.addEventListener('click', (e) => { if (Date.now() - suppress < 700 && !e.target.closest('.ctx-menu')) { e.stopPropagation(); e.preventDefault(); } }, true);
+  document.addEventListener('contextmenu', (e) => { if (e.target.closest(selector)) e.preventDefault(); });
+}
+
+function showMenu(el, items) {
+  closeMenu();
+  el.classList.remove('lp-press');
+  const r = el.getBoundingClientRect();
+  const wrap = document.createElement('div');
+  wrap.className = 'ctx-wrap';
+  const lift = el.cloneNode(true);
+  lift.classList.add('ctx-lift');
+  lift.removeAttribute('data-go'); lift.removeAttribute('data-sheet');
+  lift.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu glass-sheet';
+  menu.innerHTML = items.map((it, i) => `<button class="ctx-item${it.danger ? ' danger' : ''}" data-i="${i}"><span>${esc(it.label)}</span>${it.icon || ''}</button>`).join('');
+  wrap.append(lift, menu);
+  document.body.appendChild(wrap);
+  const mh = items.length * 46 + 10;
+  const below = r.bottom + 10 + mh < window.innerHeight - 20;
+  menu.style.top = `${below ? r.bottom + 10 : Math.max(60, r.top - 10 - mh)}px`;
+  menu.style.left = `${Math.max(12, Math.min(window.innerWidth - 262, r.left))}px`;
+  menu.style.transformOrigin = below ? 'top left' : 'bottom left';
+  requestAnimationFrame(() => wrap.classList.add('in'));
+  menuEl = wrap;
+  wrap.addEventListener('click', (e) => {
+    const b = e.target.closest('.ctx-item');
+    e.stopPropagation();
+    closeMenu();
+    if (b) setTimeout(() => items[+b.dataset.i].run(), 120);
+  });
 }
