@@ -9,7 +9,7 @@ import { openSheet, closeSheet, isSheetOpen, enablePullToRefresh, enableSwipe, e
 import { live as liveState, onLive, connect as liveConnect, disconnect as liveDisconnect, current as liveCurrent, liveRmssd, sessionStats as liveSession, bluetoothSupported } from './live.js';
 import { generateDemo } from './demo.js';
 import { I, INSIGHT_ICON, AI } from './icons.js';
-import { TYPES, CATS, typeById, INTENSITY, RPE_LABELS, newActivity, estimateActivity, SOURCE_LABEL } from './activities.js';
+import { TYPES, CATS, typeById, INTENSITY, RPE_LABELS, newActivity, estimateActivity, SOURCE_LABEL, hasDistance, intensityFromSpeed } from './activities.js';
 import { computeHealthspan, healthspanHistory, INPUTS, vo2Ref } from './healthspan.js';
 import { muscleFatigue, bodyMap, fatigueColor, fatigueLabel } from './bodymap.js';
 import { buildShare } from './share.js';
@@ -18,8 +18,9 @@ import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit' };
-const APP_VERSION = 'v36';
+const APP_VERSION = 'v49';
 const CHANGELOG = [
+  ['Afstand bij activiteiten', 'Bij wandelen, hardlopen, fietsen en zwemmen kun je de afstand invullen; de app rekent je snelheid uit en kiest bij wandelen, hardlopen en fietsen zelf de intensiteit.'],
   ['Jouw trainingsstijl', 'Laag volume tot falen met 2× upper + 1× lower: volume per spiergroep rekent nu met ±3–8 sets tot falen per week, het weekdoel is Upper 2× · Lower 1×, en de coach kiest het schema dat je deze week nog nodig hebt.'],
   ['Signaal overbelasting', 'Ligt je HRV meerdere dagen op rij onder je normaal (zeker bij hoge belasting), dan waarschuwt Vandaag en adviseert lichte dagen.'],
   ['Ochtendrapport', 'Bij de eerste keer openen in de ochtend: je herstel in één zin uitgelegd, je nacht, wat gisteren deed en je plan voor vandaag.'],
@@ -1264,7 +1265,7 @@ function activityRows(m, opts = {}) {
   const date = m.date;
   for (const a of m.strain?.manual || []) {
     const t = typeById(a.typeId);
-    rows.push({ t: a.start, html: `<button class="row tap" data-sheet="manual:${a.id}"><div class="badge" style="background:${CATS[t.cat].color}">${actIcon(t)}</div><div class="grow"><div class="title">${esc(t.name)}</div><div class="sub">${opts.withDate ? `${weekdayShort(date)} ${fmtDateShort(date)} · ` : ''}${fmtTime(a.start)} · ${fmtDur(a.duration)} · ${a.est.source === 'hr' ? 'gemeten' : 'geschat'}${t.cat !== 'sport' ? ' · telt niet als fitheid' : ''}</div></div><div class="val"><b style="color:var(--strain)">${fmtStrain(strainFromTrimp(a.est.trimp))}</b></div><span class="chev">${I.chev}</span></button>` });
+    rows.push({ t: a.start, html: `<button class="row tap" data-sheet="manual:${a.id}"><div class="badge" style="background:${CATS[t.cat].color}">${actIcon(t)}</div><div class="grow"><div class="title">${esc(t.name)}</div><div class="sub">${opts.withDate ? `${weekdayShort(date)} ${fmtDateShort(date)} · ` : ''}${fmtTime(a.start)} · ${fmtDur(a.duration)}${a.distance ? ` · ${num(a.distance, 2)} km` : ''} · ${a.est.source === 'hr' ? 'gemeten' : 'geschat'}${t.cat !== 'sport' ? ' · telt niet als fitheid' : ''}</div></div><div class="val"><b style="color:var(--strain)">${fmtStrain(strainFromTrimp(a.est.trimp))}</b></div><span class="chev">${I.chev}</span></button>` });
   }
   for (const s of m.strain?.sessions || []) {
     rows.push({ t: s.activity?.start || parseYmd(date).getTime() + 18 * 3600000, html: `<button class="row tap" data-go="#/session/${s.id}"><div class="badge" style="background:var(--muscle)">${I.dumbbell}</div><div class="grow"><div class="title">${esc(s.name || 'Krachttraining')}</div><div class="sub">${opts.withDate ? `${weekdayShort(date)} ${fmtDateShort(date)} · ` : ''}${s.exercises.length} oefeningen${s.activity ? ` · ${fmtDur(s.activity.duration)}` : ''}</div></div><div class="val"><b style="color:var(--muscle)">+${num(s.muscularTrimp, 0)}</b></div><span class="chev">${I.chev}</span></button>` });
@@ -2289,6 +2290,7 @@ function actSheetHtml() {
       <div class="row"><div class="grow">Datum</div><input type="date" data-af="date" value="${esc(d.date)}" max="${today()}"></div>
       <div class="row"><div class="grow">Begon om</div><input type="time" data-af="time" value="${timeVal}"></div>
       <div class="row"><div class="grow">Duur</div><input type="number" inputmode="numeric" data-af="duration" value="${d.duration}" style="width:64px"><span class="muted">&nbsp;min</span></div>
+      ${hasDistance(t) ? `<div class="row"><div class="grow">Afstand <span class="opt">optioneel</span><div class="sub" data-speed>${speedText(d)}</div></div><input type="number" inputmode="decimal" step="0.01" min="0" data-af="distance" value="${d.distance ?? ''}" placeholder="0,00" style="width:76px"><span class="muted">&nbsp;km</span></div>` : ''}
     </div>
     <div class="chips">${durs.map((m) => `<button class="chip${d.duration === m ? ' on' : ''}" data-act="act-dur" data-v="${m}">${m < 60 ? `${m} min` : `${num(m / 60, m % 60 ? 1 : 0)} u`}</button>`).join('')}</div>
     <div class="list-header">Intensiteit</div>
@@ -2334,8 +2336,26 @@ function readActForm() {
   if (g('time')?.value) d.start = new Date(`${d.date}T${g('time').value}:00`).getTime();
   else d.start = new Date(`${d.date}T${pad(new Date(d.start).getHours())}:${pad(new Date(d.start).getMinutes())}:00`).getTime();
   if (g('duration')) d.duration = clamp(Math.round(Number(g('duration').value) || 0), 1, 24 * 60);
+  if (g('distance')) { const km = Number(String(g('distance').value).replace(',', '.')); d.distance = km > 0 ? Math.round(km * 100) / 100 : null; }
+  // Wandelen/hardlopen/fietsen: intensiteit volgt je snelheid, tot je hem zelf kiest.
+  const auto = d.intensityManual ? null : intensityFromSpeed(d.typeId, d.distance && d.duration ? d.distance / (d.duration / 60) : null);
+  if (auto && auto !== d.intensity) {
+    d.intensity = auto;
+    body.querySelectorAll('[data-act="act-int"]').forEach((b) => b.classList.toggle('on', b.dataset.v === auto));
+  }
+  const sp = body.querySelector('[data-speed]'); if (sp) sp.textContent = speedText(d);
+  body.querySelectorAll('[data-act="act-dur"]').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === d.duration));
   if (g('active')) d.active = Number(g('active').value) / 100;
   if (g('note')) d.note = g('note').value;
+}
+
+/** "4,8 km/u gemiddeld" of bij hardlopen ook het tempo per km. */
+function speedText(d) {
+  if (!d?.distance || !d.duration) return '';
+  const kmh = d.distance / (d.duration / 60);
+  const pace = d.duration / d.distance;
+  const auto = intensityFromSpeed(d.typeId, kmh);
+  return `${num(kmh, 1)} km/u gemiddeld${typeById(d.typeId).icon === 'run' ? ` · ${Math.floor(pace)}:${pad(Math.round((pace % 1) * 60))} /km` : ''}${auto && !d.intensityManual ? ` · intensiteit: ${INTENSITY[auto].toLowerCase()}` : ''}`;
 }
 
 function refreshActSheet() { const body = document.querySelector('.sheet-body'); if (body) body.innerHTML = actSheetHtml(); }
@@ -2778,7 +2798,7 @@ const actions = {
   },
   'act-back'() { readActForm(); ACT.mode = 'pick'; ACT.cat = 'alle'; ACT.q = ''; refreshActSheet(); },
   'act-dur'(el) { readActForm(); ACT.draft.duration = Number(el.dataset.v); refreshActSheet(); },
-  'act-int'(el) { readActForm(); ACT.draft.intensity = el.dataset.v; refreshActSheet(); },
+  'act-int'(el) { readActForm(); ACT.draft.intensity = el.dataset.v; ACT.draft.intensityManual = true; refreshActSheet(); },
   'act-rpe-clear'() { readActForm(); ACT.draft.rpe = null; refreshActSheet(); },
   async 'act-save'() {
     readActForm();

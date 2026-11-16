@@ -88,6 +88,20 @@ export const RPE_HRR = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.87, 0.93, 0.9
 
 export function defaultActive(cat) { return cat === 'sport' ? 1 : 0.7; }
 
+/** Activiteiten waarbij afstand en snelheid zinvol zijn. */
+export function hasDistance(t) { return ['walk', 'run', 'bike', 'swim', 'row'].includes(typeById(t?.id || t).icon); }
+
+/**
+ * Intensiteit afleiden uit gemiddelde snelheid (Compendium 2024: wandelen 4,8 km/u ≈ 3,5 MET = matig).
+ * Geeft null als de snelheid voor dit type niets zegt.
+ */
+export function intensityFromSpeed(typeId, kmh) {
+  if (!kmh || !isFinite(kmh)) return null;
+  const cuts = { wandelen: [4.0, 5.6], hardlopen: [8.5, 11.5], fietsen: [16, 22], mtb: [12, 18] }[typeId];
+  if (!cuts) return null;
+  return kmh < cuts[0] ? 'licht' : kmh < cuts[1] ? 'matig' : 'zwaar';
+}
+
 export function newActivity(typeId, date) {
   const t = typeById(typeId);
   const now = Date.now();

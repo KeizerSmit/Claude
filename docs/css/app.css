@@ -947,3 +947,7 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .vol-g small { font-size: 11px; color: var(--text3); font-weight: 600; }
 .vol-row { grid-template-columns: 104px 1fr 34px 62px; }
 .vol-scale { margin-left: 112px; margin-right: 112px; }
+.row .sub[data-speed] { white-space: normal; }
+.coach-row { flex-wrap: wrap; }
+.coach-chip { min-width: 0; max-width: 100%; }
+.coach-chip b, .coach-chip span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

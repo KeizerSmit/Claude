@@ -34,7 +34,7 @@ export function buildShare({ computed, strength, settings, profile, syncLog, hrM
           groups: Object.fromEntries(Object.entries(s.groups || {}).map(([g, v]) => [g, r1(v)])),
           ex: (s.exercises || []).map((e) => [e.name, matchExercise(e.name, strength.exerciseMap).id, e.bw ? `BW+${e.weight || 0}` : e.weight, e.reps, e.sets, r1(e.e1rm), r1(e.ri), r1(e.load)]),
         })),
-        manual: (d.strain?.manual || []).map((a) => ({ type: typeById(a.typeId).id, start: hm(a.start), dur: a.duration, int: a.intensity, rpe: a.rpe, active: a.active, src: a.est.source, cov: r1(a.est.coverage * 100), measured: r0(a.est.measured), est: r0(a.est.estimated), musc: r0(a.est.muscular) })),
+        manual: (d.strain?.manual || []).map((a) => ({ type: typeById(a.typeId).id, start: hm(a.start), dur: a.duration, km: a.distance ?? undefined, int: a.intensity, rpe: a.rpe, active: a.active, src: a.est.source, cov: r1(a.est.coverage * 100), measured: r0(a.est.measured), est: r0(a.est.estimated), musc: r0(a.est.muscular) })),
         fitbit: (d.strain?.activities || []).map((a) => ({ type: a.type, name: a.name, start: hm(a.start), dur: r0(a.duration), avgHr: a.avgHr, strain: r1(a.strain), linked: !!(a.linked || a.linkedManual) || undefined })),
       };
     }),
