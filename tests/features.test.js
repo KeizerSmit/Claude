@@ -142,3 +142,12 @@ test('stijl tot falen: training zonder RPE telt als 9 (±32% zwaarder)', async (
   const own = computeLoads([{ ...s[0], rpe: 6 }], { defaultSets: 2, style: 'hit' }).a;
   assert.equal(own.rpeUsed, 6);
 });
+
+test('streng vs mild: strenger herstel, geen oplopende slaapbehoefte', () => {
+  const { days, strength } = generateDemo(90);
+  const run = (strictness) => Object.values(computeAll(days.map((d) => ({ ...d })), strength, { ...SET, strictness }, { age: 30 }).byDate).slice(30).filter((d) => d.recovery);
+  const m = run('mild'), s = run('streng');
+  const avg = (a, f) => a.reduce((x, d) => x + f(d), 0) / a.length;
+  assert.ok(avg(s, (d) => d.recovery.score) < avg(m, (d) => d.recovery.score) - 8);
+  for (const d of s) if (d.sleep) assert.ok(d.sleep.need <= SET.sleepNeed + 60 + 90, `behoefte ${d.sleep.need}`);
+});

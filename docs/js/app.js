@@ -17,9 +17,10 @@ import { recommendTraining, progressionTip, splitOf } from './coach.js';
 import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
-const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit' };
-const APP_VERSION = 'v51';
+const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit', strictness: 'streng' };
+const APP_VERSION = 'v53';
 const CHANGELOG = [
+  ['Strengere scores', 'Herstel en slaap zijn nu streng zoals WHOOP: een gewone dag is ±50% (was ±60%), je hebt ±93% van je slaapbehoefte nodig voor een neutrale slaapscore, en slaapschuld en zware dagen verhogen je behoefte flink. Terug naar mild kan in Profiel.'],
   ['Melding als je Fitbit niet synchroniseert', 'Krijgt Google al uren niets nieuws van je tracker, dan zegt Vandaag dat en hoe je het oplost.'],
   ['Betrouwbaarder bijwerken', 'Een mislukte aanvraag wist je slaap of workouts niet meer, gaten in je hartslag van vandaag worden later aangevuld, tijdelijke Google-fouten worden opnieuw geprobeerd, en de status bovenaan zegt wat er mis is (tik voor details).'],
   ['Sets tellen als tot falen', 'Bij de stijl "laag volume, tot falen" telt een training zonder ingevulde zwaarte als RPE 9: je kracht weegt zo ±30% zwaarder in je strain.'],
@@ -1806,8 +1807,9 @@ function viewSettings() {
     ${row('Lichaamsgewicht', numIn('bodyweight', st.bodyweight, '80', 0.5) + '<span class="muted">&nbsp;kg</span>', 'voor bodyweight-oefeningen')}
     ${row('Max. hartslag', numIn('maxHr', st.maxHr, String(S.computed?.maxHr || ''), 1), st.maxHr ? 'handmatig' : `automatisch: ${S.computed?.maxHr}`)}
   </div>
-  <div class="list-header">Slaap</div>
+  <div class="list-header">Herstel & slaap</div>
   <div class="list">
+    ${row('Strengheid', `<select data-set="strictness"><option value="streng" ${st.strictness !== 'mild' ? 'selected' : ''}>Streng</option><option value="mild" ${st.strictness === 'mild' ? 'selected' : ''}>Mild</option></select>`, st.strictness !== 'mild' ? 'zoals WHOOP: gewone dag ≈ 50%, te kort slapen kost flink' : 'gewone dag ≈ 60%; vergevingsgezinder voor korte nachten')}
     ${row('Basis slaapbehoefte', `<input type="number" step="0.25" inputmode="decimal" data-set="sleepNeedH" value="${(st.sleepNeed / 60).toFixed(2).replace(/\.?0+$/, '')}"><span class="muted">&nbsp;uur</span>`)}
     ${row('Wektijd', `<input type="time" data-set="wake" value="${esc(st.wake)}">`, 'voor bedtijd-advies')}
   </div>
@@ -1847,7 +1849,8 @@ function viewAbout() {
   return `${navbar('Berekeningen', '#/settings')}
   <div class="content fade-in">
   <div class="card"><h2 style="color:var(--green)">Herstel (0–100%)</h2>
-  <p class="small">Elke ochtend vergelijken we je nachtelijke <b>HRV</b> (RMSSD), <b>rusthartslag</b> tijdens non-REM-slaap, <b>slaapprestatie</b>, <b>ademhalingsfrequentie</b> en <b>huidtemperatuur</b> met je eigen gemiddelde van de afgelopen 30 dagen. HRV telt voor 50%, rusthartslag en slaap elk 20%, ademhaling en temperatuur elk 5%. De gewogen z-score wordt omgezet naar een percentage: groen 67–100, geel 34–66, rood 0–33. De eerste 4 nachten is de app aan het kalibreren.</p></div>
+  <p class="small">Elke ochtend vergelijken we je nachtelijke <b>HRV</b> (RMSSD), <b>rusthartslag</b> tijdens non-REM-slaap, <b>slaapprestatie</b>, <b>ademhalingsfrequentie</b> en <b>huidtemperatuur</b> met je eigen gemiddelde van de afgelopen 30 dagen. HRV telt voor 50%, rusthartslag en slaap elk 20%, ademhaling en temperatuur elk 5%. De gewogen z-score wordt omgezet naar een percentage: groen 67–100, geel 34–66, rood 0–33. De eerste 4 nachten is de app aan het kalibreren.</p>
+  <p class="small">${S.settings.strictness !== 'mild' ? '<b>Streng</b> (standaard, zoals WHOOP): als alles precies op je normaal ligt is je herstel 50%. Slaap telt pas neutraal bij ±93% van je behoefte; minder kost flink, genoeg slapen geeft maar een kleine bonus.' : '<b>Mild</b>: een gewone dag geeft ±60% en slaap is neutraal bij 85% van je behoefte.'} Wijzigen in Profiel → Herstel &amp; slaap.</p></div>
   <div class="card"><h2 style="color:var(--strain)">Strain (0–21)</h2>
   <p class="small">Voor elke minuut dat je wakker bent berekenen we je inspanning als percentage van je <b>hartslagreserve</b> (tussen rust- en maximale hartslag) en tellen die op met de Banister-TRIMP-formule; hogere intensiteit telt exponentieel zwaarder. Daar komt je <b>spierbelasting</b> uit je krachtlog bij. Het totaal gaat op een logaritmische schaal: van 0 naar 10 is makkelijk, van 18 naar 21 bijna onmogelijk. Licht &lt;10, gemiddeld 10–14, zwaar 14–18, maximaal 18+.</p>
   <p class="small">Je <b>optimale strain</b> hangt af van je herstel: hoe beter hersteld, hoe meer belasting je lichaam aankan.</p></div>
@@ -3250,7 +3253,8 @@ document.addEventListener('change', async (ev) => {
     if (k === 'defaultSets' && v != null) v = clamp(Math.round(v), 1, 10);
     await saveSettings({ [k]: v });
     if (k === 'theme' || k === 'palette') applyTheme();
-    if (k === 'theme' || k === 'palette' || k === 'maxHr' || k === 'age' || k === 'style') render();
+    if (k === 'strictness') { recompute(); toast(v === 'mild' ? 'Milde scores' : 'Strenge scores (zoals WHOOP)'); }
+    if (k === 'theme' || k === 'palette' || k === 'maxHr' || k === 'age' || k === 'style' || k === 'strictness') render();
     return;
   }
   if (el.dataset.act === 'map-ex') {

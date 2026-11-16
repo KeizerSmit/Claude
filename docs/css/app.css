@@ -959,3 +959,4 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .stale-card .title { font-weight: 600; }
 .stale-card .sub { font-size: 13px; color: var(--text2); margin-top: 2px; }
 .sheet ol li { margin-bottom: 8px; }
+.row .sub { white-space: normal; }

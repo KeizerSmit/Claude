@@ -140,10 +140,16 @@ function sleepMetrics(day, prev, settings, history) {
   const s = day.sleep;
   if (!s) return null;
   const base = settings.sleepNeed || 450;
+  const strict = settings.strictness !== 'mild';
   const prevStrain = prev?.strain?.score ?? null;
-  const strainNeed = prevStrain != null ? clamp((prevStrain - 8) * 3, 0, 40) : 0;
+  // Streng (WHOOP-achtig): zware dagen en slaapschuld tellen veel zwaarder mee in je slaapbehoefte.
+  const strainNeed = prevStrain != null ? (strict ? clamp((prevStrain - 7) * 4.5, 0, 60) : clamp((prevStrain - 8) * 3, 0, 40)) : 0;
   const deficits = history.slice(-3).reverse().map((h) => (h.sleep ? Math.max(0, h.sleep.need - h.sleep.asleep) : 0));
-  const debt = clamp(0.3 * (deficits[0] || 0) + 0.15 * (deficits[1] || 0) + 0.05 * (deficits[2] || 0), 0, 60);
+  // Streng: tekort t.o.v. je basisbehoefte (niet t.o.v. de al verhoogde behoefte, anders loopt het op zichzelf op).
+  const baseDef = history.slice(-3).reverse().map((h) => (h.sleep ? Math.max(0, base - h.sleep.asleep) : 0));
+  const debt = strict
+    ? clamp(0.45 * (baseDef[0] || 0) + 0.25 * (baseDef[1] || 0) + 0.1 * (baseDef[2] || 0), 0, 90)
+    : clamp(0.3 * (deficits[0] || 0) + 0.15 * (deficits[1] || 0) + 0.05 * (deficits[2] || 0), 0, 60);
   const napMin = (day.naps || []).reduce((a, n) => a + (n.asleep || 0), 0);
   const need = Math.max(240, base + strainNeed + debt - napMin);
   const asleep = s.asleep;
@@ -178,7 +184,8 @@ function baselineOf(history, pick, days = 30) {
   return vals;
 }
 
-function recoveryMetrics(day, sleep, history) {
+function recoveryMetrics(day, sleep, history, settings = {}) {
+  const strict = settings.strictness !== 'mild';
   const hrv = day.hrv ?? day.hrvDeep ?? null;
   const rhr = day.sleepHr ?? day.rhr ?? null;
   const resp = day.resp ?? null;
@@ -198,15 +205,17 @@ function recoveryMetrics(day, sleep, history) {
   // Zonder baseline gebruiken we populatiewaarden zodat je toch een indicatie krijgt.
   z.hrv = hrv != null ? z3(bHrv ? (Math.log(hrv) - bHrv.lnMean) / bHrv.lnSd : (Math.log(hrv) - Math.log(45)) / 0.35) : 0;
   z.rhr = rhr != null ? z3(bRhr ? -(rhr - bRhr.mean) / bRhr.sd : -(rhr - 58) / 6) : 0;
-  z.sleep = sleep ? z3((sleep.perf - 0.85) / 0.12) : 0;
-  z.resp = resp != null && bResp ? z3(Math.min(0, -(resp - bResp.mean) / bResp.sd) + 0.2) : 0;
+  // Streng: pas bij ±95% van je behoefte is slaap neutraal; genoeg slapen geeft maar een kleine bonus, tekort kost veel.
+  z.sleep = sleep ? (strict ? z3(Math.min(0.5, (sleep.perf - 0.93) / 0.1)) : z3((sleep.perf - 0.85) / 0.12)) : 0;
+  z.resp = resp != null && bResp ? z3(Math.min(0, -(resp - bResp.mean) / bResp.sd) + (strict ? 0 : 0.2)) : 0;
   const tDev = day.tempDev;
   z.temp = tDev != null ? z3(tDev > 0.3 ? -(tDev - 0.3) / 0.25 : 0) : 0;
 
   const w = { hrv: 0.5, rhr: 0.2, sleep: 0.2, resp: 0.05, temp: 0.05 };
   if (hrv == null) { w.rhr += 0.3; w.hrv = 0; }
   const composite = w.hrv * z.hrv + w.rhr * z.rhr + w.sleep * z.sleep + w.resp * z.resp + w.temp * z.temp;
-  const score = clamp(Math.round(100 * normCdf(0.95 * composite + 0.25)), 1, 99);
+  // Mild: een gewone dag ≈ 60%. Streng: een gewone dag = 50% en afwijkingen tellen sterker (meer spreiding).
+  const score = clamp(Math.round(100 * normCdf(strict ? 1.1 * composite : 0.95 * composite + 0.25)), 1, 99);
 
   return {
     score, calibrating, z, weights: w, composite,
@@ -307,7 +316,7 @@ export function computeAll(days, strengthDoc, settings, profile) {
     };
     const entry = { date: day.date, raw: day, strain };
     entry.sleep = day.empty ? null : sleepMetrics(day, prev, settings, history);
-    entry.recovery = day.empty ? null : recoveryMetrics(day, entry.sleep, history);
+    entry.recovery = day.empty ? null : recoveryMetrics(day, entry.sleep, history, settings);
     entry.flag = flags[day.date] || null;
     entry.target = entry.flag === 'sick' ? [0, 6] : entry.flag === 'rest' ? [0, 9] : strainTarget(entry.recovery?.score);
     byDate[day.date] = entry;
