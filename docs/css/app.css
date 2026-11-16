@@ -951,3 +951,5 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .coach-row { flex-wrap: wrap; }
 .coach-chip { min-width: 0; max-width: 100%; }
 .coach-chip b, .coach-chip span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.livestamp.warn i { background: var(--yellow); }
+.livestamp[data-go] { cursor: pointer; text-decoration: underline; text-decoration-color: var(--text3); text-underline-offset: 3px; }

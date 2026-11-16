@@ -11,7 +11,22 @@ export class ApiError extends Error {
   constructor(msg, status, body) { super(msg); this.name = 'ApiError'; this.status = status; this.body = body; }
 }
 
-async function request(url, { method = 'GET', body, headers = {}, raw = false } = {}) {
+/** Tijdelijke fouten (te veel aanvragen, Google even overbelast, netwerk) automatisch opnieuw proberen. */
+async function request(url, opts = {}) {
+  const waits = [800, 2500];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await requestOnce(url, opts);
+    } catch (e) {
+      const transient = e instanceof ApiError && (e.status === 0 || e.status === 429 || e.status >= 500);
+      if (!transient || attempt >= waits.length || opts.method === 'PATCH' || opts.method === 'DELETE') throw e;
+      const ra = Number(e.retryAfter);
+      await new Promise((r) => setTimeout(r, ra > 0 && ra < 30 ? ra * 1000 : waits[attempt]));
+    }
+  }
+}
+
+async function requestOnce(url, { method = 'GET', body, headers = {}, raw = false } = {}) {
   const kind = /health\.googleapis\.com/.test(url) ? 'health' : 'drive';
   const t = getToken(kind);
   if (!t) throw new AuthError('Niet ingelogd of sessie verlopen.', kind);
@@ -46,8 +61,11 @@ async function request(url, { method = 'GET', body, headers = {}, raw = false } 
     else if (res.status === 403 && /SERVICE_DISABLED|has not been used|disabled/i.test(text)) msg = 'Deze Google-koppeling staat nog uit in je Cloud-project (stap 2 van Instellen).';
     else if (res.status === 403 && /DISALLOWED_OAUTH_SCOPES/.test(text)) msg = 'Google weigert de combinatie van toestemmingen. Log opnieuw in.';
     else if (res.status === 403 && /scope|insufficient/i.test(text)) msg = 'Toestemming ontbreekt. Log opnieuw in en vink alles aan (of controleer stap 5 van Instellen).';
+    if (res.status === 429) msg = 'Google vraagt even rustiger aan te doen (te veel aanvragen). Pulse probeert het zo opnieuw.';
+    else if (res.status >= 500) msg = `Google Health is even niet bereikbaar (${res.status}). Pulse probeert het zo opnieuw.`;
     const err = new ApiError(msg, res.status, text);
     err.raw = raw;
+    err.retryAfter = res.headers.get('retry-after');
     throw err;
   }
   if (raw) return res;

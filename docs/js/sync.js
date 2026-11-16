@@ -208,8 +208,8 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
   const out = {};
   for (const d of dates) {
     const prev = existing[d] || blankDay(d);
-    out[d] = { ...prev, exercises: [], naps: [], hrStart: parseYmd(d).getTime() };
-    delete out[d].sleep;
+    // Slaap en workouts pas vervangen als hun aanvraag gelukt is: een mislukte aanvraag mag niets wissen.
+    out[d] = { ...prev, exercises: prev.exercises || [], naps: prev.naps || [], hrStart: parseYmd(d).getTime() };
   }
 
   const step = async (label, fn) => {
@@ -282,6 +282,8 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
       const s = convertSleep(dp);
       if (s && out[s.endDate]) (per[s.endDate] ||= []).push(s);
     }
+    // Gelukt: nu pas oude slaap vervangen (of weghalen als Google hem echt niet meer heeft).
+    for (const d of Object.keys(out)) if (!per[d]) { delete out[d].sleep; out[d].naps = []; }
     for (const [date, list] of Object.entries(per)) {
       list.sort((a, b) => (b.main === true) - (a.main === true) || b.asleep - a.asleep);
       const [main, ...rest] = list;
@@ -293,10 +295,12 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
 
   tasks.push(step('Activiteiten', async () => {
     const pts = await listDataPoints('exercise', `exercise.interval.civil_start_time >= "${from}" AND exercise.interval.civil_start_time < "${toExcl}"`, 25, 20);
+    const per = {};
     for (const dp of pts) {
       const e = convertExercise(dp);
-      if (e && out[e.date]) out[e.date].exercises.push(e);
+      if (e && out[e.date]) (per[e.date] ||= []).push(e);
     }
+    for (const d of Object.keys(out)) out[d].exercises = per[d] || [];
     for (const d of Object.values(out)) d.exercises.sort((a, b) => a.start - b.start);
     return pts.length;
   }));
@@ -332,7 +336,8 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
     const endMs = parseYmd(addDays(d, 1)).getTime();
     try {
       // Incrementeel: alleen vanaf de laatst bekende minuut (−20 min marge) ophalen.
-      const prevHr = !full && existing[d]?.hr?.length ? existing[d].hr : null;
+      // Vandaag en gisteren altijd de hele dag opnieuw: zo vullen we gaten die Google later nog aanvult.
+      const prevHr = !full && d < addDays(end, -1) && existing[d]?.hr?.length ? existing[d].hr : null;
       let last = prevHr ? prevHr.length - 1 : -1;
       while (last > 0 && !prevHr[last]) last--;
       const fromMs = prevHr && last > 0 ? startMs + Math.max(0, last - 20) * 60000 : startMs;
@@ -340,6 +345,11 @@ export async function syncAll({ onProgress = () => {}, full = false, todayOnly =
       const r = convertHr(pts, startMs);
       if (prevHr && last > 0) {
         const merged = [...prevHr];
+        (r.hr || []).forEach((v, i) => { if (v) { while (merged.length <= i) merged.push(0); merged[i] = v; } });
+        out[d].hr = merged; out[d].hrMax = Math.max(existing[d].hrMax || 0, r.hrMax || 0) || null;
+      } else if (!full && existing[d]?.hr?.length) {
+        // Hele dag opnieuw opgehaald: samenvoegen, zodat een (tijdelijk) leeg antwoord niets wist.
+        const merged = [...existing[d].hr];
         (r.hr || []).forEach((v, i) => { if (v) { while (merged.length <= i) merged.push(0); merged[i] = v; } });
         out[d].hr = merged; out[d].hrMax = Math.max(existing[d].hrMax || 0, r.hrMax || 0) || null;
       } else { out[d].hr = r.hr; out[d].hrMax = r.hrMax; }
@@ -375,7 +385,8 @@ export async function syncHeartNow() {
   if (day.hr && day.hr.length) {
     let last = day.hr.length - 1;
     while (last > 0 && !day.hr[last]) last--;
-    from = Math.max(startMs, startMs + (last - 20) * 60000);
+    // 60 min marge: Google verwerkt hartslag soms met vertraging of in blokken.
+    from = Math.max(startMs, startMs + (last - 60) * 60000);
   }
   const pts = await fetchHrMinutes(from, Date.now() + 60000);
   const arr = day.hr ? [...day.hr] : [];
@@ -397,10 +408,18 @@ export async function syncHeartNow() {
  * Minuut-update: hartslag (incrementeel), stappen, zoneminuten en workouts van vandaag.
  * Licht genoeg om elke minuut te draaien (± 4 aanvragen).
  */
-export async function syncMinute() {
+export async function syncMinute({ light = false } = {}) {
   const { day } = await syncHeartNow();
   const d = day.date;
   const toExcl = addDays(d, 1);
+  // Om de minuut alleen hartslag + stappen; zoneminuten en workouts om de andere minuut (minder aanvragen).
+  if (light) {
+    const r = await Promise.allSettled([dailyRollUp('steps', d, toExcl).then((pts) => { for (const p of pts) if (dateOf(p.civilStartTime?.date) === d) day.steps = toNum(p.steps?.countSum); })]);
+    if (r[0].status === 'rejected' && r[0].reason instanceof AuthError) throw r[0].reason;
+    day.synced = Date.now();
+    await daysStore.put(day);
+    return { day, errors: r.filter((x) => x.status === 'rejected').map((x) => x.reason) };
+  }
   const tasks = [
     dailyRollUp('steps', d, toExcl).then((pts) => { for (const p of pts) if (dateOf(p.civilStartTime?.date) === d) day.steps = toNum(p.steps?.countSum); }),
     dailyRollUp('active-zone-minutes', d, toExcl).then((pts) => {
@@ -418,5 +437,5 @@ export async function syncMinute() {
   if (authErr) throw authErr.reason;
   day.synced = Date.now();
   await daysStore.put(day);
-  return day;
+  return { day, errors: res.filter((r) => r.status === 'rejected').map((r) => r.reason) };
 }

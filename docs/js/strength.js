@@ -329,7 +329,9 @@ export function computeLoads(sessions, settings) {
     const fracSets = {};
     const exs = [];
     // Hoe zwaar voelde de training (0–10)? 5 = normaal; zwaarder/lichter schaalt de spierbelasting.
-    const rpeF = s.rpe != null ? clamp(0.6 + 0.08 * s.rpe, 0.6, 1.4) : 1;
+    // Trainingsstijl "tot falen": zonder ingevulde zwaarte telt de training als RPE 9 (elke set tot falen).
+    const rpeUsed = s.rpe ?? (settings.style === 'hit' ? 9 : null);
+    const rpeF = rpeUsed != null ? clamp(0.6 + 0.08 * rpeUsed, 0.6, 1.4) : 1;
     for (const e of s.exercises || []) {
       const key = exKey(e.name);
       const lib = matchExercise(e.name, overrides);
@@ -353,7 +355,7 @@ export function computeLoads(sessions, settings) {
       }
       exs.push({ ...e, key, lib: lib.id, libName: lib.name, e1rm: est, ri, load: l, isPR: isPR && prevBest != null, firstTime: prevBest == null, sets });
     }
-    result[s.id] = { load, groups, hardSets, fracSets, exercises: exs, rpe: s.rpe ?? null, rpeFactor: rpeF };
+    result[s.id] = { load, groups, hardSets, fracSets, exercises: exs, rpe: s.rpe ?? null, rpeUsed, rpeDefault: s.rpe == null && rpeUsed != null, rpeFactor: rpeF };
   }
   return result;
 }

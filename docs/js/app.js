@@ -18,8 +18,10 @@ import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit' };
-const APP_VERSION = 'v49';
+const APP_VERSION = 'v50';
 const CHANGELOG = [
+  ['Betrouwbaarder bijwerken', 'Een mislukte aanvraag wist je slaap of workouts niet meer, gaten in je hartslag van vandaag worden later aangevuld, tijdelijke Google-fouten worden opnieuw geprobeerd, en de status bovenaan zegt wat er mis is (tik voor details).'],
+  ['Sets tellen als tot falen', 'Bij de stijl "laag volume, tot falen" telt een training zonder ingevulde zwaarte als RPE 9: je kracht weegt zo ±30% zwaarder in je strain.'],
   ['Afstand bij activiteiten', 'Bij wandelen, hardlopen, fietsen en zwemmen kun je de afstand invullen; de app rekent je snelheid uit en kiest bij wandelen, hardlopen en fietsen zelf de intensiteit.'],
   ['Jouw trainingsstijl', 'Laag volume tot falen met 2× upper + 1× lower: volume per spiergroep rekent nu met ±3–8 sets tot falen per week, het weekdoel is Upper 2× · Lower 1×, en de coach kiest het schema dat je deze week nog nodig hebt.'],
   ['Signaal overbelasting', 'Ligt je HRV meerdere dagen op rij onder je normaal (zeker bij hoge belasting), dan waarschuwt Vandaag en adviseert lichte dagen.'],
@@ -224,6 +226,8 @@ let tick = 0;
 let ticking = false;
 async function minuteTick({ quickOnly = false } = {}) {
   if (document.visibilityState !== 'visible' || store.isDemo() || S.syncing || ticking) { softRender(); return; }
+  // Vroeg Google om rustiger aan te doen? Even pauzeren in plaats van blijven aandringen.
+  if (S.pauseUntil && Date.now() < S.pauseUntil) { softRender(); return; }
   if (!auth.getToken('health')) {
     // Sleutel verlopen (na ~1 uur): stil vernieuwen (kort Google-scherm, daarna terug).
     if (auth.hasEverLoggedIn() && auth.getClientId() && auth.canTrySilent('health') && !isSheetOpen() && !document.activeElement?.matches?.('input,textarea,select')) auth.login({ silent: true });
@@ -235,20 +239,27 @@ async function minuteTick({ quickOnly = false } = {}) {
   S.tickState = 'busy';
   updateLiveStamp();
   try {
-    if (!quickOnly && tick % 5 === 0) {
-      // Elke 5 minuten: alles van vandaag (slaap, HRV, rusthartslag, …) + krachtlog uit Drive.
+    if (!quickOnly && tick % 10 === 0) {
+      // Elke 10 minuten: alles van vandaag (slaap, HRV, rusthartslag, hele dag hartslag om gaten te vullen) + krachtlog uit Drive.
       await runSync({ quiet: true, todayOnly: true });
+      S.tickError = (S.syncLog?.log || []).find((l) => !l.ok)?.error || null;
     } else {
-      const day = await syncMinute();
+      const { day, errors } = await syncMinute({ light: !quickOnly && tick % 2 === 1 });
       const i = S.days.findIndex((d) => d.date === day.date);
       if (i >= 0) S.days[i] = { ...S.days[i], ...day }; else S.days.push(day);
       recompute();
+      S.tickError = errors[0]?.message || null;
+      if (errors.some((x) => x?.status === 429)) S.pauseUntil = Date.now() + 3 * 60000;
     }
     S.liveTickAt = Date.now();
-    S.tickState = 'ok';
+    if (S.tickError) S.tickErrorAt = Date.now();
+    S.tickState = S.tickError ? 'warn' : 'ok';
   } catch (e) {
     console.warn('minuut-sync', e);
     S.tickState = 'error';
+    S.tickError = e.message;
+    S.tickErrorAt = Date.now();
+    if (e?.status === 429) S.pauseUntil = Date.now() + 3 * 60000;
     if (e instanceof AuthError && auth.canTrySilent('health') && !isSheetOpen()) { auth.login({ silent: true }); return; }
   } finally {
     ticking = false;
@@ -260,8 +271,9 @@ async function minuteTick({ quickOnly = false } = {}) {
 function liveStampHtml() {
   if (store.isDemo() || !auth.hasEverLoggedIn()) return '';
   const at = S.liveTickAt || S.lastSyncAt;
-  const st = S.tickState === 'busy' ? 'busy' : S.tickState === 'error' ? 'err' : auth.getToken('health') ? 'ok' : 'idle';
-  return `<span class="livestamp ${st}" data-livestamp><i></i>${st === 'busy' ? 'Bijwerken…' : st === 'err' ? 'Offline' : at ? `Bijgewerkt ${fmtTime(at)}` : 'Live'}</span>`;
+  const st = S.tickState === 'busy' ? 'busy' : S.tickState === 'error' ? 'err' : S.tickState === 'warn' ? 'warn' : auth.getToken('health') ? 'ok' : 'idle';
+  const errTxt = /Netwerkfout/.test(S.tickError || '') ? 'Geen verbinding' : S.pauseUntil && Date.now() < S.pauseUntil ? 'Even gepauzeerd' : 'Bijwerken mislukt';
+  return `<span class="livestamp ${st}" data-livestamp ${st === 'err' || st === 'warn' ? 'data-go="#/settings" role="button"' : ''}><i></i>${st === 'busy' ? 'Bijwerken…' : st === 'err' ? `${errTxt} · tik` : st === 'warn' ? `Bijgewerkt ${fmtTime(at)} · deels` : at ? `Bijgewerkt ${fmtTime(at)}` : 'Live'}</span>`;
 }
 function updateLiveStamp() { document.querySelectorAll('[data-livestamp]').forEach((el) => { el.outerHTML = liveStampHtml(); }); }
 
@@ -1499,7 +1511,7 @@ function viewSession(id) {
     const hw = sm?.hrWindow || (sm?.activity ? { avg: sm.activity.avgHr, max: sm.activity.maxHr } : null);
     return `<div class="stats three mt">
       ${stat('Tijd', s.start ? fmtTime(s.start) : '–', '', s.duration ? fmtDur(s.duration) : 'duur onbekend')}
-      ${stat('Zwaarte', s.rpe != null ? s.rpe : '–', s.rpe != null ? '/10' : '', s.rpe != null ? `×${num(r.rpeFactor, 2)} op belasting` : 'niet ingevuld')}
+      ${stat('Zwaarte', r.rpeUsed != null ? r.rpeUsed : '–', r.rpeUsed != null ? '/10' : '', r.rpeDefault ? 'standaard: tot falen' : s.rpe != null ? `×${num(r.rpeFactor, 2)} op belasting` : 'niet ingevuld')}
       ${stat('Hartslag', hw?.avg ? num(hw.avg) : '–', hw?.avg ? 'bpm' : '', hw?.max ? `max ${num(hw.max)}` : 'geen meting')}
     </div>`;
   })()}
@@ -1619,8 +1631,8 @@ function viewLog(id, presetDate) {
   </div>
   <div class="list-header">Hoe zwaar voelde de training?</div>
   <div class="card flat rpe">
-    <div class="rpe-top"><span class="rpe-v" data-lrpe-v>${d.rpe ?? '–'}</span><span class="rpe-l" data-lrpe-l>${d.rpe != null ? RPE_LABELS[d.rpe] : 'Sleep om in te vullen (5 = normaal)'}</span></div>
-    <input type="range" min="0" max="10" step="1" value="${d.rpe ?? 5}" id="log-rpe" class="slider${d.rpe == null ? ' unset' : ''}">
+    <div class="rpe-top"><span class="rpe-v" data-lrpe-v>${d.rpe ?? '–'}</span><span class="rpe-l" data-lrpe-l>${d.rpe != null ? RPE_LABELS[d.rpe] : (S.settings.style || 'hit') === 'hit' ? 'Niet ingevuld = 9 (tot falen). Alleen aanpassen als het lichter was.' : 'Sleep om in te vullen (5 = normaal)'}</span></div>
+    <input type="range" min="0" max="10" step="1" value="${d.rpe ?? ((S.settings.style || 'hit') === 'hit' ? 9 : 5)}" id="log-rpe" class="slider${d.rpe == null ? ' unset' : ''}">
     <div class="rpe-scale"><span>0 rust</span><span>5 normaal zwaar</span><span>10 max</span></div>
   </div>
   <p class="small muted mt">Noteer alleen je topset. Leeg = je vorige topset (grijs). Bodyweight: zet “BW” in de naam; extra gewicht (bijv. dips +20) vul je in als kg.</p>
@@ -1738,6 +1750,7 @@ function viewSettings() {
     <button class="row tap" data-go="#/live"><div class="badge" style="background:var(--hr)">${I.heart}</div><div class="grow"><div class="title">Live hartslag</div><div class="sub">${liveState.state === 'live' ? `realtime via ${esc(liveState.deviceName || 'Bluetooth')}` : 'elke minuut ververst · Bluetooth voor realtime'}</div></div><span class="chev">${I.chev}</span></button>
     <button class="row tap" data-act="drive-login"><div class="badge" style="background:var(--green)">${I.upload}</div><div class="grow"><div class="title">Back-up krachtlog (Google Drive)</div><div class="sub">${auth.getToken('drive') ? 'verbonden' : 'tik om te verbinden'}</div></div></button>` : ''}
   </div>
+  ${S.tickError ? `<div class="list-header">Laatste minuut-update</div><div class="list"><div class="row"><div class="grow"><div class="title" style="font-size:15px">${S.tickState === 'warn' ? 'Deels gelukt' : 'Mislukt'}${S.tickErrorAt ? ` · ${fmtTime(S.tickErrorAt)}` : ''}</div><div class="sub" style="color:var(--red);white-space:normal">${esc(S.tickError)}</div></div><button class="btn small" data-act="sync">Opnieuw</button></div></div>` : ''}
   ${log ? `<div class="list-header">Laatste synchronisatie</div><div class="list">${log.log.map((l) => `<div class="row"><div class="grow"><div class="title" style="font-size:15px">${esc(l.label)}</div>${l.error ? `<div class="sub" style="color:var(--red);white-space:normal">${esc(l.status ? `${l.status}: ` : '')}${esc(l.error)}</div>` : ''}</div><div class="val">${l.ok ? `<span class="up">${I.check.replace('<svg', '<svg width="16" height="16"')}</span> ${l.count ?? ''}` : '<span class="down">mislukt</span>'}</div></div>`).join('')}</div><div class="list-footer">${new Date(log.at).toLocaleString('nl-NL')} · ${log.from} t/m ${log.to} · ${Math.round(log.ms / 1000)} s</div>` : ''}
 
   <div class="list-header">Persoonlijk</div>

@@ -131,3 +131,14 @@ test('coach: weekschema 2× upper + 1× lower geeft voorrang aan wat nog nodig i
   assert.equal(recommendTraining({ ...base, weekNeed: { upper: 2, lower: 0 } }).template.id, 'u');
   assert.match(recommendTraining({ ...base, weekNeed: { upper: 0, lower: 1 } }).reason, /Lower nog 1× deze week/);
 });
+
+test('stijl tot falen: training zonder RPE telt als 9 (±32% zwaarder)', async () => {
+  const { computeLoads } = await import('../docs/js/strength.js');
+  const s = [{ id: 'a', date: '2026-11-01', exercises: [{ name: 'Hack squat', weight: 75, reps: 6, sets: 2 }] }];
+  const plain = computeLoads(s, { defaultSets: 2 }).a;
+  const hit = computeLoads(s, { defaultSets: 2, style: 'hit' }).a;
+  assert.ok(Math.abs(hit.load / plain.load - 1.32) < 0.001);
+  assert.equal(hit.rpeDefault, true);
+  const own = computeLoads([{ ...s[0], rpe: 6 }], { defaultSets: 2, style: 'hit' }).a;
+  assert.equal(own.rpeUsed, 6);
+});
