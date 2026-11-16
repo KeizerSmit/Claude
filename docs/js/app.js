@@ -328,13 +328,18 @@ function updateProgress() {
 // ---------------------------------------------------------------- ui helpers
 
 let toastTimer;
+/** Melding bovenin, zoals iOS (AirPods/stil-modus-banner), met een passend icoontje. */
 function toast(msg) {
   let el = document.querySelector('.toast');
-  if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
-  el.textContent = msg;
+  if (!el) { el = document.createElement('div'); el.className = 'toast glass'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  const bad = /mislukt|fout|niet |geen |verlopen|offline/i.test(msg);
+  el.classList.toggle('bad', bad);
+  el.innerHTML = `<span class="toast-ic">${bad ? I.info : I.check}</span><span class="toast-t">${esc(msg)}</span>`;
+  el.classList.remove('show');
+  void el.offsetWidth;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
 function navbar(title, back = '#/today', right = '') {
@@ -1661,7 +1666,8 @@ function viewLog(id, presetDate) {
     <div class="row"><div class="grow">Datum</div><input type="date" id="log-date" value="${esc(d.date || '')}" max="${today()}"></div>
     <div class="row"><div class="grow">Naam</div><input type="text" id="log-name" value="${esc(d.name || '')}" placeholder="bijv. Upper 6"></div>
   </div>
-  ${isNew ? `<div class="chips">${tpls.map((t) => `<button class="chip${d.templateId === t.id ? ' on' : ''}" data-act="use-template" data-id="${t.id}">${esc(t.name)}</button>`).join('')}${recentNames.map((c) => `<button class="chip" data-act="chip-name" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
+  ${isNew && tpls.length ? `<div class="segmented mt">${tpls.slice(0, 4).map((t) => `<button class="${d.templateId === t.id ? 'on' : ''}" data-act="use-template" data-id="${t.id}">${esc(t.name)}</button>`).join('')}</div>` : ''}
+  ${isNew && (recentNames.length || tpls.length > 4) ? `<div class="chips">${tpls.slice(4).map((t) => `<button class="chip${d.templateId === t.id ? ' on' : ''}" data-act="use-template" data-id="${t.id}">${esc(t.name)}</button>`).join('')}${recentNames.map((c) => `<button class="chip" data-act="chip-name" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
   ${S.draftRestored ? `<div class="card flat small" style="display:flex;align-items:center;gap:10px">Je onafgemaakte training is teruggezet.<button class="link-btn" data-act="discard-draft" style="margin-left:auto">Weggooien</button></div>` : ''}
   ${fromTpl ? `<p class="small muted" style="margin:0 2px 8px">Vink af wat je gedaan hebt en pas gewicht/reps aan als je verbeterd bent. <span data-done-count>${doneCount} afgevinkt.</span></p>` : ''}
   <div class="list" id="ex-list">

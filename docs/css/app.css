@@ -960,3 +960,36 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .stale-card .sub { font-size: 13px; color: var(--text2); margin-top: 2px; }
 .sheet ol li { margin-bottom: 8px; }
 .row .sub { white-space: normal; }
+
+/* ======================================================================
+   v7 — iOS-getrouwheid
+   ====================================================================== */
+
+/* Meldingen bovenin (iOS-banner) in plaats van een Android-'snackbar' onderin. */
+.toast { top: calc(env(safe-area-inset-top, 0px) + 10px); bottom: auto !important; left: 50%; transform: translate(-50%, -140%) scale(.92); display: flex; align-items: center; gap: 9px; padding: 11px 18px 11px 12px; border-radius: 999px; font-size: 15px; font-weight: 600; opacity: 0; transition: transform .45s cubic-bezier(.2, 1.25, .35, 1), opacity .25s ease; z-index: 200; max-width: min(360px, calc(100% - 32px)); white-space: nowrap; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.toast-ic { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--green); color: #fff; flex-shrink: 0; }
+.toast-ic svg { width: 14px; height: 14px; stroke-width: 3; }
+.toast.bad .toast-ic { background: var(--yellow); color: #000; }
+.toast-t { overflow: hidden; text-overflow: ellipsis; }
+
+/* Knoppen: iOS 'tinted' in plaats van volle Material-knoppen. */
+.btn.small { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); border-radius: 999px; padding: 6px 15px; font-size: 15px; font-weight: 600; box-shadow: none; }
+.btn.small.ghost { background: var(--track); color: var(--text); }
+.btn.secondary { background: color-mix(in srgb, var(--accent) 13%, transparent) !important; color: var(--accent); box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border-radius: 14px; padding: 13px 16px; font-weight: 600; }
+.btn.danger { background: color-mix(in srgb, var(--red) 13%, transparent); color: var(--red); border-radius: 14px; }
+.btn { border-radius: 14px; }
+.btn:active, .btn.small:active { opacity: .6; transform: none; }
+
+/* Invoer in je training: gewone iOS-regels i.p.v. grijze Android-vakken. */
+.ex-edit input { background: transparent; border-radius: 0; padding: 8px 2px; font-size: 17px; }
+.ex-edit input.num { text-align: right; color: var(--accent); font-weight: 600; font-family: var(--font-round); }
+.ex-edit input::placeholder { color: var(--text3); font-weight: 500; }
+.ex-edit input:focus { background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 8px; }
+.ex-edit input[data-f="name"] { text-align: left; }
+
+/* Keuzelijsten: iOS-pijltjes (⌃⌄) en geen Android-driehoekje. */
+.row select { -webkit-appearance: none; appearance: none; padding-right: 18px; color: var(--text2); background: no-repeat right center / 10px 14px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 14' fill='none' stroke='%238e8e93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 5l3-3 3 3M2 9l3 3 3-3'/%3E%3C/svg%3E"); }
+.btn.small:not(.secondary):not(.danger):not(.gbtn) { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); box-shadow: none; }
+.btn.small.ghost:not(.secondary):not(.danger):not(.gbtn) { background: var(--track); color: var(--text); }
+.toast.glass { position: fixed; }
