@@ -18,8 +18,9 @@ import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit' };
-const APP_VERSION = 'v50';
+const APP_VERSION = 'v51';
 const CHANGELOG = [
+  ['Melding als je Fitbit niet synchroniseert', 'Krijgt Google al uren niets nieuws van je tracker, dan zegt Vandaag dat en hoe je het oplost.'],
   ['Betrouwbaarder bijwerken', 'Een mislukte aanvraag wist je slaap of workouts niet meer, gaten in je hartslag van vandaag worden later aangevuld, tijdelijke Google-fouten worden opnieuw geprobeerd, en de status bovenaan zegt wat er mis is (tik voor details).'],
   ['Sets tellen als tot falen', 'Bij de stijl "laag volume, tot falen" telt een training zonder ingevulde zwaarte als RPE 9: je kracht weegt zo ±30% zwaarder in je strain.'],
   ['Afstand bij activiteiten', 'Bij wandelen, hardlopen, fietsen en zwemmen kun je de afstand invullen; de app rekent je snelheid uit en kiest bij wandelen, hardlopen en fietsen zelf de intensiteit.'],
@@ -474,6 +475,49 @@ function latestHr() {
   return { bpm: day.hr[i], at: day.hrStart + i * 60000, source: 'sync', day, idx: i };
 }
 
+/** Tijdstip van de nieuwste hartslagminuut die Google van je tracker heeft (over alle dagen). */
+function lastDataAt() {
+  const days = [...S.days].filter((d) => d.hr?.length).sort((a, b) => (a.date < b.date ? 1 : -1));
+  for (const d of days.slice(0, 4)) {
+    let i = d.hr.length - 1;
+    while (i >= 0 && !d.hr[i]) i--;
+    if (i >= 0) return d.hrStart + i * 60000;
+  }
+  return null;
+}
+
+/**
+ * Pulse werkt, maar Google krijgt niets nieuws van je Fitbit (de Fitbit/Google Health-app synchroniseert niet).
+ * Alleen tonen als Pulse zelf recent gelukt is, anders is het een Pulse-probleem.
+ */
+function trackerStaleCard() {
+  if (store.isDemo() || !auth.hasEverLoggedIn()) return '';
+  const pulseOk = S.tickState !== 'error' && ((S.liveTickAt && Date.now() - S.liveTickAt < 15 * 60000) || (S.lastSyncAt && Date.now() - S.lastSyncAt < 30 * 60000));
+  const at = lastDataAt();
+  if (!pulseOk || !at || Date.now() - at < 3 * 3600000) return '';
+  const d = new Date(at);
+  const when = ymd(d) === today() ? `vandaag ${fmtTime(at)}` : ymd(d) === addDays(today(), -1) ? `gisteren ${fmtTime(at)}` : `${fmtDateShort(ymd(d))} ${fmtTime(at)}`;
+  return `<button class="card stale-card" data-sheet="stale">
+    <div class="badge" style="background:var(--yellow);color:#000">${I.sync}</div>
+    <div class="grow"><div class="title">Je Fitbit stuurt niets door</div><div class="sub">Nieuwste data: ${when}. Pulse werkt, maar Google heeft niets nieuws van je tracker. Tik voor de oplossing.</div></div>
+    <span class="chev">${I.chev}</span></button>`;
+}
+
+function staleSheet() {
+  return `<div class="sh-head"><div class="eyebrow">Fitbit synchroniseert niet</div><h2>Zo krijg je je data weer binnen</h2></div>
+  <div class="card flat mt small">
+    <p style="margin-top:0">Pulse haalt alles bij Google op. Je Fitbit Air stuurt zijn data via de <b>Google Health-app</b> (de Fitbit-app) op je iPhone naar Google. Blijft die app hangen op "Gegevens laden…", dan komt er niets nieuws binnen — ook niet in Pulse.</p>
+    <ol style="padding-left:20px;margin:0">
+      <li><b>Open de Google Health-app</b> en trek omlaag om te synchroniseren. Laat hem een minuut openstaan, dicht bij je tracker.</li>
+      <li>Blijft hij hangen: <b>sluit de app helemaal af</b> (omhoog vegen in de appkiezer) en open hem opnieuw.</li>
+      <li>Controleer <b>Bluetooth</b> (aan in Instellingen, niet alleen in het bedieningspaneel) en zet <b>Energiebesparingsmodus</b> uit — die blokkeert synchroniseren op de achtergrond.</li>
+      <li>Instellingen → Google Health/Fitbit: <b>Ververs op achtergrond</b> aan en Bluetooth toegestaan.</li>
+      <li>Nog steeds niets: <b>herstart je iPhone</b>. Kijk ook of er een update van de app is.</li>
+    </ol>
+    <p style="margin-bottom:0">Ontkoppel je tracker niet als eerste stap: data die nog op de tracker staat kan dan verloren gaan. Zodra de Google Health-app weer gesynchroniseerd is, haalt Pulse alles binnen een paar minuten op — ook je slaap en herstel van vannacht.</p>
+  </div>`;
+}
+
 function ageText(ms) {
   const s = Math.max(0, (Date.now() - ms) / 1000);
   if (s < 90) return 'zojuist';
@@ -610,6 +654,7 @@ function viewToday(date) {
   ${syncHeader()}
   ${S.syncError ? `<div class="card small" style="color:var(--red)">${esc(S.syncError)} <a href="#" data-act="relogin">Opnieuw inloggen</a></div>` : ''}
   ${t ? syncProblemCard() : ''}
+  ${t ? trackerStaleCard() : ''}
   ${weekStrip(date)}
   <div data-swipe data-base="#/today" data-date="${date}">
   ${rings}
@@ -692,6 +737,7 @@ function openSheetFor(spec) {
   else if (kind === 'volume') openSheet(volumeAboutSheet());
   else if (kind === 'goals') openSheet(goalsSheet());
   else if (kind === 'forecast') openSheet(forecastAboutSheet());
+  else if (kind === 'stale') openSheet(staleSheet());
   else if (kind === 'manual') openActivityLog({ id: rest[0] });
 }
 

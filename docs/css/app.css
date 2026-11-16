@@ -953,3 +953,9 @@ html:root[data-palette="cb"][data-theme="light"] { --green: #1f7fc4; --yellow: #
 .coach-chip b, .coach-chip span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .livestamp.warn i { background: var(--yellow); }
 .livestamp[data-go] { cursor: pointer; text-decoration: underline; text-decoration-color: var(--text3); text-underline-offset: 3px; }
+.stale-card { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; font: inherit; color: var(--text); cursor: pointer; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--yellow) 60%, transparent); }
+.stale-card .badge { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; }
+.stale-card .badge svg { width: 19px; height: 19px; }
+.stale-card .title { font-weight: 600; }
+.stale-card .sub { font-size: 13px; color: var(--text2); margin-top: 2px; }
+.sheet ol li { margin-bottom: 8px; }
