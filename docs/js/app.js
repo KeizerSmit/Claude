@@ -508,13 +508,13 @@ function staleSheet() {
   <div class="card flat mt small">
     <p style="margin-top:0">Pulse haalt alles bij Google op. Je Fitbit Air stuurt zijn data via de <b>Google Health-app</b> (de Fitbit-app) op je iPhone naar Google. Blijft die app hangen op "Gegevens laden…", dan komt er niets nieuws binnen — ook niet in Pulse.</p>
     <ol style="padding-left:20px;margin:0">
+      <li><b>Herstart je tracker</b>: leg hem op de oplader en houd het knopje achter op de oplader ±10 seconden ingedrukt tot het lampje wit knippert. Dit wist geen data en lost een vastgelopen tracker meestal meteen op.</li>
       <li><b>Open de Google Health-app</b> en trek omlaag om te synchroniseren. Laat hem een minuut openstaan, dicht bij je tracker.</li>
-      <li>Blijft hij hangen: <b>sluit de app helemaal af</b> (omhoog vegen in de appkiezer) en open hem opnieuw.</li>
-      <li>Controleer <b>Bluetooth</b> (aan in Instellingen, niet alleen in het bedieningspaneel) en zet <b>Energiebesparingsmodus</b> uit — die blokkeert synchroniseren op de achtergrond.</li>
-      <li>Instellingen → Google Health/Fitbit: <b>Ververs op achtergrond</b> aan en Bluetooth toegestaan.</li>
-      <li>Nog steeds niets: <b>herstart je iPhone</b>. Kijk ook of er een update van de app is.</li>
+      <li>Nog steeds niets: <b>sluit de app helemaal af</b>, zet <b>Energiebesparingsmodus</b> uit en controleer <b>Bluetooth</b> (in Instellingen, niet alleen in het bedieningspaneel).</li>
+      <li>Daarna pas: <b>herstart je iPhone</b> of installeer de app opnieuw (je data zit aan je account, niet aan de app).</li>
     </ol>
-    <p style="margin-bottom:0">Ontkoppel je tracker niet als eerste stap: data die nog op de tracker staat kan dan verloren gaan. Zodra de Google Health-app weer gesynchroniseerd is, haalt Pulse alles binnen een paar minuten op — ook je slaap en herstel van vannacht.</p>
+    <p><b>Druk niet op "Vervangen"</b> en verwijder je tracker niet uit de app zolang een herstart nog kan helpen: dan kan data die nog op de tracker staat (zoals je slaap) verloren gaan.</p>
+    <p style="margin-bottom:0">Zodra de Google Health-app weer gesynchroniseerd is, haalt Pulse alles binnen een paar minuten op — ook je slaap en herstel van vannacht.</p>
   </div>`;
 }
 
