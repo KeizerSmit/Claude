@@ -20,6 +20,7 @@ import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit', strictness: 'streng' };
 const APP_VERSION = 'v57';
 const CHANGELOG = [
+  ['Hockey', 'Hockey staat nu tussen de activiteiten.'],
   ['Ziekteperiode', 'Markeer in één keer dat je al sinds maandag ziek bent, en zet "Ik ben nog steeds ziek" aan: elke nieuwe dag telt dan vanzelf mee tot je op "Ik ben beter" tikt.'],
   ['Meer iPhone-gevoel', 'Veeg vanaf de linkerrand om terug te gaan, voel een tikje bij afvinken, opslaan en wisselen, en druk lang op een training, activiteit of schema voor een menu (bewerken, kopiëren naar vandaag, verwijderen). Meldingen verschijnen nu bovenin, en knoppen en invoervelden zijn in iOS-stijl.'],
   ['Strengere scores', 'Herstel en slaap zijn nu streng zoals WHOOP: een gewone dag is ±50% (was ±60%), je hebt ±93% van je slaapbehoefte nodig voor een neutrale slaapscore, en slaapschuld en zware dagen verhogen je behoefte flink. Terug naar mild kan in Profiel.'],

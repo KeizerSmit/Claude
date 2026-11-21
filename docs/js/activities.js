@@ -59,6 +59,7 @@ const T = [
   ['tennis', 'Tennis', 'sport', 5.0, 6.5, 8.0, 'racket'],
   ['badminton', 'Badminton / squash', 'sport', 5.5, 7.0, 9.0, 'racket'],
   ['voetbal', 'Voetbal', 'sport', 6.0, 7.0, 10.0, 'ball'],
+  ['hockey', 'Hockey', 'sport', 5.0, 7.8, 9.5, 'ball'],
   ['basketbal', 'Basketbal', 'sport', 6.0, 6.5, 8.0, 'ball'],
   ['boulderen', 'Boulderen / klimmen', 'sport', 5.8, 7.0, 8.8, 'mountain'],
   ['vechtsport', 'Vechtsport / boksen', 'sport', 5.0, 7.0, 10.3, 'flame'],
