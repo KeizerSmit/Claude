@@ -165,3 +165,18 @@ test('niet fit: uit de baseline, strain-doel max 10, coach traint licht', async 
   assert.match(r.reason, /niet tot falen/);
   assert.equal(recommendTraining({ templates, sessions: [], fatigue: {}, recovery: 20, today: d, settings: SET, flag: 'unwell' }).kind, 'rest');
 });
+
+test('deload: telt als belasting, maar verandert topset, PR en voortgang niet', async () => {
+  const { computeLoads, currentSet, exerciseHistory } = await import('../docs/js/strength.js');
+  const sessions = [
+    { id: 'a', date: '2026-11-10', name: 'Lower', exercises: [{ name: 'Hack squat', weight: 100, reps: 6, sets: 2 }] },
+    { id: 'b', date: '2026-11-21', name: 'Lower', deload: true, exercises: [{ name: 'Hack squat', weight: 60, reps: 6, sets: 2 }] },
+    { id: 'c', date: '2026-11-28', name: 'Lower', exercises: [{ name: 'Hack squat', weight: 102.5, reps: 6, sets: 2 }] },
+  ];
+  const L = computeLoads(sessions, { defaultSets: 2, style: 'hit' });
+  assert.ok(L.b.load > 0 && L.b.load < L.a.load, 'deload telt licht mee');
+  assert.equal(L.b.exercises[0].isPR, false);
+  assert.equal(L.c.exercises[0].isPR, true, 'eerste echte training na deload vergelijkt met 100 kg, niet 60');
+  assert.equal(currentSet({ sessions: sessions.slice(0, 2) }, 'Hack squat').weight, 100, 'laatste topset blijft 100 kg');
+  assert.deepEqual(exerciseHistory(sessions, 'hack squat', {}).map((h) => h.weight), [100, 102.5]);
+});

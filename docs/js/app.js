@@ -18,8 +18,9 @@ import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit', strictness: 'streng' };
-const APP_VERSION = 'v59';
+const APP_VERSION = 'v60';
 const CHANGELOG = [
+  ['Deload', 'Zet bij een training "Deload" aan: lichtere gewichten tellen mee voor je belasting, maar worden niet je nieuwe topset en veranderen je PR\'s, krachtindex en voortgang niet.'],
   ['Niet fit', 'Naast "ziek" kun je nu "niet fit" kiezen (keelpijn, verkouden, slecht herstel): telt niet mee in je baseline, maar de coach laat je licht trainen in plaats van rust voor te schrijven.'],
   ['Hockey', 'Hockey staat nu tussen de activiteiten.'],
   ['Ziekteperiode', 'Markeer in één keer dat je al sinds maandag ziek bent, en zet "Ik ben nog steeds ziek" aan: elke nieuwe dag telt dan vanzelf mee tot je op "Ik ben beter" tikt.'],
@@ -1241,7 +1242,7 @@ function setsPerGroup(from, to) {
 
 /** Krachtindex: mediane verhouding (beste e1RM tot dan / eerste e1RM) over al je oefeningen, per week. */
 function strengthIndex(weeks = 16) {
-  const sess = S.strength.sessions.filter((x) => !x.deleted && x.date).sort((a, b) => (a.date < b.date ? -1 : 1));
+  const sess = S.strength.sessions.filter((x) => !x.deleted && !x.deload && x.date).sort((a, b) => (a.date < b.date ? -1 : 1));
   const first = {}, best = {}, count = {};
   for (const x of sess) for (const e of S.computed.loads[x.id]?.exercises || []) if (e.e1rm) count[e.key] = (count[e.key] || 0) + 1;
   const keys = new Set(Object.keys(count).filter((k) => count[k] >= 3));
@@ -1532,7 +1533,7 @@ let PREV_CACHE = null;
 function sessionsBefore(sess) {
   const k = `${sess.id}|${S.strength.updatedAt}`;
   if (PREV_CACHE?.k === k) return PREV_CACHE.v;
-  const v = S.strength.sessions.filter((x) => !x.deleted && x.date && x.id !== sess.id && (x.date < sess.date || (x.date === sess.date && (x.createdAt || 0) < (sess.createdAt || 0))))
+  const v = S.strength.sessions.filter((x) => !x.deleted && !x.deload && x.date && x.id !== sess.id && (x.date < sess.date || (x.date === sess.date && (x.createdAt || 0) < (sess.createdAt || 0))))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
   PREV_CACHE = { k, v };
   return v;
@@ -1578,13 +1579,13 @@ function workoutSummarySheet(id) {
   const top = Object.entries(r.groups).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([g]) => GROUPS[g]);
   const m = M(s.date);
   const tgt = m?.target;
-  const headline = prs.length ? `${prs.length} ${prs.length === 1 ? 'record' : 'records'}!` : up > down ? 'Sterker dan vorige keer' : up === 0 && down === 0 ? 'Training bewaard' : down > up ? 'Zwaardere dag' : 'Stabiel';
+  const headline = s.deload ? 'Deload gedaan' : prs.length ? `${prs.length} ${prs.length === 1 ? 'record' : 'records'}!` : up > down ? 'Sterker dan vorige keer' : up === 0 && down === 0 ? 'Training bewaard' : down > up ? 'Zwaardere dag' : 'Stabiel';
   return `<div class="wo-sum">
     <div class="wo-badge">${prs.length ? '🏆' : I.check}</div>
     <div class="eyebrow center">${esc(s.name || 'Training')} · ${esc(fmtDateShort(s.date))}</div>
     <h2 class="center">${headline}</h2>
     <div class="stats three mt">
-      ${stat('Beter', up, '', `${same} gelijk · ${down} lager`)}
+      ${s.deload ? stat('Oefeningen', r.exercises.length, '', 'licht gedaan') : stat('Beter', up, '', `${same} gelijk · ${down} lager`)}
       ${stat('Spierbelasting', num(r.load, 1), '', pl ? `${r.load >= pl ? '▲' : '▼'} ${num(Math.abs((r.load / pl - 1) * 100), 0)}% vs vorige` : 'eerste keer')}
       ${stat('Dag-strain', m?.strain ? fmtStrain(m.strain.score) : '–', '', tgt ? `doel ${fmtStrain(tgt[0])}–${fmtStrain(tgt[1])}` : '')}
     </div>
@@ -1626,7 +1627,8 @@ function viewSession(id) {
   const sess = m?.strain?.sessions?.find((x) => x.id === id);
   return `${navbar(s.name || 'Training', '#/strength', `<button class="nav-pill glass" data-go="#/log/${id}">Wijzig</button>`)}
   <div class="content fade-in">
-  ${largeTitle(s.name || 'Training', s.date ? fmtDateLong(s.date) : 'Geen datum')}
+  ${largeTitle(s.name || 'Training', `${s.date ? fmtDateLong(s.date) : 'Geen datum'}${s.deload ? ' · deload' : ''}`)}
+  ${s.deload ? '<div class="card flat small muted" style="padding:10px 14px">Deload-training: telt mee voor je belasting, maar niet voor je topsets, PR\'s of voortgang.</div>' : ''}
   <div class="stats">
     ${(() => { const pv = s.date ? prevSameSession(s) : null; const pl = pv ? S.computed.loads[pv.id]?.load : null; return stat('Spierbelasting', num(r.load, 1), '', pl ? `${r.load >= pl ? '▲' : '▼'} ${num(Math.abs((r.load / pl - 1) * 100), 0)}% vs ${fmtDateShort(pv.date)}` : `+${num(r.load * 3.2)} strain-punten`); })()}
     ${stat('Dag-strain', m ? fmtStrain(m.strain.score) : '–', '', sess?.activity ? `cardio tijdens training ${fmtStrain(sess.activity.strain)}` : '')}
@@ -1738,6 +1740,7 @@ function viewLog(id, presetDate) {
   <div class="list">
     <div class="row"><div class="grow">Datum</div><input type="date" id="log-date" value="${esc(d.date || '')}" max="${today()}"></div>
     <div class="row"><div class="grow">Naam</div><input type="text" id="log-name" value="${esc(d.name || '')}" placeholder="bijv. Upper 6"></div>
+    <div class="row"><div class="grow"><div class="title">Deload</div><div class="sub">lichtere week: telt mee als belasting, maar je PR's en topsets blijven staan</div></div><label class="switch"><input type="checkbox" id="log-deload" ${d.deload ? 'checked' : ''}><span></span></label></div>
   </div>
   ${isNew && tpls.length ? `<div class="segmented mt">${tpls.slice(0, 4).map((t) => `<button class="${d.templateId === t.id ? 'on' : ''}" data-act="use-template" data-id="${t.id}">${esc(t.name)}</button>`).join('')}</div>` : ''}
   ${isNew && (recentNames.length || tpls.length > 4) ? `<div class="chips">${tpls.slice(4).map((t) => `<button class="chip${d.templateId === t.id ? ' on' : ''}" data-act="use-template" data-id="${t.id}">${esc(t.name)}</button>`).join('')}${recentNames.map((c) => `<button class="chip" data-act="chip-name" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}
@@ -1780,7 +1783,7 @@ function exRow(e, i) {
   if (e.fixed && e.name) {
     const h = exerciseHistory(S.strength.sessions, exKey(e.name), SS());
     const tplEx = activeTemplates(S.strength).flatMap((t) => t.exercises).find((x) => exKey(x.name) === exKey(e.name));
-    tip = progressionTip(h.length ? h : (last ? [last] : []), tplEx?.reps);
+    tip = S.editDraft?.deload ? { kind: 'hold', text: last?.weight && !last.bw ? `Deload ±${String(Math.round(last.weight * 0.65 / 2.5) * 2.5).replace('.', ',')} kg` : 'Deload: lichter, niet tot falen' } : progressionTip(h.length ? h : (last ? [last] : []), tplEx?.reps);
   }
   return `<div class="ex-edit chk${done ? '' : ' off'}" data-i="${i}" data-done="${done ? 1 : 0}">
     <button class="ck${done ? ' on' : ''}" data-act="toggle-done" data-i="${i}" aria-label="Gedaan">${done ? I.check : ''}</button>
@@ -2750,7 +2753,7 @@ function viewRecords() {
   const exs = allExercises(S.strength.sessions, { exerciseMap: S.strength.exerciseMap });
   // Eén keer door alle (al berekende) sessies in plaats van per oefening alles opnieuw te rekenen.
   const hist = {};
-  for (const ss of S.strength.sessions.filter((x) => !x.deleted && x.date).sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : (x.createdAt || 0) - (y.createdAt || 0)))) {
+  for (const ss of S.strength.sessions.filter((x) => !x.deleted && !x.deload && x.date).sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : (x.createdAt || 0) - (y.createdAt || 0)))) {
     for (const ex of S.computed.loads[ss.id]?.exercises || []) (hist[ex.key] ||= []).push({ ...ex, date: ss.date, sessionId: ss.id });
   }
   const rows = exs.map((e) => {
@@ -2867,6 +2870,8 @@ function readDraftFromDom() {
   const name = document.getElementById('log-name');
   if (date) d.date = date.value;
   if (name) d.name = name.value.trim();
+  const dl = document.getElementById('log-deload');
+  if (dl) d.deload = dl.checked || undefined;
   const st = document.getElementById('log-start');
   if (st?.value && d.date) {
     const ns = new Date(`${d.date}T${st.value}:00`).getTime();
@@ -3382,6 +3387,7 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('change', async (ev) => {
   const el = ev.target;
+  if (el.id === 'log-deload') { readDraftFromDom(); saveDraftLS(); render(); toast(el.checked ? 'Deload aan: je topsets en PR\'s blijven staan' : 'Deload uit'); return; }
   if (el.dataset.set) {
     const k = el.dataset.set;
     let v = el.value;

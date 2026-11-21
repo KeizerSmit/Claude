@@ -330,7 +330,7 @@ export function computeLoads(sessions, settings) {
     const exs = [];
     // Hoe zwaar voelde de training (0–10)? 5 = normaal; zwaarder/lichter schaalt de spierbelasting.
     // Trainingsstijl "tot falen": zonder ingevulde zwaarte telt de training als RPE 9 (elke set tot falen).
-    const rpeUsed = s.rpe ?? (settings.style === 'hit' ? 9 : null);
+    const rpeUsed = s.rpe ?? (s.deload ? 6 : settings.style === 'hit' ? 9 : null);
     const rpeF = rpeUsed != null ? clamp(0.6 + 0.08 * rpeUsed, 0.6, 1.4) : 1;
     for (const e of s.exercises || []) {
       const key = exKey(e.name);
@@ -339,8 +339,9 @@ export function computeLoads(sessions, settings) {
       const effW = e.bw ? bodyweight + (e.weight || 0) : e.weight;
       const est = e1rm(effW, e.reps);
       const prevBest = best[key] || null;
-      const isPR = est != null && (prevBest == null || est > prevBest + 0.01);
-      if (est != null) best[key] = Math.max(prevBest || 0, est);
+      // Deload: telt mee voor belasting, maar verandert je records en beste 1RM niet.
+      const isPR = !s.deload && est != null && (prevBest == null || est > prevBest + 0.01);
+      if (est != null && !s.deload) best[key] = Math.max(prevBest || 0, est);
       const ri = est != null && best[key] ? clamp(est / best[key], 0.3, 1) : 0.9;
       const sets = e.sets || base[key]?.sets || defaultSets;
       const repF = clamp(0.75 + (e.reps || 8) * 0.025, 0.8, 1.25);
@@ -353,9 +354,9 @@ export function computeLoads(sessions, settings) {
         // Gangbare telling: hoofdspier 1 set, meewerkende spier (≥ 20%) ½, kleine bijrol telt niet.
         fracSets[g] = (fracSets[g] || 0) + sets * (w === wMax ? 1 : w >= 0.2 ? 0.5 : 0);
       }
-      exs.push({ ...e, key, lib: lib.id, libName: lib.name, e1rm: est, ri, load: l, isPR: isPR && prevBest != null, firstTime: prevBest == null, sets });
+      exs.push({ ...e, key, lib: lib.id, libName: lib.name, e1rm: est, ri, load: l, isPR: isPR && prevBest != null, firstTime: !s.deload && prevBest == null, sets, deload: !!s.deload });
     }
-    result[s.id] = { load, groups, hardSets, fracSets, exercises: exs, rpe: s.rpe ?? null, rpeUsed, rpeDefault: s.rpe == null && rpeUsed != null, rpeFactor: rpeF };
+    result[s.id] = { load, groups, hardSets, fracSets, deload: !!s.deload, exercises: exs, rpe: s.rpe ?? null, rpeUsed, rpeDefault: s.rpe == null && rpeUsed != null, rpeFactor: rpeF };
   }
   return result;
 }
@@ -367,7 +368,7 @@ export function exerciseHistory(sessions, key, settings) {
   const loads = computeLoads(sessions, settings);
   const out = [];
   for (const s of sessions) {
-    if (s.deleted || !s.date) continue;
+    if (s.deleted || !s.date || s.deload) continue;
     const r = loads[s.id];
     if (!r) continue;
     for (const e of r.exercises) if (e.key === key) out.push({ date: s.date, session: s.name, sessionId: s.id, ...e });
@@ -459,7 +460,8 @@ export function currentSet(doc, name, settings = {}) {
   if (!k) return null;
   let last = null;
   for (const s of doc?.sessions || []) {
-    if (s.deleted || !s.date) continue;
+    // Deload-trainingen worden nooit je 'laatste topset': die blijft van je laatste echte training.
+    if (s.deleted || !s.date || s.deload) continue;
     for (const e of s.exercises || []) {
       if (exKey(e.name) === k && (!last || s.date > last.date || (s.date === last.date && (s.updatedAt || 0) > (last.updatedAt || 0)))) last = { ...e, date: s.date, updatedAt: s.updatedAt, sessionId: s.id };
     }
