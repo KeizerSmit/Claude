@@ -32,6 +32,7 @@ export function splitOf(name, groups = {}) {
 export function recommendTraining(ctx) {
   const { templates, sessions, fatigue, recovery, today, settings, doneToday, flag, weekNeed } = ctx;
   if (flag === 'sick') return { kind: 'rest', title: 'Beterschap', reason: 'Ziek-modus: geen training vandaag. Slaap extra, drink genoeg en begin pas weer rustig als je 24 uur koortsvrij bent.' };
+  if (flag === 'unwell' && recovery != null && recovery < 34) return { kind: 'rest', title: 'Rustig aan', reason: `Je bent niet fit en je herstel is laag (${recovery}%). Wandelen of mobiliteit; train vandaag liever niet.` };
   if (flag === 'rest') return { kind: 'rest', title: 'Rustdag', reason: 'Je hebt vandaag als rustdag gemarkeerd. Wandelen of mobiliteit mag; je spieren herstellen nu.' };
   if (doneToday) return { kind: 'done', title: 'Training gedaan', reason: 'Je hebt vandaag al getraind. Herstel nu: eet genoeg eiwit en slaap op tijd.' };
   if (recovery != null && recovery < 34) {
@@ -57,11 +58,11 @@ export function recommendTraining(ctx) {
     return { kind: 'cardio', title: 'Cardio of rust', reason: 'Je spieren zijn nog niet hersteld van je laatste trainingen. Een rustige cardiosessie (zone 2) of rust past beter.', alt: best };
   }
   // Tot falen trainen kan altijd; bij matig herstel wel met wat minder sets/oefeningen.
-  const intensity = recovery == null ? 'normaal' : recovery >= 67 ? 'zwaar' : 'gecontroleerd';
+  const intensity = flag === 'unwell' ? 'licht' : recovery == null ? 'normaal' : recovery >= 67 ? 'zwaar' : 'gecontroleerd';
   return {
     kind: 'template', template: best.t, fresh: best.fresh, since: best.since, intensity,
     title: best.t.name,
-    reason: `${best.since >= 99 ? 'Nog niet gedaan' : best.since === 0 ? 'Vandaag' : best.since === 1 ? 'Gisteren voor het laatst' : `${best.since} dagen geleden`} · spieren ${Math.round(best.fresh * 100)}% fris${recovery != null ? ` · herstel ${recovery}%` : ''}${best.need > 0 ? ` · ${best.split === 'lower' ? 'Lower' : 'Upper'} nog ${best.need}× deze week` : ''}`,
+    reason: `${best.since >= 99 ? 'Nog niet gedaan' : best.since === 0 ? 'Vandaag' : best.since === 1 ? 'Gisteren voor het laatst' : `${best.since} dagen geleden`} · spieren ${Math.round(best.fresh * 100)}% fris${recovery != null ? ` · herstel ${recovery}%` : ''}${flag === 'unwell' ? ' · niet fit: minder sets, niet tot falen' : ''}${best.need > 0 ? ` · ${best.split === 'lower' ? 'Lower' : 'Upper'} nog ${best.need}× deze week` : ''}`,
     others: cands.slice(1, 3),
   };
 }

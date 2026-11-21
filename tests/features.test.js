@@ -151,3 +151,17 @@ test('streng vs mild: strenger herstel, geen oplopende slaapbehoefte', () => {
   assert.ok(avg(s, (d) => d.recovery.score) < avg(m, (d) => d.recovery.score) - 8);
   for (const d of s) if (d.sleep) assert.ok(d.sleep.need <= SET.sleepNeed + 60 + 90, `behoefte ${d.sleep.need}`);
 });
+
+test('niet fit: uit de baseline, strain-doel max 10, coach traint licht', async () => {
+  const { days, strength } = generateDemo(30);
+  const d = today();
+  const { byDate } = computeAll(days, { ...strength, flags: [{ id: 'f', date: d, kind: 'unwell', updatedAt: 1 }] }, SET, { age: 30 });
+  assert.equal(byDate[d].flag, 'unwell');
+  assert.deepEqual(byDate[d].target, [0, 10]);
+  const templates = [{ id: 'l', name: 'Lower', exercises: [{ name: 'Hack squat', weight: 75, reps: 6 }] }];
+  const r = recommendTraining({ templates, sessions: [], fatigue: {}, recovery: 55, today: d, settings: SET, flag: 'unwell' });
+  assert.equal(r.kind, 'template');
+  assert.equal(r.intensity, 'licht');
+  assert.match(r.reason, /niet tot falen/);
+  assert.equal(recommendTraining({ templates, sessions: [], fatigue: {}, recovery: 20, today: d, settings: SET, flag: 'unwell' }).kind, 'rest');
+});

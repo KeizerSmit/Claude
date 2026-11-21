@@ -180,7 +180,7 @@ function sleepMetrics(day, prev, settings, history) {
 
 function baselineOf(history, pick, days = 30) {
   // Zieke dagen tellen niet mee: ziekte mag je 'normaal' niet verschuiven.
-  const vals = history.filter((h) => h.flag !== 'sick').slice(-days).map((h) => pick(h.raw)).filter((v) => v != null && !isNaN(v) && v > 0);
+  const vals = history.filter((h) => h.flag !== 'sick' && h.flag !== 'unwell').slice(-days).map((h) => pick(h.raw)).filter((v) => v != null && !isNaN(v) && v > 0);
   return vals;
 }
 
@@ -318,7 +318,7 @@ export function computeAll(days, strengthDoc, settings, profile) {
     entry.sleep = day.empty ? null : sleepMetrics(day, prev, settings, history);
     entry.recovery = day.empty ? null : recoveryMetrics(day, entry.sleep, history, settings);
     entry.flag = flags[day.date] || null;
-    entry.target = entry.flag === 'sick' ? [0, 6] : entry.flag === 'rest' ? [0, 9] : strainTarget(entry.recovery?.score);
+    entry.target = entry.flag === 'sick' ? [0, 6] : entry.flag === 'unwell' ? [0, 10] : entry.flag === 'rest' ? [0, 9] : strainTarget(entry.recovery?.score);
     byDate[day.date] = entry;
     if (!day.empty) history.push(entry);
   }
@@ -332,8 +332,9 @@ export function insights(m) {
   const r = m?.recovery;
   if (r) {
     const zone = recoveryZone(r.score);
-    if (m.flag === 'sick') out.push({ icon: 'info', text: 'Ziek-modus staat aan: deze dag telt niet mee in je persoonlijke baseline. Rust, drink genoeg en sla zware training over.' });
-    else if (r.tempDev != null && r.tempDev >= 0.5 && r.rhr && r.baseline.rhr && r.rhr - r.baseline.rhr >= 3) out.push({ icon: 'temp', text: 'Hogere huidtemperatuur én rusthartslag tegelijk: mogelijk word je ziek. Doe het rustig aan; zet zo nodig ziek-modus aan via ＋.' });
+    if (m.flag === 'unwell') out.push({ icon: 'info', text: 'Niet fit (bijv. keelpijn of verkoudheid): deze dag telt niet mee in je baseline. Licht trainen mag, maar niet tot falen. Stop als je je slechter voelt, en bij koorts: rust.' });
+    else if (m.flag === 'sick') out.push({ icon: 'info', text: 'Ziek-modus staat aan: deze dag telt niet mee in je persoonlijke baseline. Rust, drink genoeg en sla zware training over.' });
+    else if (!m.flag && r.tempDev != null && r.tempDev >= 0.5 && r.rhr && r.baseline.rhr && r.rhr - r.baseline.rhr >= 3) out.push({ icon: 'temp', text: 'Hogere huidtemperatuur én rusthartslag tegelijk: mogelijk word je ziek. Doe het rustig aan; zet zo nodig ziek-modus aan via ＋.' });
     if (r.calibrating) out.push({ icon: 'info', text: `Nog aan het kalibreren: er zijn ${r.baseline.days} van de 4 nachten nodig voor een persoonlijke baseline.` });
     if (zone === 'green') out.push({ icon: 'bolt', text: 'Je lichaam is goed hersteld. Een zware training past vandaag prima.' });
     else if (zone === 'yellow') out.push({ icon: 'gauge', text: 'Gemiddeld hersteld. Train gerust, maar houd het gecontroleerd.' });
@@ -347,7 +348,7 @@ export function insights(m) {
       if (d >= 3) out.push({ icon: 'heart', text: `Rusthartslag ${Math.round(d)} slagen hoger dan normaal. Kan wijzen op vermoeidheid, alcohol, stress of beginnende ziekte.` });
       else if (d <= -3) out.push({ icon: 'heart', text: `Rusthartslag ${Math.round(-d)} slagen lager dan normaal — een goed teken.` });
     }
-    if (m.flag !== 'sick' && r.tempDev != null && r.tempDev >= 0.5) out.push({ icon: 'temp', text: `Huidtemperatuur ${r.tempDev.toFixed(1).replace('.', ',')} °C boven je baseline.` });
+    if (m.flag !== 'sick' && m.flag !== 'unwell' && r.tempDev != null && r.tempDev >= 0.5) out.push({ icon: 'temp', text: `Huidtemperatuur ${r.tempDev.toFixed(1).replace('.', ',')} °C boven je baseline.` });
   }
   const s = m?.sleep;
   if (s) {

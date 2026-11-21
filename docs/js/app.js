@@ -18,8 +18,9 @@ import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit', strictness: 'streng' };
-const APP_VERSION = 'v57';
+const APP_VERSION = 'v59';
 const CHANGELOG = [
+  ['Niet fit', 'Naast "ziek" kun je nu "niet fit" kiezen (keelpijn, verkouden, slecht herstel): telt niet mee in je baseline, maar de coach laat je licht trainen in plaats van rust voor te schrijven.'],
   ['Hockey', 'Hockey staat nu tussen de activiteiten.'],
   ['Ziekteperiode', 'Markeer in één keer dat je al sinds maandag ziek bent, en zet "Ik ben nog steeds ziek" aan: elke nieuwe dag telt dan vanzelf mee tot je op "Ik ben beter" tikt.'],
   ['Meer iPhone-gevoel', 'Veeg vanaf de linkerrand om terug te gaan, voel een tikje bij afvinken, opslaan en wisselen, en druk lang op een training, activiteit of schema voor een menu (bewerken, kopiëren naar vandaag, verwijderen). Meldingen verschijnen nu bovenin, en knoppen en invoervelden zijn in iOS-stijl.'],
@@ -671,7 +672,14 @@ function viewToday(date) {
   ${empty ? `<div class="card center muted">${S.days.length ? 'Geen data voor deze dag.' : 'Nog geen data. Trek omlaag om te synchroniseren.'}</div>` : ''}
   ${t && rec && new Date().getHours() < 14 ? `<button class="wk-entry glass" data-act="morning" data-v="${date}"><span>${I.sun}</span><div><b>Ochtendrapport</b><small>${(() => { const v = recoveryVerdict(m); return esc(v.length > 80 ? `${v.slice(0, 79)}…` : v); })()}</small></div><span class="chev">${I.chev}</span></button>` : ''}
   ${t && parseYmd(date).getDay() === 1 ? `<button class="wk-entry glass" data-go="#/week/${addDays(date, -7)}"><span>${I.chart}</span><div><b>Je vorige week</b><small>Week ${isoWeek(addDays(date, -7))} in één oogopslag</small></div><span class="chev">${I.chev}</span></button>` : ''}
-  ${m?.flag ? `<div class="card flag-card flag-${m.flag}"><div class="badge" style="background:${m.flag === 'sick' ? 'var(--red)' : 'var(--sleep)'}">${m.flag === 'sick' ? AI.health || I.heart : I.bed}</div><div class="grow"><div class="title">${m.flag === 'sick' ? (() => { const r = sickRun(date); return r.n > 1 ? `Ziek sinds ${weekdayShort(r.since)} ${fmtDateShort(r.since)} · ${r.n} dagen` : 'Ziek-modus'; })() : 'Rustdag'}</div><div class="sub">${m.flag === 'sick' ? 'Telt niet mee in je baseline · strain-doel max 6 · beterschap!' : 'Strain-doel max 9 · herstel heeft voorrang'}</div></div>${m.flag === 'sick' && date === today() ? `<button class="btn small ghost" data-act="sick-better">Ik ben beter</button>` : `<button class="btn small ghost" data-act="flag" data-v="${date}:">Uit</button>`}</div>` : ''}
+  ${m?.flag ? (() => {
+    const sk = m.flag === 'sick' || m.flag === 'unwell';
+    const r = sk ? sickRun(date) : null;
+    const name = m.flag === 'sick' ? 'Ziek' : m.flag === 'unwell' ? 'Niet fit' : 'Rustdag';
+    const title = sk && r.n > 1 ? `${name} sinds ${weekdayShort(r.since)} ${fmtDateShort(r.since)} · ${r.n} dagen` : m.flag === 'sick' ? 'Ziek-modus' : name;
+    const sub = m.flag === 'sick' ? 'Telt niet mee in je baseline · strain-doel max 6 · beterschap!' : m.flag === 'unwell' ? 'Telt niet mee in je baseline · licht trainen, niet tot falen' : 'Strain-doel max 9 · herstel heeft voorrang';
+    return `<div class="card flag-card flag-${m.flag}"><div class="badge" style="background:${m.flag === 'sick' ? 'var(--red)' : m.flag === 'unwell' ? 'var(--muscle)' : 'var(--sleep)'}">${m.flag === 'rest' ? I.bed : AI.health || I.heart}</div><div class="grow"><div class="title">${title}</div><div class="sub">${sub}</div></div>${sk && date === today() ? `<button class="btn small ghost" data-act="sick-better">Ik ben beter</button>` : `<button class="btn small ghost" data-act="flag" data-v="${date}:">Uit</button>`}</div>`;
+  })() : ''}
   ${coachCard(date)}
   ${t ? forecastCard(date) : ''}
   ${t ? goalsCard() : ''}
@@ -1093,7 +1101,7 @@ const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 
 
 /** Persoonlijk normaal bereik (gemiddelde ± 1 SD over 60 dagen) als band voor trendgrafieken. */
 function normBand(f, end = today(), n = 60) {
-  const v = lastDays(S.computed.byDate, end, n).filter((d) => d.flag !== 'sick').map(f).filter((x) => x != null);
+  const v = lastDays(S.computed.byDate, end, n).filter((d) => d.flag !== 'sick' && d.flag !== 'unwell').map(f).filter((x) => x != null);
   if (v.length < 7) return null;
   const m = mean(v), s = sd(v);
   return s ? [m - s, m + s] : null;
@@ -2002,7 +2010,7 @@ function strainSignalRaw(date) {
   const run = [];
   for (let i = ds.length - 1; i >= 0; i--) {
     const d = ds[i], r = d.recovery;
-    if (!r || d.flag === 'sick') break; // alleen echt opeenvolgende dagen
+    if (!r || d.flag === 'sick' || d.flag === 'unwell') break; // alleen echt opeenvolgende dagen
     const hrvLow = !!(r.hrv && r.baseline.hrv && r.hrv < r.baseline.hrv * 0.93);
     const rhrHigh = !!(r.rhr && r.baseline.rhr && r.rhr > r.baseline.rhr + 3);
     if (!hrvLow && !rhrHigh) break;
@@ -2116,7 +2124,7 @@ function morningSheet(date = today()) {
       <div class="mr-zone"><span class="zshape z-${zone}"></span>${zoneTxt}</div>
       ${r ? `<p class="mr-why">${esc(recoveryVerdict(m))}</p>` : '<p class="mr-why">Zodra je Fitbit je slaap heeft doorgestuurd, verschijnt hier je herstel.</p>'}
     </div>
-    ${m?.flag === 'sick' ? '<div class="mr-note">Ziek-modus staat aan. Beterschap!</div>' : ''}
+    ${m?.flag === 'sick' ? '<div class="mr-note">Ziek-modus staat aan. Beterschap!</div>' : m?.flag === 'unwell' ? '<div class="mr-note">Niet fit: train licht en niet tot falen.</div>' : ''}
     ${r ? `<div class="mr-sec">Hersteldata</div><div class="card flat mr-card">
       ${row('HRV', `${num(r.hrv)} <small>ms</small>`, `normaal ${num(r.baseline.hrv)} ms`, dlt(r.hrv, r.baseline.hrv, true))}
       ${row('Rusthartslag', `${num(r.rhr)} <small>bpm</small>`, `normaal ${num(r.baseline.rhr)} bpm`, dlt(r.rhr, r.baseline.rhr, false))}
@@ -2511,8 +2519,8 @@ function openPlusMenu() {
 function dayFlagRow(d) {
   const cur = M(d)?.flag || null;
   const lbl = d === today() ? 'vandaag' : fmtDateShort(d);
-  return `<div class="row flag-row"><div class="badge" style="background:var(--red)">${AI.health}</div><div class="grow"><div class="title">Ziek of rustdag</div><div class="sub">${cur ? `${lbl} staat op ${cur === 'sick' ? 'ziek' : 'rust'}` : `Markeer ${lbl}: ziek telt niet mee in je baseline`}</div></div>
-    <div class="flag-btns"><button class="pill-btn${cur === 'sick' ? ' on' : ''}" ${cur === 'sick' ? `data-act="flag" data-v="${d}:"` : `data-act="sick-open" data-v="${d}"`}>Ziek</button><button class="pill-btn${cur === 'rest' ? ' on' : ''}" data-act="flag" data-v="${d}:${cur === 'rest' ? '' : 'rest'}">Rust</button></div></div>`;
+  return `<div class="row flag-row"><div class="badge" style="background:var(--red)">${AI.health}</div><div class="grow"><div class="title">Ziek of rustdag</div><div class="sub">${cur ? `${lbl} staat op ${cur === 'sick' ? 'ziek' : cur === 'unwell' ? 'niet fit' : 'rust'}` : `Markeer ${lbl}: ziek telt niet mee in je baseline`}</div></div>
+    <div class="flag-btns"><button class="pill-btn${cur === 'sick' || cur === 'unwell' ? ' on' : ''}" ${cur === 'sick' || cur === 'unwell' ? `data-act="flag" data-v="${d}:"` : `data-act="sick-open" data-v="${d}"`}>${cur === 'unwell' ? 'Niet fit' : 'Ziek'}</button><button class="pill-btn${cur === 'rest' ? ' on' : ''}" data-act="flag" data-v="${d}:${cur === 'rest' ? '' : 'rest'}">Rust</button></div></div>`;
 }
 
 /** Meerdere dagen in één keer markeren (bijv. een hele ziekteweek). */
@@ -2531,7 +2539,8 @@ async function setFlagRange(from, to, kind) {
 /** Hoeveel dagen op rij (t/m deze dag) sta je op ziek, en sinds wanneer? */
 function sickRun(date = today()) {
   let n = 0, d = date;
-  while (M(d)?.flag === 'sick' && n < 60) { n++; d = addDays(d, -1); }
+  const kind = M(date)?.flag;
+  while (kind && M(d)?.flag === kind && n < 60) { n++; d = addDays(d, -1); }
   return { n, since: addDays(d, 1) };
 }
 
@@ -2540,21 +2549,22 @@ async function applySickOngoing() {
   if (!S.settings.sickOngoing || store.isDemo()) return;
   const t = today();
   if ((S.strength.flags || []).some((f) => f.date === t && !f.deleted && f.kind)) return;
-  await setDayFlag(t, 'sick');
+  await setDayFlag(t, S.settings.sickOngoing === 'unwell' ? 'unwell' : 'sick');
 }
 
 function sickSheet(d) {
   const mon = weekStartOf(d);
   const opts = [[d, 'Alleen vandaag'], [addDays(d, -1), 'Sinds gisteren'], ...(mon < addDays(d, -1) ? [[mon, `Sinds maandag (${fmtDateShort(mon)})`]] : []), [addDays(d, -6), 'Al een week']];
   const uniq = opts.filter((o, i) => opts.findIndex((x) => x[0] === o[0]) === i);
-  return `<div class="sh-head"><div class="eyebrow">Ziek</div><h2>Sinds wanneer ben je ziek?</h2></div>
-    <p class="small muted" style="margin-top:4px">Zieke dagen tellen niet mee in je persoonlijke normaal, dus je baseline blijft kloppen. De coach adviseert rust en je strain-doel gaat omlaag.</p>
+  return `<div class="sh-head"><div class="eyebrow">Niet lekker</div><h2>Hoe voel je je, en sinds wanneer?</h2></div>
+    <div class="segmented mt" data-sick-kind="unwell"><button class="on" data-act="sick-kind" data-v="unwell">Niet fit</button><button data-act="sick-kind" data-v="sick">Echt ziek</button></div>
+    <p class="small muted" style="margin-top:4px" data-sick-help>Keelpijn, verkouden, slecht herstel. Telt niet mee in je persoonlijke normaal; licht trainen mag, niet tot falen (strain-doel max 10).</p>
     <div class="chips mt">${uniq.map(([v, l], i) => `<button class="chip${i === (uniq.length > 2 ? 2 : 0) ? ' on' : ''}" data-act="sick-pick" data-v="${v}">${esc(l)}</button>`).join('')}</div>
     <div class="list">
       <div class="row"><div class="grow">Ziek sinds</div><input type="date" id="sick-from" value="${uniq[uniq.length > 2 ? 2 : 0][0]}" max="${d}"></div>
-      ${d === today() ? `<div class="row"><div class="grow"><div class="title">Ik ben nog steeds ziek</div><div class="sub">elke nieuwe dag telt vanzelf als ziek, tot je op "Ik ben beter" tikt</div></div><label class="switch"><input type="checkbox" id="sick-ongoing" checked><span></span></label></div>` : ''}
+      ${d === today() ? `<div class="row"><div class="grow"><div class="title">Nog steeds zo</div><div class="sub">elke nieuwe dag telt vanzelf mee, tot je op "Ik ben beter" tikt</div></div><label class="switch"><input type="checkbox" id="sick-ongoing" checked><span></span></label></div>` : ''}
     </div>
-    <button class="btn mt" data-act="sick-save" data-v="${d}">Markeer als ziek</button>`;
+    <button class="btn mt" data-act="sick-save" data-v="${d}">Markeren</button>`;
 }
 
 async function setDayFlag(date, kind) {
@@ -3076,6 +3086,12 @@ const actions = {
     toast(kind === 'sick' ? 'Ziek-modus aan — beterschap' : kind === 'rest' ? 'Rustdag gemarkeerd' : 'Markering verwijderd');
   },
   'sick-open'(el) { closeSheet(true); openSheet(sickSheet(el.dataset.v)); },
+  'sick-kind'(el) {
+    const seg = el.closest('[data-sick-kind]'); seg.dataset.sickKind = el.dataset.v;
+    seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === el));
+    const h = document.querySelector('[data-sick-help]');
+    if (h) h.textContent = el.dataset.v === 'unwell' ? 'Keelpijn, verkouden, slecht herstel. Telt niet mee in je persoonlijke normaal; licht trainen mag, niet tot falen (strain-doel max 10).' : 'Koorts of echt ziek. Telt niet mee in je persoonlijke normaal; de coach adviseert rust (strain-doel max 6).';
+  },
   'sick-pick'(el) {
     document.querySelectorAll('[data-act="sick-pick"]').forEach((b) => b.classList.toggle('on', b === el));
     const i = document.getElementById('sick-from'); if (i) i.value = el.dataset.v;
@@ -3085,12 +3101,14 @@ const actions = {
     const from = document.getElementById('sick-from')?.value || to;
     if (from > to) { toast('Kies een datum vóór vandaag'); return; }
     const ongoing = !!document.getElementById('sick-ongoing')?.checked;
-    await setFlagRange(from, to, 'sick');
-    if (to === today()) await saveSettings({ sickOngoing: ongoing });
+    const kind = document.querySelector('[data-sick-kind]')?.dataset.sickKind || 'sick';
+    await setFlagRange(from, to, kind);
+    if (to === today()) await saveSettings({ sickOngoing: ongoing ? kind : false });
     closeSheet();
     render();
     const n = daysBetween(from, to) + 1;
-    toast(n > 1 ? `${n} dagen als ziek gemarkeerd — beterschap` : 'Ziek-modus aan — beterschap');
+    const w = kind === 'unwell' ? 'niet fit' : 'ziek';
+    toast(n > 1 ? `${n} dagen als ${w} gemarkeerd — beterschap` : `${kind === 'unwell' ? 'Niet fit' : 'Ziek-modus'} aan — beterschap`);
   },
   async 'sick-better'() {
     await saveSettings({ sickOngoing: false });
