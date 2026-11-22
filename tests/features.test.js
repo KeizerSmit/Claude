@@ -148,7 +148,8 @@ test('streng vs mild: strenger herstel, geen oplopende slaapbehoefte', () => {
   const run = (strictness) => Object.values(computeAll(days.map((d) => ({ ...d })), strength, { ...SET, strictness }, { age: 30 }).byDate).slice(30).filter((d) => d.recovery);
   const m = run('mild'), s = run('streng');
   const avg = (a, f) => a.reduce((x, d) => x + f(d), 0) / a.length;
-  assert.ok(avg(s, (d) => d.recovery.score) < avg(m, (d) => d.recovery.score) - 8);
+  assert.ok(avg(s, (d) => d.recovery.score) < avg(m, (d) => d.recovery.score) - 3);
+  assert.ok(avg(s, (d) => d.recovery.score) > 45, 'een gewone dag blijft rond de 50%');
   for (const d of s) if (d.sleep) assert.ok(d.sleep.need <= SET.sleepNeed + 60 + 90, `behoefte ${d.sleep.need}`);
 });
 

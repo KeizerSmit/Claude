@@ -18,8 +18,9 @@ import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit', strictness: 'streng' };
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 const CHANGELOG = [
+  ['Herstel minder streng', 'De strenge stand was te hard: een korte nacht of een kleine HRV-dip gaf al snel een score onder de 10%. Een gewone dag is nu ±52%, slaap telt neutraal bij ±88% van je behoefte en kleine schommelingen wegen minder zwaar.'],
   ['Deload', 'Zet bij een training "Deload" aan: lichtere gewichten tellen mee voor je belasting, maar worden niet je nieuwe topset en veranderen je PR\'s, krachtindex en voortgang niet.'],
   ['Niet fit', 'Naast "ziek" kun je nu "niet fit" kiezen (keelpijn, verkouden, slecht herstel): telt niet mee in je baseline, maar de coach laat je licht trainen in plaats van rust voor te schrijven.'],
   ['Hockey', 'Hockey staat nu tussen de activiteiten.'],
@@ -1891,7 +1892,7 @@ function viewSettings() {
   </div>
   <div class="list-header">Herstel & slaap</div>
   <div class="list">
-    ${row('Strengheid', `<select data-set="strictness"><option value="streng" ${st.strictness !== 'mild' ? 'selected' : ''}>Streng</option><option value="mild" ${st.strictness === 'mild' ? 'selected' : ''}>Mild</option></select>`, st.strictness !== 'mild' ? 'zoals WHOOP: gewone dag ≈ 50%, te kort slapen kost flink' : 'gewone dag ≈ 60%; vergevingsgezinder voor korte nachten')}
+    ${row('Strengheid', `<select data-set="strictness"><option value="streng" ${st.strictness !== 'mild' ? 'selected' : ''}>Streng</option><option value="mild" ${st.strictness === 'mild' ? 'selected' : ''}>Mild</option></select>`, st.strictness !== 'mild' ? 'zoals WHOOP: gewone dag ≈ 52%, te kort slapen kost punten' : 'gewone dag ≈ 60%; vergevingsgezinder voor korte nachten')}
     ${row('Basis slaapbehoefte', `<input type="number" step="0.25" inputmode="decimal" data-set="sleepNeedH" value="${(st.sleepNeed / 60).toFixed(2).replace(/\.?0+$/, '')}"><span class="muted">&nbsp;uur</span>`)}
     ${row('Wektijd', `<input type="time" data-set="wake" value="${esc(st.wake)}">`, 'voor bedtijd-advies')}
   </div>
@@ -1932,7 +1933,7 @@ function viewAbout() {
   <div class="content fade-in">
   <div class="card"><h2 style="color:var(--green)">Herstel (0–100%)</h2>
   <p class="small">Elke ochtend vergelijken we je nachtelijke <b>HRV</b> (RMSSD), <b>rusthartslag</b> tijdens non-REM-slaap, <b>slaapprestatie</b>, <b>ademhalingsfrequentie</b> en <b>huidtemperatuur</b> met je eigen gemiddelde van de afgelopen 30 dagen. HRV telt voor 50%, rusthartslag en slaap elk 20%, ademhaling en temperatuur elk 5%. De gewogen z-score wordt omgezet naar een percentage: groen 67–100, geel 34–66, rood 0–33. De eerste 4 nachten is de app aan het kalibreren.</p>
-  <p class="small">${S.settings.strictness !== 'mild' ? '<b>Streng</b> (standaard, zoals WHOOP): als alles precies op je normaal ligt is je herstel 50%. Slaap telt pas neutraal bij ±93% van je behoefte; minder kost flink, genoeg slapen geeft maar een kleine bonus.' : '<b>Mild</b>: een gewone dag geeft ±60% en slaap is neutraal bij 85% van je behoefte.'} Wijzigen in Profiel → Herstel &amp; slaap.</p></div>
+  <p class="small">${S.settings.strictness !== 'mild' ? '<b>Streng</b> (standaard, zoals WHOOP): als alles precies op je normaal ligt is je herstel ±52%. Slaap telt neutraal bij ±88% van je behoefte; minder kost punten, maar één korte nacht of een kleine HRV-dip zet je niet meteen in het rood.' : '<b>Mild</b>: een gewone dag geeft ±60% en slaap is neutraal bij 85% van je behoefte.'} Wijzigen in Profiel → Herstel &amp; slaap.</p></div>
   <div class="card"><h2 style="color:var(--strain)">Strain (0–21)</h2>
   <p class="small">Voor elke minuut dat je wakker bent berekenen we je inspanning als percentage van je <b>hartslagreserve</b> (tussen rust- en maximale hartslag) en tellen die op met de Banister-TRIMP-formule; hogere intensiteit telt exponentieel zwaarder. Daar komt je <b>spierbelasting</b> uit je krachtlog bij. Het totaal gaat op een logaritmische schaal: van 0 naar 10 is makkelijk, van 18 naar 21 bijna onmogelijk. Licht &lt;10, gemiddeld 10–14, zwaar 14–18, maximaal 18+.</p>
   <p class="small">Je <b>optimale strain</b> hangt af van je herstel: hoe beter hersteld, hoe meer belasting je lichaam aankan.</p></div>
