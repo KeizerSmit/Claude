@@ -78,7 +78,8 @@ export function maxHr(settings, profile, days) {
 
 function trimpMinute(hr, rest, max, female) {
   const hrr = (hr - rest) / (max - rest);
-  if (hrr < 0.2) return 0;
+  // Pas vanaf 30% hartslagreserve telt het als inspanning (daaronder: gewoon rondlopen, staan, praten).
+  if (hrr < 0.3) return 0;
   return trimpPerMinute(hrr, female);
 }
 
@@ -186,11 +187,15 @@ function baselineOf(history, pick, days = 30) {
 
 function recoveryMetrics(day, sleep, history, settings = {}) {
   const strict = settings.strictness !== 'mild';
-  const hrv = day.hrv ?? day.hrvDeep ?? null;
-  const rhr = day.sleepHr ?? day.rhr ?? null;
+  const hrvRaw = day.hrv ?? day.hrvDeep ?? null;
+  // HRV van één nacht is ruis-gevoelig: gewogen gemiddelde van vannacht (65%) en de nacht ervoor (35%).
+  const hrv = day.hrvS ?? hrvRaw;
+  // Slaap-hartslag vergelijken met slaap-hartslag; ontbreekt die, dan dag-rusthartslag met dag-rusthartslag (nooit door elkaar).
+  const useSleepHr = day.sleepHr != null;
+  const rhr = useSleepHr ? day.sleepHr : day.rhr ?? null;
   const resp = day.resp ?? null;
-  const hrvVals = baselineOf(history, (d) => d.hrv ?? d.hrvDeep);
-  const rhrVals = baselineOf(history, (d) => d.sleepHr ?? d.rhr);
+  const hrvVals = baselineOf(history, (d) => d.hrvS ?? d.hrv ?? d.hrvDeep);
+  const rhrVals = baselineOf(history, (d) => (useSleepHr ? d.sleepHr : d.rhr));
   const respVals = baselineOf(history, (d) => d.resp);
   if (hrv == null && rhr == null) return null;
 
@@ -219,7 +224,7 @@ function recoveryMetrics(day, sleep, history, settings = {}) {
 
   return {
     score, calibrating, z, weights: w, composite,
-    hrv, rhr, resp, spo2: day.spo2 ?? null, tempDev: tDev ?? null,
+    hrv: hrvRaw, hrvUsed: hrv, rhr, rhrSource: useSleepHr ? 'sleep' : 'day', resp, spo2: day.spo2 ?? null, tempDev: tDev ?? null,
     baseline: {
       hrv: bHrv?.mean ?? (hrvVals.length ? Math.exp(mean(hrvVals.map(Math.log))) : null),
       rhr: bRhr?.mean ?? (rhrVals.length ? mean(rhrVals) : null),
@@ -316,6 +321,10 @@ export function computeAll(days, strengthDoc, settings, profile) {
     };
     const entry = { date: day.date, raw: day, strain };
     entry.sleep = day.empty ? null : sleepMetrics(day, prev, settings, history);
+    if (!day.empty) {
+      const hT = day.hrv ?? day.hrvDeep, pr = rawByDate[addDays(day.date, -1)], hY = pr?.hrv ?? pr?.hrvDeep;
+      day.hrvS = hT != null && hT > 0 ? (hY != null && hY > 0 ? Math.exp(0.65 * Math.log(hT) + 0.35 * Math.log(hY)) : hT) : null;
+    }
     entry.recovery = day.empty ? null : recoveryMetrics(day, entry.sleep, history, settings);
     entry.flag = flags[day.date] || null;
     entry.target = entry.flag === 'sick' ? [0, 6] : entry.flag === 'unwell' ? [0, 10] : entry.flag === 'rest' ? [0, 9] : strainTarget(entry.recovery?.score);

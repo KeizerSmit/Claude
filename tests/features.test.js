@@ -181,3 +181,22 @@ test('deload: telt als belasting, maar verandert topset, PR en voortgang niet', 
   assert.equal(currentSet({ sessions: sessions.slice(0, 2) }, 'Hack squat').weight, 100, 'laatste topset blijft 100 kg');
   assert.deepEqual(exerciseHistory(sessions, 'hack squat', {}).map((h) => h.weight), [100, 102.5]);
 });
+
+test('rusthartslag: zonder slaap-hartslag vergelijken met dag-rusthartslag, niet met slaap-hartslag', () => {
+  const { days, strength } = generateDemo(40);
+  const last = days[days.length - 1];
+  const dayRhrs = days.slice(-30, -1).map((d) => d.rhr).filter(Boolean);
+  const typical = Math.round(dayRhrs.reduce((a, b) => a + b, 0) / dayRhrs.length);
+  const mod = days.map((d) => (d === last ? { ...d, sleepHr: undefined, hrv: undefined, hrvDeep: undefined, rhr: typical } : { ...d }));
+  const r = computeAll(mod, strength, SET, { age: 30 }).byDate[last.date].recovery;
+  assert.equal(r.rhrSource, 'day');
+  assert.ok(Math.abs(r.z.rhr) < 1, `normale dag-rusthartslag geeft geen straf (z ${r.z.rhr})`);
+});
+
+test('HRV: één uitschieter-nacht wordt gedempt door het 2-nachtengemiddelde', () => {
+  const { days, strength } = generateDemo(40);
+  const i = days.length - 1;
+  const mod = days.map((d, k) => (k === i ? { ...d, hrv: d.hrv * 0.55, hrvDeep: d.hrvDeep ? d.hrvDeep * 0.55 : d.hrvDeep } : { ...d }));
+  const r = computeAll(mod, strength, SET, { age: 30 }).byDate[days[i].date].recovery;
+  assert.ok(r.hrvUsed > r.hrv, 'gebruikte HRV ligt boven de lage nacht');
+});

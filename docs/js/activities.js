@@ -135,7 +135,7 @@ export function estimateActivity(act, day, ctx) {
       if (!v) continue;
       n++; sum += v; if (v > mx) mx = v;
       const hrr = (v - ctx.rest) / (ctx.max - ctx.rest);
-      if (hrr >= 0.2) measured += banister(hrr, ctx.female);
+      if (hrr >= 0.3) measured += banister(hrr, ctx.female);
     }
   }
   const coverage = n / minutes;

@@ -18,8 +18,9 @@ import { recoveryPatterns, recoveryForecastModel } from './patterns.js';
 import { today, addDays, fmtDayTitle, fmtDateLong, fmtDateShort, fmtTime, fmtDur, fmtHM, num, esc, clamp, mean, uid, ymd, pad, parseYmd, debounce, weekdayShort, sd, cap, daysBetween, median } from './util.js';
 
 const DEFAULTS = { sleepNeed: 450, defaultSets: 2, bodyweight: 80, maxHr: null, age: null, sex: 'm', theme: 'auto', wake: '07:00', palette: 'standard', badge: false, goals: { upper: 2, lower: 1, sleep: 420, mvpa: 150, steps: 8000 }, style: 'hit', strictness: 'streng' };
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 const CHANGELOG = [
+  ['Eerlijker herstel en strain', 'Afgesteld op jouw data: HRV telt als gemiddelde van twee nachten (één uitschieter-nacht weegt minder), een nacht zonder slaap-hartslag wordt niet meer vergeleken met je slaap-hartslag, en strain telt pas vanaf 30% hartslagreserve, zodat rondlopen en staan geen "maximale" dag meer opleveren.'],
   ['Herstel minder streng', 'De strenge stand was te hard: een korte nacht of een kleine HRV-dip gaf al snel een score onder de 10%. Een gewone dag is nu ±52%, slaap telt neutraal bij ±88% van je behoefte en kleine schommelingen wegen minder zwaar.'],
   ['Deload', 'Zet bij een training "Deload" aan: lichtere gewichten tellen mee voor je belasting, maar worden niet je nieuwe topset en veranderen je PR\'s, krachtindex en voortgang niet.'],
   ['Niet fit', 'Naast "ziek" kun je nu "niet fit" kiezen (keelpijn, verkouden, slecht herstel): telt niet mee in je baseline, maar de coach laat je licht trainen in plaats van rust voor te schrijven.'],
@@ -871,8 +872,8 @@ function viewRecovery(date) {
   const rhrPts = days30.map((d) => ({ date: d.date, go: `#/recovery/${d.date}`, value: d.recovery?.rhr ?? null }));
   const hrvBase = r?.baseline?.hrv;
   const contrib = r ? [
-    contribRow('Hartslagvariabiliteit', `${num(r.hrv)} ms`, r.z.hrv, r.weights.hrv, `baseline ${num(hrvBase)} ms`, `metric:hrv:${date}`),
-    contribRow('Rusthartslag (slaap)', `${num(r.rhr)} bpm`, r.z.rhr, r.weights.rhr, `baseline ${num(r.baseline.rhr)} bpm`, `metric:rhr:${date}`),
+    contribRow('Hartslagvariabiliteit', `${num(r.hrv)} ms`, r.z.hrv, r.weights.hrv, `normaal ${num(hrvBase)} ms${r.hrvUsed && r.hrv && Math.abs(r.hrvUsed - r.hrv) >= 2 ? ` · 2-nachten-gem. ${num(r.hrvUsed)}` : ''}`, `metric:hrv:${date}`),
+    contribRow(r.rhrSource === 'day' ? 'Rusthartslag (overdag)' : 'Rusthartslag (slaap)', `${num(r.rhr)} bpm`, r.z.rhr, r.weights.rhr, `baseline ${num(r.baseline.rhr)} bpm`, `metric:rhr:${date}`),
     contribRow('Slaapprestatie', pct(m.sleep?.perf), r.z.sleep, r.weights.sleep, m.sleep ? `${fmtHM(m.sleep.asleep)} van ${fmtHM(m.sleep.need)} nodig` : 'geen slaap', `#/sleep/${date}`),
     r.resp != null ? contribRow('Ademhaling', `${num(r.resp, 1)} /min`, r.z.resp, r.weights.resp, `baseline ${num(r.baseline.resp, 1)}`, `metric:resp:${date}`) : '',
     r.tempDev != null ? contribRow('Huidtemperatuur', `${r.tempDev >= 0 ? '+' : ''}${num(r.tempDev, 1)} °C`, r.z.temp, r.weights.temp, 't.o.v. je baseline', `metric:temp:${date}`) : '',
